@@ -1,4 +1,4 @@
-// RUN: %target-parse-verify-swift -enable-experimental-patterns -I %S/Inputs -enable-source-import
+// RUN: %target-typecheck-verify-swift -swift-version 4 -I %S/Inputs -enable-source-import
 
 import imported_enums
 
@@ -10,10 +10,10 @@ func ~= (x: (Int,Int,Int), y: (Int,Int,Int)) -> Bool {
 
 var x:Int
 
-func square(x: Int) -> Int { return x*x }
+func square(_ x: Int) -> Int { return x*x }
 
 struct A<B> {
-  struct C<D> { } // expected-error{{generic type 'C' nested in type}}
+  struct C<D> { }
 }
 
 switch x {
@@ -47,16 +47,15 @@ case 1 + (_): // expected-error{{'_' can only appear in a pattern or on the left
 }
 
 switch (x,x) {
-case (var a, var a): // expected-error {{definition conflicts with previous value}} expected-note {{previous definition of 'a' is here}}
+case (var a, var a): // expected-error {{invalid redeclaration of 'a'}} expected-note {{'a' previously declared here}} expected-warning {{variable 'a' was never used; consider replacing with '_' or removing it}} expected-warning {{variable 'a' was never used; consider replacing with '_' or removing it}}
   fallthrough
-case _:
+case _: // expected-warning {{case is already handled by previous patterns; consider removing it}}
   ()
 }
 
+var e : Any = 0
 
-var e : protocol<> = 0
-
-switch e {
+switch e { // expected-error {{switch must be exhaustive}} expected-note{{do you want to add a default clause?}}
 // 'is' pattern.
 case is Int,
      is A<Int>,
@@ -77,31 +76,36 @@ enum Voluntary<T> : Equatable {
   case Twain(T, T)
 
 
-  func enumMethod(other: Voluntary<T>, foo: Foo) {
+  func enumMethod(_ other: Voluntary<T>, foo: Foo) {
     switch self {
     case other:
       ()
 
-    case Naught,
-         Naught(),
-         Naught(_, _): // expected-error{{tuple pattern has the wrong length for tuple type '()'}}
+    case .Naught,
+         .Naught(), // expected-error {{pattern with associated values does not match enum case 'Naught'}}
+                    // expected-note@-1 {{remove associated values to make the pattern match}} {{17-19=}}
+         .Naught(_), // expected-error{{pattern with associated values does not match enum case 'Naught'}}
+                     // expected-note@-1 {{remove associated values to make the pattern match}} {{17-20=}}
+         .Naught(_, _): // expected-error{{pattern with associated values does not match enum case 'Naught'}}
+                        // expected-note@-1 {{remove associated values to make the pattern match}} {{17-23=}}
       ()
 
-    case Mere,
-         Mere(), // expected-error{{tuple pattern cannot match values of the non-tuple type 'T'}}
-         Mere(_),
-         Mere(_, _): // expected-error{{tuple pattern cannot match values of the non-tuple type 'T'}}
+    case .Mere,
+         .Mere(), // expected-error{{tuple pattern cannot match values of the non-tuple type 'T'}}
+         .Mere(_),
+         .Mere(_, _): // expected-error{{tuple pattern cannot match values of the non-tuple type 'T'}}
       ()
 
-    case Twain(), // expected-error{{tuple pattern has the wrong length for tuple type '(T, T)'}}
-         Twain(_),
-         Twain(_, _),
-         Twain(_, _, _): // expected-error{{tuple pattern has the wrong length for tuple type '(T, T)'}}
+    case .Twain(), // expected-error{{tuple pattern has the wrong length for tuple type '(T, T)'}}
+         .Twain(_), // expected-warning {{enum case 'Twain' has 2 associated values; matching them as a tuple is deprecated}}
+                    // expected-note@-25 {{'Twain' declared here}}
+         .Twain(_, _),
+         .Twain(_, _, _): // expected-error{{tuple pattern has the wrong length for tuple type '(T, T)'}}
       ()
     }
 
     switch foo {
-    case Naught: // expected-error{{enum case 'Naught' is not a member of type 'Foo'}}
+    case .Naught: // expected-error{{type 'Foo' has no member 'Naught'}}
       ()
     case .A, .B, .C:
       ()
@@ -110,13 +114,21 @@ enum Voluntary<T> : Equatable {
 }
 
 var n : Voluntary<Int> = .Naught
+if case let .Naught(value) = n {} // expected-error{{pattern with associated values does not match enum case 'Naught'}}
+                                  // expected-note@-1 {{remove associated values to make the pattern match}} {{20-27=}}
+if case let .Naught(value1, value2, value3) = n {} // expected-error{{pattern with associated values does not match enum case 'Naught'}}
+                                                   // expected-note@-1 {{remove associated values to make the pattern match}} {{20-44=}}
+
+
 
 switch n {
 case Foo.A: // expected-error{{enum case 'A' is not a member of type 'Voluntary<Int>'}}
   ()
 case Voluntary<Int>.Naught,
-     Voluntary<Int>.Naught(),
-     Voluntary<Int>.Naught(_, _), // expected-error{{tuple pattern has the wrong length for tuple type '()'}}
+     Voluntary<Int>.Naught(), // expected-error {{pattern with associated values does not match enum case 'Naught'}}
+                              // expected-note@-1 {{remove associated values to make the pattern match}} {{27-29=}}
+     Voluntary<Int>.Naught(_, _), // expected-error{{pattern with associated values does not match enum case 'Naught'}}
+                                  // expected-note@-1 {{remove associated values to make the pattern match}} {{27-33=}}
      Voluntary.Naught,
      .Naught:
   ()
@@ -129,7 +141,8 @@ case Voluntary<Int>.Mere,
      .Mere(_):
   ()
 case .Twain,
-     .Twain(_),
+     .Twain(_), // expected-warning {{enum case 'Twain' has 2 associated values; matching them as a tuple is deprecated}}
+                // expected-note@-69 {{'Twain' declared here}}
      .Twain(_, _),
      .Twain(_, _, _): // expected-error{{tuple pattern has the wrong length for tuple type '(Int, Int)'}}
   ()
@@ -138,33 +151,37 @@ case .Twain,
 var notAnEnum = 0
 
 switch notAnEnum {
-case .Foo: // expected-error{{enum case 'Foo' not found in type 'Int'}}
+case .Foo: // expected-error{{type 'Int' has no member 'Foo'}}
   ()
 }
 
 struct ContainsEnum {
-  enum Possible<T> { // expected-error{{generic type 'Possible' nested in type}}
+  enum Possible<T> {
     case Naught
     case Mere(T)
     case Twain(T, T)
   }
 
-  func member(n: Possible<Int>) {
-    switch n {
+  func member(_ n: Possible<Int>) {
+    switch n { // expected-error {{switch must be exhaustive}}
+    // expected-note@-1 {{missing case: '.Mere(_)'}}
+    // expected-note@-2 {{missing case: '.Twain(_, _)'}}
     case ContainsEnum.Possible<Int>.Naught,
-         ContainsEnum.Possible.Naught,
-         Possible<Int>.Naught,
-         Possible.Naught,
-         .Naught:
+         ContainsEnum.Possible.Naught, // expected-warning {{case is already handled by previous patterns; consider removing it}}
+         Possible<Int>.Naught, // expected-warning {{case is already handled by previous patterns; consider removing it}}
+         Possible.Naught, // expected-warning {{case is already handled by previous patterns; consider removing it}}
+         .Naught: // expected-warning {{case is already handled by previous patterns; consider removing it}}
       ()
     }
   }
 }
 
-func nonmemberAccessesMemberType(n: ContainsEnum.Possible<Int>) {
-  switch n {
+func nonmemberAccessesMemberType(_ n: ContainsEnum.Possible<Int>) {
+  switch n { // expected-error {{switch must be exhaustive}}
+  // expected-note@-1 {{missing case: '.Mere(_)'}}
+  // expected-note@-2 {{missing case: '.Twain(_, _)'}}
   case ContainsEnum.Possible<Int>.Naught,
-       .Naught:
+       .Naught: // expected-warning {{case is already handled by previous patterns; consider removing it}}
     ()
   }
 }
@@ -173,15 +190,15 @@ var m : ImportedEnum = .Simple
 
 switch m {
 case imported_enums.ImportedEnum.Simple,
-     ImportedEnum.Simple,
-     .Simple:
+     ImportedEnum.Simple, // expected-warning {{case is already handled by previous patterns; consider removing it}}
+     .Simple: // expected-warning {{case is already handled by previous patterns; consider removing it}}
   ()
 case imported_enums.ImportedEnum.Compound,
-     imported_enums.ImportedEnum.Compound(_),
-     ImportedEnum.Compound,
-     ImportedEnum.Compound(_),
-     .Compound,
-     .Compound(_):
+     imported_enums.ImportedEnum.Compound(_), // expected-warning {{case is already handled by previous patterns; consider removing it}}
+     ImportedEnum.Compound, // expected-warning {{case is already handled by previous patterns; consider removing it}}
+     ImportedEnum.Compound(_), // expected-warning {{case is already handled by previous patterns; consider removing it}}
+     .Compound, // expected-warning {{case is already handled by previous patterns; consider removing it}}
+     .Compound(_): // expected-warning {{case is already handled by previous patterns; consider removing it}}
   ()
 }
 
@@ -203,22 +220,22 @@ case .Payload(name: 0):
 case let .Payload(x):
   acceptInt(x)
   acceptString("\(x)")
-case let .Payload(name: x):
+case let .Payload(name: x): // expected-warning {{case is already handled by previous patterns; consider removing it}}
   acceptInt(x)
   acceptString("\(x)")
-case let .Payload((name: x)):
+case let .Payload((name: x)): // expected-warning {{case is already handled by previous patterns; consider removing it}}
   acceptInt(x)
   acceptString("\(x)")
-case .Payload(let (name: x)):
+case .Payload(let (name: x)): // expected-warning {{case is already handled by previous patterns; consider removing it}}
   acceptInt(x)
   acceptString("\(x)")
-case .Payload(let (name: x)):
+case .Payload(let (name: x)): // expected-warning {{case is already handled by previous patterns; consider removing it}}
   acceptInt(x)
   acceptString("\(x)")
-case .Payload(let x):
+case .Payload(let x): // expected-warning {{case is already handled by previous patterns; consider removing it}}
   acceptInt(x)
   acceptString("\(x)")
-case .Payload((let x)):
+case .Payload((let x)): // expected-warning {{case is already handled by previous patterns; consider removing it}}
   acceptInt(x)
   acceptString("\(x)")
 }
@@ -235,64 +252,16 @@ struct S {
   func nonProperty() {}
 }
 
-struct T {}
 
-var s: S
 
-switch s {
-case S():
-  ()
-case S(stat: _): // expected-error{{cannot match type property 'stat' of type 'S' in a 'case' pattern}}
-  ()
-case S(x: 0, y: 0, comp: 0):
-  ()
-case S(w: 0): // expected-error{{property 'w' not found in type 'S'}}
-  ()
-case S(nonProperty: 0): // expected-error{{member 'nonProperty' of type 'S' is not a property}}
-  ()
-case S(0): // expected-error{{subpattern of a struct or class pattern must have a keyword name}}
-  ()
-case S(x: 0, 0): // expected-error{{subpattern of a struct or class pattern must have a keyword name}}
-  ()
 
-case T(): // expected-error{{type 'T' of pattern does not match deduced type 'S'}}
-  ()
-}
-
-struct SG<A> { var x: A }
-
-var sgs: SG<S>
-
-switch sgs {
-case SG(x: S()):
-  ()
-case SG<S>(x: S()):
-  ()
-case SG<T>(x: T()): // expected-error{{type 'SG<T>' of pattern does not match deduced type 'SG<S>'}}
-  ()
-}
-
-func sg_generic<B : Equatable>(sgb: SG<B>, b: B) {
-  switch sgb {
-  case SG(x: b):
-    ()
-  }
-}
-
-typealias NonNominal = (foo: Int, bar: UnicodeScalar)
-var nn = NonNominal.self
-
-switch nn {
-case NonNominal(): // expected-error{{non-nominal type 'NonNominal' (aka '(foo: Int, bar: UnicodeScalar)') cannot be used with property pattern syntax}}
-  ()
-}
 
 // Tuple patterns.
 
 var t = (1, 2, 3)
 
-prefix operator +++ {}
-infix operator +++ {}
+prefix operator +++
+infix operator +++
 prefix func +++(x: (Int,Int,Int)) -> (Int,Int,Int) { return x }
 func +++(x: (Int,Int,Int), y: (Int,Int,Int)) -> (Int,Int,Int) {
   return (x.0+y.0, x.1+y.1, x.2+y.2)
@@ -309,9 +278,14 @@ case (1, 2, 3):
   ()
 
 // patterns in expression-only positions are errors.
-case +++(_, var d, 3): // expected-error{{invalid pattern}}
+case +++(_, var d, 3):
+// expected-error@-1{{'_' can only appear in a pattern or on the left side of an assignment}}
   ()
-case (_, var e, 3) +++ (1, 2, 3): // expected-error{{invalid pattern}}
+case (_, var e, 3) +++ (1, 2, 3):
+// expected-error@-1{{'_' can only appear in a pattern or on the left side of an assignment}}
+  ()
+case (let (_, _, _)) + 1:
+// expected-error@-1 {{'_' can only appear in a pattern or on the left side of an assignment}}
   ()
 }
 
@@ -322,7 +296,9 @@ class Derived : Base { }
 
 
 switch [Derived(), Derived(), Base()] {
-case let ds as [Derived]: // expected-error{{downcast pattern value of type '[Derived]' cannot be used}}
+case let ds as [Derived]: // expected-error{{collection downcast in cast pattern is not implemented; use an explicit downcast to '[Derived]' instead}}
+  ()
+case is [Derived]: // expected-error{{collection downcast in cast pattern is not implemented; use an explicit downcast to '[Derived]' instead}}
   ()
 
 default:
@@ -331,8 +307,8 @@ default:
 
 
 // Optional patterns.
-let op1 : Int? = nil
-let op2 : Int?? = nil
+let op1 : Int?
+let op2 : Int??
 
 switch op1 {
 case nil: break
@@ -344,14 +320,13 @@ switch op2 {
 case nil: break
 case _?: break
 case (1?)?: break
-case (_?)?: break
+case (_?)?: break // expected-warning {{case is already handled by previous patterns; consider removing it}}
 }
 
 
 
 // <rdar://problem/20365753> Bogus diagnostic "refutable pattern match can fail"
 let (responseObject: Int?) = op1
-// expected-error @-1 2 {{expected ',' separator}} {{25-25=,}} {{25-25=,}}
+// expected-error @-1 {{expected ',' separator}} {{25-25=,}}
 // expected-error @-2 {{expected pattern}}
-
-
+// expected-error @-3 {{cannot convert value of type 'Int?' to specified type '(responseObject: _)'}}

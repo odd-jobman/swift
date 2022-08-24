@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -20,41 +20,68 @@
 #include "swift/SILOptimizer/Analysis/LoopRegionAnalysis.h"
 #include "swift/SILOptimizer/PassManager/Passes.h"
 #include "swift/SILOptimizer/PassManager/Transforms.h"
+#include "llvm/Support/CommandLine.h"
 
 using namespace swift;
+
+static llvm::cl::opt<std::string>
+    SILViewCFGOnlyFun("sil-loop-region-view-cfg-only-function",
+                      llvm::cl::init(""),
+                      llvm::cl::desc("Only produce a graphviz file for the "
+                                     "loop region info of this function"));
+
+static llvm::cl::opt<std::string>
+    SILViewCFGOnlyFuns("sil-loop-region-view-cfg-only-functions",
+                       llvm::cl::init(""),
+                       llvm::cl::desc("Only produce a graphviz file for the "
+                                      "loop region info for the functions "
+                                      "whose name contains this substring"));
 
 namespace {
 
 class LoopRegionViewText : public SILModuleTransform {
   void run() override {
-    invalidateAnalysis(SILAnalysis::InvalidationKind::Everything);
-    LoopRegionAnalysis *LRA = PM->getAnalysis<LoopRegionAnalysis>();
-    for (auto &Fn : *getModule()) {
-      if (Fn.isExternalDeclaration()) continue;
+    invalidateAll();
+    auto *lra = PM->getAnalysis<LoopRegionAnalysis>();
 
-      llvm::outs() << "@" << Fn.getName() << "@\n";
-      LRA->get(&Fn)->dump();
-      llvm::outs() << "\n";
+    for (auto &fn : *getModule()) {
+      if (fn.isExternalDeclaration())
+        continue;
+      if (!SILViewCFGOnlyFun.empty() && fn.getName() != SILViewCFGOnlyFun)
+        continue;
+      if (!SILViewCFGOnlyFuns.empty() &&
+          !fn.getName().contains(SILViewCFGOnlyFuns))
+        continue;
+
+      // Ok, we are going to analyze this function. Invalidate all state
+      // associated with it so we recompute the loop regions.
+      llvm::outs() << "Start @" << fn.getName() << "@\n";
+      lra->get(&fn)->dump();
+      llvm::outs() << "End @" << fn.getName() << "@\n";
       llvm::outs().flush();
     }
   }
-
-  virtual StringRef getName() override { return "LoopRegionViewText"; }
 };
 
 class LoopRegionViewCFG : public SILModuleTransform {
   void run() override {
+    invalidateAll();
+    auto *lra = PM->getAnalysis<LoopRegionAnalysis>();
 
-    LoopRegionAnalysis *LRA = PM->getAnalysis<LoopRegionAnalysis>();
-
-    auto *M = getModule();
-    for (auto &Fn : M->getFunctions()) {
-      if (Fn.isExternalDeclaration())
+    for (auto &fn : *getModule()) {
+      if (fn.isExternalDeclaration())
         continue;
-      LRA->get(&Fn)->viewLoopRegions();
+      if (!SILViewCFGOnlyFun.empty() && fn.getName() != SILViewCFGOnlyFun)
+        continue;
+      if (!SILViewCFGOnlyFuns.empty() &&
+          !fn.getName().contains(SILViewCFGOnlyFuns))
+        continue;
+
+      // Ok, we are going to analyze this function. Invalidate all state
+      // associated with it so we recompute the loop regions.
+      lra->get(&fn)->viewLoopRegions();
     }
   }
-  virtual StringRef getName() override { return "LoopRegionViewCFG"; }
 };
 
 } // end anonymous namespace

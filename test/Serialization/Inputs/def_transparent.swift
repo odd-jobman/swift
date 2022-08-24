@@ -2,22 +2,30 @@
   return x
 }
 
-@_transparent public func testBuiltin() -> Int32 {
+@_transparent public func testBuiltin() -> (Int32, String) {
   var y: Int32 = 300
   var z = "foo"
-  return y
+  return (y, z)
 }
 
 @_transparent public func standalone_function(x x: Int32, y: Int32) -> Int32 {
   return x
 }
+
+@inlinable
 public func foo() -> Int32 { return 0 }
+@inlinable
 public func runced() -> Bool { return true }
 
+@inlinable
 public func a() {}
+@inlinable
 public func b() {}
+@inlinable
 public func c() {}
+@inlinable
 public func d() {}
+@inlinable
 public func e() {}
 
 @_transparent public func test_br() {
@@ -36,6 +44,8 @@ public enum MaybePair {
   case Right(String)
   case Both(Int32, String)
 }
+
+@_transparent
 public func do_switch(u u: MaybePair) {
   switch u {
   case .Neither:
@@ -50,6 +60,7 @@ public func do_switch(u u: MaybePair) {
   e()
 }
 
+@frozen
 public struct Wrapper {
   public var value: Int32
   
@@ -69,7 +80,8 @@ public struct Wrapper {
   }
 }
 
-@_transparent public extension Wrapper {
+public extension Wrapper {
+  @_transparent
   func getValueAgain() -> Int32 {
     return self.value
   }

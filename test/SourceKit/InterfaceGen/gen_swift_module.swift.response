@@ -1,7 +1,13 @@
+import SwiftOnoneSupport
 
 public class MyClass {
 
     public func pub_method()
+}
+
+public protocol MyProto<Assoc> {
+
+    associatedtype Assoc
 }
 
 public func pub_function()
@@ -9,73 +15,167 @@ public func pub_function()
 
 [
   {
+    key.kind: source.lang.swift.syntaxtype.keyword,
+    key.offset: 0,
+    key.length: 6
+  },
+  {
+    key.kind: source.lang.swift.syntaxtype.identifier,
+    key.offset: 7,
+    key.length: 17
+  },
+  {
     key.kind: source.lang.swift.syntaxtype.attribute.builtin,
-    key.offset: 1,
+    key.offset: 26,
     key.length: 6
   },
   {
     key.kind: source.lang.swift.syntaxtype.keyword,
-    key.offset: 8,
+    key.offset: 33,
     key.length: 5
   },
   {
     key.kind: source.lang.swift.syntaxtype.identifier,
-    key.offset: 14,
+    key.offset: 39,
     key.length: 7
   },
   {
     key.kind: source.lang.swift.syntaxtype.attribute.builtin,
-    key.offset: 29,
+    key.offset: 54,
     key.length: 6
   },
   {
     key.kind: source.lang.swift.syntaxtype.keyword,
-    key.offset: 36,
+    key.offset: 61,
     key.length: 4
   },
   {
     key.kind: source.lang.swift.syntaxtype.identifier,
-    key.offset: 41,
+    key.offset: 66,
     key.length: 10
   },
   {
     key.kind: source.lang.swift.syntaxtype.attribute.builtin,
-    key.offset: 57,
+    key.offset: 82,
     key.length: 6
   },
   {
     key.kind: source.lang.swift.syntaxtype.keyword,
-    key.offset: 64,
+    key.offset: 89,
+    key.length: 8
+  },
+  {
+    key.kind: source.lang.swift.syntaxtype.identifier,
+    key.offset: 98,
+    key.length: 7
+  },
+  {
+    key.kind: source.lang.swift.syntaxtype.identifier,
+    key.offset: 106,
+    key.length: 5
+  },
+  {
+    key.kind: source.lang.swift.syntaxtype.keyword,
+    key.offset: 120,
+    key.length: 14
+  },
+  {
+    key.kind: source.lang.swift.syntaxtype.identifier,
+    key.offset: 135,
+    key.length: 5
+  },
+  {
+    key.kind: source.lang.swift.syntaxtype.attribute.builtin,
+    key.offset: 144,
+    key.length: 6
+  },
+  {
+    key.kind: source.lang.swift.syntaxtype.keyword,
+    key.offset: 151,
     key.length: 4
   },
   {
     key.kind: source.lang.swift.syntaxtype.identifier,
-    key.offset: 69,
+    key.offset: 156,
     key.length: 12
   }
 ]
-<<NULL>>
+[
+  {
+    key.kind: source.lang.swift.ref.module,
+    key.offset: 7,
+    key.length: 17,
+    key.is_system: 1
+  },
+  {
+    key.kind: source.lang.swift.ref.associatedtype,
+    key.offset: 106,
+    key.length: 5
+  }
+]
 [
   {
     key.kind: source.lang.swift.decl.class,
     key.accessibility: source.lang.swift.accessibility.public,
     key.name: "MyClass",
-    key.offset: 8,
+    key.offset: 33,
     key.length: 47,
-    key.runtime_name: "_TtC4main7MyClass",
-    key.nameoffset: 14,
+    key.nameoffset: 39,
     key.namelength: 7,
-    key.bodyoffset: 23,
+    key.bodyoffset: 48,
     key.bodylength: 31,
+    key.attributes: [
+      {
+        key.offset: 26,
+        key.length: 6,
+        key.attribute: source.decl.attribute.public
+      }
+    ],
     key.substructure: [
       {
         key.kind: source.lang.swift.decl.function.method.instance,
         key.accessibility: source.lang.swift.accessibility.public,
         key.name: "pub_method()",
-        key.offset: 36,
+        key.offset: 61,
         key.length: 17,
-        key.nameoffset: 41,
-        key.namelength: 12
+        key.nameoffset: 66,
+        key.namelength: 12,
+        key.attributes: [
+          {
+            key.offset: 54,
+            key.length: 6,
+            key.attribute: source.decl.attribute.public
+          }
+        ]
+      }
+    ]
+  },
+  {
+    key.kind: source.lang.swift.decl.protocol,
+    key.accessibility: source.lang.swift.accessibility.public,
+    key.name: "MyProto",
+    key.offset: 89,
+    key.length: 53,
+    key.nameoffset: 98,
+    key.namelength: 7,
+    key.bodyoffset: 114,
+    key.bodylength: 27,
+    key.attributes: [
+      {
+        key.offset: 82,
+        key.length: 6,
+        key.attribute: source.decl.attribute.public
+      }
+    ],
+    key.substructure: [
+      {
+        key.kind: source.lang.swift.decl.associatedtype,
+        key.accessibility: source.lang.swift.accessibility.public,
+        key.name: "Assoc",
+        key.offset: 120,
+        key.length: 20,
+        key.nameoffset: 135,
+        key.namelength: 5
       }
     ]
   },
@@ -83,9 +183,16 @@ public func pub_function()
     key.kind: source.lang.swift.decl.function.free,
     key.accessibility: source.lang.swift.accessibility.public,
     key.name: "pub_function()",
-    key.offset: 64,
+    key.offset: 151,
     key.length: 19,
-    key.nameoffset: 69,
-    key.namelength: 14
+    key.nameoffset: 156,
+    key.namelength: 14,
+    key.attributes: [
+      {
+        key.offset: 144,
+        key.length: 6,
+        key.attribute: source.decl.attribute.public
+      }
+    ]
   }
 ]

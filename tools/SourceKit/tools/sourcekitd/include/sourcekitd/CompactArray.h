@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,8 +20,10 @@ namespace sourcekitd {
 
 class CompactArrayBuilderImpl {
 public:
-  std::unique_ptr<llvm::MemoryBuffer> createBuffer() const;
-
+  std::unique_ptr<llvm::MemoryBuffer> createBuffer(CustomBufferKind Kind) const;
+  void appendTo(llvm::SmallVectorImpl<char> &Buf) const;
+  unsigned copyInto(char *BufPtr) const;
+  size_t sizeInBytes() const;
   bool empty() const;
 
 protected:
@@ -35,30 +37,12 @@ protected:
 
 private:
   unsigned getOffsetForString(llvm::StringRef Str);
+  void copyInto(char *BufPtr, size_t Length) const;
 
   llvm::SmallVector<uint8_t, 256> EntriesBuffer;
   llvm::SmallString<256> StringBuffer;
 };
 
-template <typename ...EntryTypes>
-class CompactArrayBuilder : public CompactArrayBuilderImpl {
-public:
-  void addEntry(EntryTypes... Args) {
-    add(Args...);
-  }
-
-private:
-  template <typename T, typename ...Targs>
-  void add(T Val, Targs... Args) {
-    add(Val);
-    add(Args...);
-  }
-
-  template <typename T>
-  void add(T Val) {
-    addImpl(Val);
-  }
-};
 
 template <typename T>
 struct CompactArrayField {
@@ -88,12 +72,39 @@ struct CompactArrayEntriesSizer<T> {
   }
 };
 
+template <typename ...EntryTypes>
+class CompactArrayBuilder : public CompactArrayBuilderImpl {
+public:
+  void addEntry(EntryTypes... Args) {
+    add(Args...);
+    count += 1;
+  }
+
+  size_t size() const { return count; }
+
+private:
+  template <typename T, typename ...Targs>
+  void add(T Val, Targs... Args) {
+    add(Val);
+    add(Args...);
+  }
+
+  template <typename T>
+  void add(T Val) {
+    addImpl(Val);
+  }
+
+  size_t count = 0;
+};
+
 class CompactArrayReaderImpl {
 protected:
   CompactArrayReaderImpl(void *Buf) : Buf(Buf) {}
 
   uint64_t getEntriesBufSize() const {
-    return *(uint64_t*)Buf;
+    uint64_t result;
+    std::memcpy(&result, Buf, sizeof result);
+    return result;
   }
   const uint8_t *getEntriesBufStart() const {
     return (const uint8_t *)(((uint64_t*)Buf)+1);
@@ -149,10 +160,11 @@ struct CompactVariantFuncs {
     return SOURCEKITD_VARIANT_TYPE_DICTIONARY;
   }
 
-  static bool dictionary_apply(
-        sourcekitd_variant_t dict,
-        sourcekitd_variant_dictionary_applier_t applier) {
-    void *Buf = (void*)dict.data[1];
+  static bool
+  dictionary_apply(sourcekitd_variant_t dict,
+                   llvm::function_ref<bool(sourcekitd_uid_t,
+                                           sourcekitd_variant_t)> applier) {
+    void *Buf = (void *)dict.data[1];
     size_t Index = dict.data[2];
     return T::dictionary_apply(Buf, Index, applier);
   }
@@ -180,7 +192,9 @@ VariantFunctions CompactVariantFuncs<T>::Funcs = {
   nullptr/*Annot_string_get_length*/,
   nullptr/*Annot_string_get_ptr*/,
   nullptr/*Annot_int64_get_value*/,
-  nullptr/*Annot_uid_get_value*/
+  nullptr/*Annot_uid_get_value*/,
+  nullptr/*Annot_data_get_size*/,
+  nullptr/*Annot_data_get_ptr*/,
 };
 
 template <typename T>
@@ -225,7 +239,9 @@ VariantFunctions CompactArrayFuncs<T>::Funcs = {
   nullptr/*AnnotArray_string_get_length*/,
   nullptr/*AnnotArray_string_get_ptr*/,
   nullptr/*AnnotArray_int64_get_value*/,
-  nullptr/*AnnotArray_uid_get_value*/
+  nullptr/*AnnotArray_uid_get_value*/,
+  nullptr/*Annot_data_get_size*/,
+  nullptr/*Annot_data_get_ptr*/,
 };
 
 }

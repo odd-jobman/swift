@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2021 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //  This is a simple benchmark that tests the performance of calls to
@@ -15,7 +15,12 @@
 
 
 import TestsUtils
-import Foundation
+
+public let benchmarks =
+  BenchmarkInfo(
+    name: "ProtocolDispatch2",
+    runFunction: run_ProtocolDispatch2,
+    tags: [.validation, .abstraction, .cpubench])
 
 protocol Pingable { func ping() -> Int;  func pong() -> Int}
 
@@ -27,7 +32,7 @@ struct Game : Pingable {
 }
 
 @inline(never)
-func use_protocol(val : Int,_ game1 : Pingable, _ game2 : Pingable) -> Int {
+func use_protocol(_ val : Int,_ game1 : Pingable, _ game2 : Pingable) -> Int {
   var t = game1.ping() + game1.pong()
   if (val % 2 == 0) {
     t += game1.pong() + game1.ping()
@@ -44,21 +49,20 @@ func use_protocol(val : Int,_ game1 : Pingable, _ game2 : Pingable) -> Int {
 }
 
 @inline(never)
-func wrapper(val : Int,_ game1 : Pingable, _ game2 : Pingable) -> Int {
+func wrapper(_ val : Int,_ game1 : Pingable, _ game2 : Pingable) -> Int {
   return use_protocol(val, game1, game2)
 }
 
 @inline(never)
-public func run_ProtocolDispatch2(N: Int) {
+public func run_ProtocolDispatch2(_ n: Int) {
   var c = 0
   let g1 = Game()
   let g2 = Game()
-  for _ in 1...N {
+  for _ in 1...10*n {
     c = 0
     for i in 1...5000 {
       c += wrapper(i, g1, g2)
     }
   }
-  CheckResults(c == 75000, "IncorrectResults in ProtoDispatch")
+  check(c == 75000)
 }
-

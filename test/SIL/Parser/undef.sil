@@ -1,4 +1,4 @@
-// RUN: %target-sil-opt %s | %target-sil-opt | FileCheck %s
+// RUN: %target-sil-opt -enable-objc-interop %s | %target-sil-opt -enable-objc-interop | %FileCheck %s
 sil_stage raw
 
 import Builtin
@@ -13,7 +13,9 @@ class C {
   @objc func fn() { }
 }
 
-class D : C, P, ClassP { }
+class D : C, P, ClassP {
+  override func fn() { }
+}
 
 struct S {
   let x : ()
@@ -21,7 +23,7 @@ struct S {
 
 enum E {
   case Case
-  case DataCase(())
+  case DataCase(Void)
 }
 
 sil @general_test : $() -> () {
@@ -31,23 +33,19 @@ bb0:
 
   // CHECK: alloc_ref_dynamic undef : $@thick C.Type, $C
   alloc_ref_dynamic undef : $@thick C.Type, $C
-  // CHECK: alloc_value_buffer $() in undef : $*Builtin.UnsafeValueBuffer
-  alloc_value_buffer $() in undef : $*Builtin.UnsafeValueBuffer
-  // CHECK: dealloc_box undef : $@box ()
-  dealloc_box undef : $@box ()
+  // CHECK: dealloc_box undef : $<τ_0_0> { var τ_0_0 } <()>
+  dealloc_box undef : $<τ_0_0> { var τ_0_0 } <()>
   // CHECK: dealloc_ref undef : $C
   dealloc_ref undef : $C
   // CHECK: dealloc_partial_ref undef : $D, undef : $@thick C.Type
   dealloc_partial_ref undef : $D, undef : $@thick C.Type
-  // CHECK: dealloc_value_buffer $() in undef : $*Builtin.UnsafeValueBuffer
-  dealloc_value_buffer $() in undef : $*Builtin.UnsafeValueBuffer
 
   // Debug information
 
   // CHECK: debug_value undef : $()
   debug_value undef : $()
-  // CHECK: debug_value_addr undef : $*()
-  debug_value_addr undef : $*()
+  // CHECK: debug_value undef : $*(), expr op_deref
+  debug_value undef : $*(), expr op_deref
 
   // Accessing memory
 
@@ -69,6 +67,8 @@ bb0:
   index_addr undef : $*(), undef : $Builtin.Int64
   // CHECK: index_raw_pointer undef : $Builtin.RawPointer, undef : $Builtin.Int64
   index_raw_pointer undef : $Builtin.RawPointer, undef : $Builtin.Int64
+  // CHECK: bind_memory undef : $Builtin.RawPointer, undef : $Builtin.Word to $*S
+  bind_memory undef : $Builtin.RawPointer, undef : $Builtin.Word to $*S
 
   // Reference Counting
 
@@ -92,19 +92,20 @@ bb0:
   mark_dependence undef : $C on undef : $C
   // CHECK: is_unique undef : $C
   is_unique undef : $C
-  // CHECK: is_unique_or_pinned undef : $C
-  is_unique_or_pinned undef : $C
   // CHECK: copy_block undef : $@convention(block) () -> ()
   copy_block undef : $@convention(block) () -> ()
 
+  // CHECK: copy_block_without_escaping undef : $@convention(block) () -> () withoutEscaping undef : $@noescape () -> ()
+  copy_block_without_escaping undef : $@convention(block) () -> () withoutEscaping undef : $@noescape () -> ()
+
   // Dynamic dispatch
 
-  // CHECK: class_method undef : $C, #C.fn!1 : (C) -> () -> () , $@convention(method) (@guaranteed C) -> ()
-  class_method undef : $C, #C.fn!1 : (C) -> () -> () , $@convention(method) (@guaranteed C) -> ()
-  // CHECK: super_method undef : $D, #C.fn!1 : (C) -> () -> () , $@convention(method) (@guaranteed C) -> ()
-  super_method undef : $D, #C.fn!1 : (C) -> () -> () , $@convention(method) (@guaranteed C) -> ()
-  // CHECK: dynamic_method undef : $C, #C.fn!1 : (C) -> () -> (), $@convention(method) (@guaranteed C) -> ()
-  dynamic_method undef : $C, #C.fn!1 : (C) -> () -> (), $@convention(method) (@guaranteed C) -> ()
+  // CHECK: class_method undef : $C, #C.fn : (C) -> () -> (), $@convention(method) (@guaranteed C) -> ()
+  class_method undef : $C, #C.fn : (C) -> () -> (), $@convention(method) (@guaranteed C) -> ()
+  // CHECK: super_method undef : $D, #C.fn : (C) -> () -> (), $@convention(method) (@guaranteed C) -> ()
+  super_method undef : $D, #C.fn : (C) -> () -> (), $@convention(method) (@guaranteed C) -> ()
+  // CHECK: objc_method undef : $C, #C.fn!foreign : (C) -> () -> (), $@convention(objc_method) (C) -> ()
+  objc_method undef : $C, #C.fn!foreign : (C) -> () -> (), $@convention(objc_method) (C) -> ()
 
   // Function Application
 
@@ -123,7 +124,7 @@ bb0:
 
   // CHECK: value_metatype $@thick C.Type, undef : $C
   value_metatype $@thick C.Type, undef : $C
-  // CHECK: existential_metatype $@thick P.Type, undef : $P
+  // CHECK: existential_metatype $@thick any P.Type, undef : $any P
   existential_metatype $@thick P.Type, undef : $P
 
   // Aggregate Types
@@ -153,8 +154,8 @@ bb0:
 
   // Enums
 
-  // CHECK: enum $E, #E.DataCase!enumelt.1, undef : $()
-  enum $E, #E.DataCase!enumelt.1, undef : $()
+  // CHECK: enum $E, #E.DataCase!enumelt, undef : $()
+  enum $E, #E.DataCase!enumelt, undef : $()
   // CHECK: unchecked_enum_data undef : $E, #E.DataCase!enumelt
   unchecked_enum_data undef : $E, #E.DataCase!enumelt
   // CHECK: init_enum_data_addr undef : $*E, #E.DataCase!enumelt
@@ -170,24 +171,26 @@ bb0:
 
   // Protocol and Protocol Composition Types
 
-  // CHECK: init_existential_addr undef : $*P, $D
+  // CHECK: init_existential_addr undef : $*any P, $D
   init_existential_addr undef : $*P, $D
-  // CHECK: deinit_existential_addr undef : $*P
+  // CHECK: deinit_existential_addr undef : $*any P
   deinit_existential_addr undef : $*P
-  // CHECK: open_existential_addr undef : $*P to $*@opened("01234567-89AB-CDEF-0123-000000000000") P
-  open_existential_addr undef : $*P to $*@opened("01234567-89AB-CDEF-0123-000000000000") P
-  // CHECK: init_existential_ref undef : $D : $D, $ClassP
+  // CHECK: open_existential_addr immutable_access undef : $*any P to $*@opened("01234567-89AB-CDEF-0123-000000000000", any P) Self
+  open_existential_addr immutable_access undef : $*P to $*@opened("01234567-89AB-CDEF-0123-000000000000", P) Self
+  // CHECK: open_existential_addr mutable_access undef : $*any P to $*@opened("01234567-89AB-CDEF-0123-100000000000", any P) Self
+  open_existential_addr mutable_access undef : $*P to $*@opened("01234567-89AB-CDEF-0123-100000000000", P) Self
+  // CHECK: init_existential_ref undef : $D : $D, $any ClassP
   init_existential_ref undef : $D : $D, $ClassP
-  // CHECK: open_existential_ref undef : $ClassP to $@opened("01234567-89AB-CDEF-0123-000000000001") ClassP
-  open_existential_ref undef : $ClassP to $@opened("01234567-89AB-CDEF-0123-000000000001") ClassP
-  // CHECK: init_existential_metatype undef : $@thick C.Type, $@thick P.Type
-  init_existential_metatype undef : $@thick C.Type, $@thick P.Type
-  // CHECK: open_existential_metatype undef : $@thick P.Type to $@thick (@opened("01234567-89AB-CDEF-0123-000000000002") P).Type
-  open_existential_metatype undef : $@thick P.Type to $@thick (@opened("01234567-89AB-CDEF-0123-000000000002") P).Type
-  // CHECK: open_existential_box undef : $ErrorProtocol to $*@opened("01234567-89AB-CDEF-0123-000000000003") ErrorProtocol
-  open_existential_box undef : $ErrorProtocol to $*@opened("01234567-89AB-CDEF-0123-000000000003") ErrorProtocol
-  // CHECK: dealloc_existential_box undef : $ErrorProtocol, $()
-  dealloc_existential_box undef : $ErrorProtocol, $()
+  // CHECK: open_existential_ref undef : $any ClassP to $@opened("01234567-89AB-CDEF-0123-000000000001", any ClassP) Self
+  open_existential_ref undef : $ClassP to $@opened("01234567-89AB-CDEF-0123-000000000001", ClassP) Self
+  // CHECK: init_existential_metatype undef : $@thick D.Type, $@thick any P.Type
+  init_existential_metatype undef : $@thick D.Type, $@thick P.Type
+  // CHECK: open_existential_metatype undef : $@thick any P.Type to $@thick (@opened("01234567-89AB-CDEF-0123-000000000002", any P) Self).Type
+  open_existential_metatype undef : $@thick P.Type to $@thick (@opened("01234567-89AB-CDEF-0123-000000000002", P) Self).Type
+  // CHECK: open_existential_box undef : $any Error to $*@opened("01234567-89AB-CDEF-0123-000000000003", any Error) Self
+  open_existential_box undef : $Error to $*@opened("01234567-89AB-CDEF-0123-000000000003", Error) Self
+  // CHECK: dealloc_existential_box undef : $any Error, $()
+  dealloc_existential_box undef : $Error, $()
 
   // Blocks
 
@@ -204,6 +207,8 @@ bb0:
   address_to_pointer undef : $*() to $Builtin.RawPointer
   // CHECK: pointer_to_address undef : $Builtin.RawPointer to $*()
   pointer_to_address undef : $Builtin.RawPointer to $*()
+  // CHECK: pointer_to_address undef : $Builtin.RawPointer to [strict] $*()
+  pointer_to_address undef : $Builtin.RawPointer to [strict] $*()
   // CHECK: unchecked_ref_cast undef : $C to $D
   unchecked_ref_cast undef : $C to $D
   // CHECK: unchecked_addr_cast undef : $*D to $*C
@@ -226,10 +231,6 @@ bb0:
   unmanaged_to_ref undef : $@sil_unmanaged C to $C
   // CHECK: convert_function undef : $(D) -> () to $(C) -> ()
   convert_function undef : $(D) -> () to $(C) -> ()
-  // CHECK: thin_function_to_pointer undef : $@convention(thin) () -> () to $Builtin.RawPointer
-  thin_function_to_pointer undef : $@convention(thin) () -> () to $Builtin.RawPointer
-  // CHECK: pointer_to_thin_function undef : $Builtin.RawPointer to $@convention(thin) () -> ()
-  pointer_to_thin_function undef : $Builtin.RawPointer to $@convention(thin) () -> ()
   // CHECK: ref_to_bridge_object undef : $C, undef : $Builtin.Word
   ref_to_bridge_object undef : $C, undef : $Builtin.Word
   // CHECK: bridge_object_to_ref undef : $Builtin.BridgeObject to $C
@@ -238,23 +239,13 @@ bb0:
   bridge_object_to_word undef : $Builtin.BridgeObject to $Builtin.Word
   // CHECK: thin_to_thick_function undef : $@convention(thin) () -> () to $() -> ()
   thin_to_thick_function undef : $@convention(thin) () -> () to $() -> ()
-  // CHECK: thick_to_objc_metatype undef : $@thick C.Type to $@objc_metatype C.Type
-  thick_to_objc_metatype undef : $@thick C.Type to $@objc_metatype C.Type
-  // CHECK: objc_to_thick_metatype undef : $@objc_metatype C.Type to $@thick C.Type
-  objc_to_thick_metatype undef : $@objc_metatype C.Type to $@thick C.Type
-  // CHECK: objc_metatype_to_object undef : $@objc_metatype C.Type to $AnyObject
-  objc_metatype_to_object undef : $@objc_metatype C.Type to $AnyObject
-  // CHECK: objc_existential_metatype_to_object undef : $@objc_metatype P.Type to $AnyObject
-  objc_existential_metatype_to_object undef : $@objc_metatype P.Type to $AnyObject
-  // CHECK: is_nonnull undef : $C
-  is_nonnull undef : $C
 
   // Checked Conversions
 
-  // CHECK: unconditional_checked_cast undef : $C to $C
-  unconditional_checked_cast undef : $C to $C
-  // CHECK: unconditional_checked_cast_addr take_always C in undef : $*C to C in undef : $*C
-  unconditional_checked_cast_addr take_always C in undef : $*C to C in undef : $*C
+  // CHECK: unconditional_checked_cast undef : $C to C
+  unconditional_checked_cast undef : $C to C
+  // CHECK: unconditional_checked_cast_addr C in undef : $*C to C in undef : $*C
+  unconditional_checked_cast_addr C in undef : $*C to C in undef : $*C
 
   // Runtime Failures
 
@@ -316,37 +307,49 @@ bb0:
 
 sil @switch_enum_test : $() -> () {
 bb0:
-  // CHECK: switch_enum undef : $E, case #E.Case!enumelt: bb1, default bb1
-  switch_enum undef : $E, case #E.Case!enumelt: bb1, default bb1
+  // CHECK: switch_enum undef : $E, case #E.Case!enumelt: bb1, default bb2
+  switch_enum undef : $E, case #E.Case!enumelt: bb1, default bb2
 bb1:
+  br bb3
+bb2:
+  br bb3
+bb3:
   return undef : $()
 }
 
 sil @switch_enum_addr_test : $() -> () {
 bb0:
-  // CHECK: switch_enum_addr undef : $*E, case #E.Case!enumelt: bb1, default bb1
-  switch_enum_addr undef : $*E, case #E.Case!enumelt: bb1, default bb1
+  // CHECK: switch_enum_addr undef : $*E, case #E.Case!enumelt: bb1, default bb2
+  switch_enum_addr undef : $*E, case #E.Case!enumelt: bb1, default bb2
 bb1:
+  br bb3
+bb2:
+  br bb3
+bb3:
   return undef : $()
 }
 
 sil @dynamic_method_br_test : $() -> () {
 bb0:
-  // CHECK: dynamic_method_br undef : $P, #C.fn!1.foreign, bb1, bb2
-  dynamic_method_br undef : $P, #C.fn!1.foreign, bb1, bb2
+  // CHECK: dynamic_method_br undef : $any P, #C.fn!foreign, bb1, bb2
+  dynamic_method_br undef : $P, #C.fn!foreign, bb1, bb2
 bb1(%x : $@convention(objc_method) (P) -> ()):
-  br bb2
+  br bb3
 bb2:
+  br bb3
+bb3:
   return undef: $()
 }
 
 sil @checked_cast_br_test : $() -> () {
 bb0:
-  // CHECK: checked_cast_br undef : $C to $C, bb1, bb2
-  checked_cast_br undef : $C to $C, bb1, bb2
+  // CHECK: checked_cast_br undef : $C to C, bb1, bb2
+  checked_cast_br undef : $C to C, bb1, bb2
 bb1(%x : $C):
-  br bb2
+  br bb3
 bb2:
+  br bb3
+bb3:
   return undef : $()
 }
 
@@ -355,19 +358,21 @@ bb0:
   // CHECK: checked_cast_addr_br take_always C in undef : $*C to C in undef : $*C, bb1, bb2
   checked_cast_addr_br take_always C in undef : $*C to C in undef : $*C, bb1, bb2
 bb1:
-  br bb2
+  br bb3
 bb2:
+  br bb3
+bb3:
   return undef : $()
 }
 
 
 sil @try_apply_test : $() -> () {
 bb0:
-  // CHECK: try_apply undef(undef) : $@convention(thin) (()) -> @error ErrorProtocol, normal bb1, error bb2
-  try_apply undef(undef) : $@convention(thin) (()) -> @error ErrorProtocol, normal bb1, error bb2
+  // CHECK: try_apply undef(undef) : $@convention(thin) (()) -> @error any Error, normal bb1, error bb2
+  try_apply undef(undef) : $@convention(thin) (()) -> @error Error, normal bb1, error bb2
 bb1(%1 : $()):
   br bb3
-bb2(%2 : $ErrorProtocol):
+bb2(%2 : $Error):
   br bb3
 bb3:
   return undef : $()

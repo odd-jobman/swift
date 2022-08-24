@@ -2,48 +2,87 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the ASTNode, which is a union of Stmt, Expr, and Decl.
+// This file defines the ASTNode, which is a union of Stmt, Expr, Decl,
+// Pattern, TypeRepr, StmtCondition, and CaseLabelItem.
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef SWIFT_AST_AST_NODE_H
 #define SWIFT_AST_AST_NODE_H
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/PointerUnion.h"
+#include "swift/Basic/Debug.h"
 #include "swift/AST/TypeAlignments.h"
+
+namespace llvm {
+  class raw_ostream;
+}
 
 namespace swift {
   class Expr;
   class Stmt;
   class Decl;
+  class Pattern;
+  class TypeRepr;
+  class DeclContext;
   class SourceLoc;
   class SourceRange;
   class ASTWalker;
-  
-  struct ASTNode : public llvm::PointerUnion3<Expr*, Stmt*, Decl*> {
+  class StmtConditionElement;
+  class CaseLabelItem;
+  enum class ExprKind : uint8_t;
+  enum class DeclKind : uint8_t;
+  enum class PatternKind : uint8_t;
+  enum class StmtKind;
+
+  struct ASTNode
+      : public llvm::PointerUnion<Expr *, Stmt *, Decl *, Pattern *, TypeRepr *,
+                                  StmtConditionElement *, CaseLabelItem *> {
     // Inherit the constructors from PointerUnion.
-    using PointerUnion3::PointerUnion3;
-    
+    using PointerUnion::PointerUnion;
+
     SourceRange getSourceRange() const;
 
-    /// \brief Return the location of the start of the statement.
+    /// Return the location of the start of the statement.
     SourceLoc getStartLoc() const;
   
-    /// \brief Return the location of the end of the statement.
+    /// Return the location of the end of the statement.
     SourceLoc getEndLoc() const;
 
     void walk(ASTWalker &Walker);
     void walk(ASTWalker &&walker) { walk(walker); }
+
+    /// get the underlying entity as a decl context if it is one,
+    /// otherwise, return nullptr;
+    DeclContext *getAsDeclContext() const;
+
+    /// Provides some utilities to decide detailed node kind.
+#define FUNC(T) bool is##T(T##Kind Kind) const;
+    FUNC(Stmt)
+    FUNC(Expr)
+    FUNC(Decl)
+    FUNC(Pattern)
+#undef FUNC
+    
+    SWIFT_DEBUG_DUMP;
+    void dump(llvm::raw_ostream &OS, unsigned Indent = 0) const;
+
+    /// Whether the AST node is implicit.
+    bool isImplicit() const;
+
+    friend llvm::hash_code hash_value(ASTNode N) {
+      return llvm::hash_value(N.getOpaqueValue());
+    }
   };
-  
 } // namespace swift
 
 namespace llvm {

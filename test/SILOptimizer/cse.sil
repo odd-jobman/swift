@@ -1,4 +1,4 @@
-// RUN: %target-sil-opt -enable-sil-verify-all %s -cse | FileCheck %s
+// RUN: %target-sil-opt -enable-sil-verify-all %s -cse | %FileCheck %s
 
 import Builtin
 import Swift
@@ -97,10 +97,12 @@ bb2:
 class B { }
 class E : B { }
 
-sil @exit : $@convention(thin) @noreturn () -> () {
+sil @exit : $@convention(thin) () -> Never {
 bb0:
-  %1 = tuple ()
-  return %1 : $()
+  br bb1
+
+bb1:
+  br bb1
 }
 
 // CHECK-LABEL: sil @removeTriviallyDeadInstructions
@@ -111,19 +113,19 @@ bb0:
 // CHECK-NOT: unchecked_ref_cast
 sil @removeTriviallyDeadInstructions : $@convention(thin) (@owned B) -> () {
 bb0(%0 : $B):
-  %1 = alloc_box $B
-  %1a = project_box %1 : $@box B
-  %2 = store %0 to %1a : $*B
+  %1 = alloc_box $<τ_0_0> { var τ_0_0 } <B>
+  %1a = project_box %1 : $<τ_0_0> { var τ_0_0 } <B>, 0
+  store %0 to %1a : $*B
   %3 = load %1a : $*B
-  %4 = strong_retain %3 : $B
+  strong_retain %3 : $B
   %5 = unchecked_ref_cast %3 : $B to $Builtin.NativeObject
-  %7 = strong_release %3 : $B
-  %8 = strong_release %1 : $@box B
-  %9 = function_ref @exit : $@convention(thin) @noreturn () -> () // ret.exit : () -> ()
-  %10 = apply %9() : $@convention(thin) @noreturn () -> ()
+  strong_release %3 : $B
+  strong_release %1 : $<τ_0_0> { var τ_0_0 } <B>
+  %9 = function_ref @exit : $@convention(thin) () -> Never // ret.exit : () -> ()
+  %10 = apply %9() : $@convention(thin) () -> Never
   %6 = unchecked_ref_cast %5 : $Builtin.NativeObject to $B
   %11 = tuple()
-  %12 = return %11 : $()
+  return %11 : $()
 }
 
 // CHECK-LABEL: sil @removeTriviallyDeadCrossBasicBlocks
@@ -133,15 +135,15 @@ bb0(%0 : $B):
 sil @removeTriviallyDeadCrossBasicBlocks : $@convention(thin) (@owned B, Builtin.Int1) -> () {
 bb0(%0: $B, %1: $Builtin.Int1):
   %5 = unchecked_ref_cast %0 : $B to $Builtin.NativeObject
-  %13 = cond_br %1, bb1, bb2
+  cond_br %1, bb1, bb2
 bb1:
-  %22 = br bb2
+  br bb2
 bb2:
-  %9 = function_ref @exit : $@convention(thin) @noreturn () -> () // ret.exit : () -> ()
-  %10 = apply %9() : $@convention(thin) @noreturn () -> ()
+  %9 = function_ref @exit : $@convention(thin) () -> Never // ret.exit : () -> ()
+  %10 = apply %9() : $@convention(thin) () -> Never
   %21 = unchecked_ref_cast %5 : $Builtin.NativeObject to $B
   %32 = tuple ()
-  %33 = return %32 : $()
+  return %32 : $()
 }
 
 // CHECK-LABEL: sil @dead_use_of_alloc_stack
@@ -172,10 +174,10 @@ bb0(%0 : $Int64):
 // CHECK: cond_br
 // CHECK: {{^bb}}
 // CHECK-NEXT: integer_literal
-// CHECK-NEXT: br
+// CHECK-NEXT: br bb
 // CHECK: {{^bb}}
 // CHECK-NEXT: integer_literal
-// CHECK-NEXT: br
+// CHECK-NEXT: br bb
 sil @do_not_fold_integer_literal : $@convention(thin) (Builtin.Int1) -> Builtin.Int1 {
 bb0(%0 : $Builtin.Int1):
   cond_br %0, bb1, bb3
@@ -199,10 +201,10 @@ enum BoolLike { case true_, false_ }
 // CHECK: switch_enum
 // CHECK: {{^bb}}
 // CHECK-NOT: enum
-// CHECK-NEXT: br
+// CHECK-NEXT: br bb
 // CHECK: {{^bb}}
 // CHECK-NOT: enum
-// CHECK-NEXT: br
+// CHECK-NEXT: br bb
 sil @fold_enum : $@convention(thin) (BoolLike) -> BoolLike {
 bb0(%0 : $BoolLike):
   switch_enum %0 : $BoolLike, case #BoolLike.true_!enumelt: bb1, case #BoolLike.false_!enumelt: bb2
@@ -224,10 +226,10 @@ bb3(%3 : $BoolLike):
 // CHECK: switch_enum
 // CHECK: {{^bb}}
 // CHECK-NEXT: enum
-// CHECK-NEXT: br
+// CHECK-NEXT: br bb
 // CHECK: {{^bb}}
 // CHECK-NEXT: enum
-// CHECK-NEXT: br
+// CHECK-NEXT: br bb
 sil @do_not_fold_enum : $@convention(thin) (BoolLike) -> BoolLike {
 bb0(%0 : $BoolLike):
   switch_enum %0 : $BoolLike, case #BoolLike.true_!enumelt: bb1, case #BoolLike.false_!enumelt: bb2
@@ -420,13 +422,13 @@ bb0(%0 : $*Interval):
 }
 
 // CHECK-LABEL: sil @project_box_test
-// CHECK: project_box %0 : $@box Builtin.Int32
+// CHECK: project_box %0 : $<τ_0_0> { var τ_0_0 } <Builtin.Int32>
 // CHECK-NOT: project_box
 // CHECK: return
-sil @project_box_test : $(@box Builtin.Int32) -> Builtin.Int32 {
-bb0(%0 : $@box Builtin.Int32):
-  %1 = project_box %0 : $@box Builtin.Int32
-  %2 = project_box %0 : $@box Builtin.Int32
+sil @project_box_test : $(<τ_0_0> { var τ_0_0 } <Builtin.Int32>) -> Builtin.Int32 {
+bb0(%0 : $<τ_0_0> { var τ_0_0 } <Builtin.Int32>):
+  %1 = project_box %0 : $<τ_0_0> { var τ_0_0 } <Builtin.Int32>, 0
+  %2 = project_box %0 : $<τ_0_0> { var τ_0_0 } <Builtin.Int32>, 0
   %3 = function_ref @sadd_with_address : $@convention(thin) (@inout Builtin.Int32, @inout Builtin.Int32) -> (Builtin.Int32)
   %4 = apply %3(%1, %2) : $@convention(thin) (@inout Builtin.Int32, @inout Builtin.Int32) -> (Builtin.Int32)
   return %4 : $(Builtin.Int32)
@@ -521,7 +523,7 @@ sil @helper2 : $@convention(thin) (UInt8, UInt8) -> Builtin.Word
 // CHECK-LABEL: sil @sil_string_different_encodings
 sil @sil_string_different_encodings : $@convention(thin) () -> Builtin.Word {
   %0 = string_literal utf8 "help"
-  %1 = string_literal utf16 "help"
+  %1 = string_literal objc_selector "help"
   %2 = function_ref @helper : $@convention(thin) (Builtin.RawPointer, Builtin.RawPointer) -> Builtin.Word
   %3 = apply %2(%0, %1) : $@convention(thin) (Builtin.RawPointer, Builtin.RawPointer) -> Builtin.Word
   return %3 : $Builtin.Word
@@ -545,8 +547,8 @@ bb0(%0 : $Builtin.RawPointer):
   %1 = integer_literal $Builtin.Word, 5
   %2 = index_raw_pointer %0 : $Builtin.RawPointer, %1 : $Builtin.Word
   %3 = index_raw_pointer %0 : $Builtin.RawPointer, %1 : $Builtin.Word
-  %4 = pointer_to_address %2 : $Builtin.RawPointer to $*UInt8
-  %5 = pointer_to_address %3 : $Builtin.RawPointer to $*UInt8
+  %4 = pointer_to_address %2 : $Builtin.RawPointer to [strict] $*UInt8
+  %5 = pointer_to_address %3 : $Builtin.RawPointer to [strict] $*UInt8
   %6 = load %4 : $*UInt8
   %7 = load %5 : $*UInt8
   %8 = apply %X(%6, %7) : $@convention(thin) (UInt8, UInt8) -> Builtin.Word
@@ -567,7 +569,7 @@ enum FakeOptional {
 // CHECK-NEXT: apply [[FUNC]]([[NONE]]) : $@convention(thin) (FakeOptional) -> ()
 // CHECK-NEXT: apply [[FUNC]]([[NONE]]) : $@convention(thin) (FakeOptional) -> ()
 // CHECK-NEXT: [[INTEGER:%[0-9]+]] = integer_literal $Builtin.Int32, 0
-// CHECK-NEXT: [[SOME:%[0-9]+]] = enum $FakeOptional, #FakeOptional.some!enumelt.1, [[INTEGER]] : $Builtin.Int32
+// CHECK-NEXT: [[SOME:%[0-9]+]] = enum $FakeOptional, #FakeOptional.some!enumelt, [[INTEGER]] : $Builtin.Int32
 // CHECK-NEXT: apply [[FUNC]]([[SOME]]) : $@convention(thin) (FakeOptional) -> ()
 // CHECK-NEXT: apply [[FUNC]]([[SOME]]) : $@convention(thin) (FakeOptional) -> ()
 // CHECK-NEXT: tuple
@@ -581,8 +583,8 @@ bb0:
   apply %0(%1) : $@convention(thin) (FakeOptional) -> ()
   apply %0(%2) : $@convention(thin) (FakeOptional) -> ()
   %3 = integer_literal $Builtin.Int32, 0
-  %4 = enum $FakeOptional, #FakeOptional.some!enumelt.1, %3 : $Builtin.Int32
-  %5 = enum $FakeOptional, #FakeOptional.some!enumelt.1, %3 : $Builtin.Int32
+  %4 = enum $FakeOptional, #FakeOptional.some!enumelt, %3 : $Builtin.Int32
+  %5 = enum $FakeOptional, #FakeOptional.some!enumelt, %3 : $Builtin.Int32
   apply %0(%4) : $@convention(thin) (FakeOptional) -> ()
   apply %0(%5) : $@convention(thin) (FakeOptional) -> ()
   %6 = tuple()
@@ -595,7 +597,7 @@ sil @int32_user : $@convention(thin) (Builtin.Int32) -> ()
 // CHECK: bb0([[INPUT_ENUM:%[0-9]+]] : $FakeOptional):
 // CHECK-NEXT: function_ref
 // CHECK-NEXT: [[FUNC:%[0-9]+]] = function_ref @int32_user : $@convention(thin) (Builtin.Int32) -> ()
-// CHECK-NEXT: [[INT:%[0-9]+]] = unchecked_enum_data [[INPUT_ENUM]] : $FakeOptional, #FakeOptional.some!enumelt.1
+// CHECK-NEXT: [[INT:%[0-9]+]] = unchecked_enum_data [[INPUT_ENUM]] : $FakeOptional, #FakeOptional.some!enumelt
 // CHECK-NEXT: apply [[FUNC]]([[INT]]) : $@convention(thin) (Builtin.Int32) -> ()
 // CHECK-NEXT: apply [[FUNC]]([[INT]]) : $@convention(thin) (Builtin.Int32) -> ()
 // CHECK-NEXT: tuple
@@ -603,8 +605,8 @@ sil @int32_user : $@convention(thin) (Builtin.Int32) -> ()
 sil @unchecked_enum_data_cse : $@convention(thin) (FakeOptional) -> () {
 bb0(%0 : $FakeOptional):
   %1 = function_ref @int32_user : $@convention(thin) (Builtin.Int32) -> ()
-  %2 = unchecked_enum_data %0 : $FakeOptional, #FakeOptional.some!enumelt.1
-  %3 = unchecked_enum_data %0 : $FakeOptional, #FakeOptional.some!enumelt.1
+  %2 = unchecked_enum_data %0 : $FakeOptional, #FakeOptional.some!enumelt
+  %3 = unchecked_enum_data %0 : $FakeOptional, #FakeOptional.some!enumelt
   apply %1(%2) : $@convention(thin) (Builtin.Int32) -> ()
   apply %1(%3) : $@convention(thin) (Builtin.Int32) -> ()
   %6 = tuple()
@@ -615,21 +617,18 @@ bb0(%0 : $FakeOptional):
 class C {}
 class D : C { }
 
-// CHECK-LABEL: sil @test1cse : $@convention(thin) (C) -> () {
-// CHECK: unchecked_ref_cast
+// CHECK-LABEL: sil @test1cse
+// CHECK: [[C:%[0-9]+]] = unchecked_ref_cast
 // CHECK-NOT: unchecked_ref_cast
-// CHECK: strong_release
-// CHECK: strong_release
-// CHECK: return
-sil @test1cse : $@convention(thin) (C) -> () {
+// CHECK: [[T:%[0-9]+]] = tuple ([[C]] : $Builtin.NativeObject, [[C]] : $Builtin.NativeObject)
+// CHECK: return [[T]]
+sil @test1cse : $@convention(thin) (C) -> (Builtin.NativeObject, Builtin.NativeObject) {
 bb0(%0 : $C):
   strong_retain %0 : $C
   %1 = unchecked_ref_cast %0 : $C to $Builtin.NativeObject
   %2 = unchecked_ref_cast %0 : $C to $Builtin.NativeObject
-  strong_release %1 : $Builtin.NativeObject
-  strong_release %2 : $Builtin.NativeObject
-  %5 = tuple()
-  return %5 : $()
+  %5 = tuple(%1 : $Builtin.NativeObject, %2 : $Builtin.NativeObject)
+  return %5 : $(Builtin.NativeObject, Builtin.NativeObject)
 }
 
 // CHECK-LABEL: sil @test2cse : $@convention(thin) (C) -> () {
@@ -702,129 +701,28 @@ bb0(%0 : $*Builtin.Int8):
 }
 
 // CHECK-LABEL: sil @cse_unchecked_ref_cast
-// CHECK: unchecked_ref_cast
+// CHECK: [[C:%[0-9]+]] = unchecked_ref_cast
 // CHECK-NOT: unchecked_ref_cast
-// CHECK: strong_release
-// CHECK: strong_release
-// CHECK: return
-sil @cse_unchecked_ref_cast : $@convention(thin) (@owned B, Builtin.Int1) -> () {
+// CHECK: [[T:%[0-9]+]] = tuple ([[C]] : $Builtin.NativeObject, [[C]] : $Builtin.NativeObject)
+// CHECK: return [[T]]
+sil @cse_unchecked_ref_cast : $@convention(thin) (@owned B, Builtin.Int1) -> (Builtin.NativeObject, Builtin.NativeObject) {
 bb0(%0: $B, %1: $Builtin.Int1):
   %5 = unchecked_ref_cast %0 : $B to $Builtin.NativeObject
-  strong_release %5 : $Builtin.NativeObject
-  %13 = cond_br %1, bb1, bb2
+  cond_br %1, bb1, bb2
 bb1:
-  %22 = br bb2
+  br bb2
 bb2:
   %21 = unchecked_ref_cast %0 : $B to $Builtin.NativeObject
-  strong_release %21 : $Builtin.NativeObject
-  %32 = tuple ()
-  %33 = return %32 : $()
+  %32 = tuple(%5 : $Builtin.NativeObject, %21 : $Builtin.NativeObject)
+  return %32 : $(Builtin.NativeObject, Builtin.NativeObject)
 }
-
-// CHECK-LABEL: sil @cse_value_metatype
-// CHECK: value_metatype $@objc_metatype
-// CHECK: objc_metatype_to_object
-// CHECK-NOT: value_metatype $@objc_metatype
-// CHECK: strong_release
-// CHECK: return
-sil @cse_value_metatype : $@convention(thin) <T where T : AnyObject> (@owned T) -> @owned (AnyObject,AnyObject) {
-bb0(%0 : $T):
-  %2 = value_metatype $@objc_metatype T.Type, %0 : $T
-  %4 = objc_metatype_to_object %2 : $@objc_metatype T.Type to $AnyObject
-  %5 = value_metatype $@objc_metatype T.Type, %0 : $T
-  %7 = objc_metatype_to_object %5 : $@objc_metatype T.Type to $AnyObject
-  strong_release %0 : $T
-  %9 = tuple (%4: $AnyObject, %7: $AnyObject)
-  return %9 : $(AnyObject, AnyObject)
-}
-
-
-@objc(XX) protocol XX {
-}
-
-// CHECK-LABEL: sil @cse_existential_metatype
-// CHECK: existential_metatype $@objc_metatype
-// CHECK: objc_existential_metatype_to_object
-// CHECK-NOT: existential_metatype $@objc_metatype
-// CHECK: strong_release
-// CHECK: return
-sil @cse_existential_metatype : $@convention(thin) (@owned XX) -> @owned (AnyObject, AnyObject) {
-bb0(%0 : $XX):
-  %2 = existential_metatype $@objc_metatype XX.Type, %0 : $XX
-  %4 = objc_existential_metatype_to_object %2 : $@objc_metatype XX.Type to $AnyObject
-  %5 = existential_metatype $@objc_metatype XX.Type, %0 : $XX
-  %6 = objc_existential_metatype_to_object %5 : $@objc_metatype XX.Type to $AnyObject
-  strong_release %0 : $XX
-  %7 = tuple (%4: $AnyObject, %6: $AnyObject)
-  return %7 : $(AnyObject, AnyObject)
-}
-
-// CHECK-LABEL: sil @nocse_existential_metatype_addr
-// CHECK: store
-// CHECK: existential_metatype $@thick protocol<>.Type
-// CHECK: store
-// CHECK: existential_metatype $@thick protocol<>.Type
-// CHECK: return
-sil @nocse_existential_metatype_addr : $@convention(thin) (@owned B, @owned B) -> (@thick protocol<>.Type, @thick protocol<>.Type) {
-bb0(%0 : $B, %1 : $B):
-  %2 = alloc_stack $protocol<>
-  %3 = init_existential_addr %2 : $*protocol<>, $B
-  store %0 to %3 : $*B
-  %5 = existential_metatype $@thick protocol<>.Type, %2 : $*protocol<>
-  store %1 to %3 : $*B
-  %7 = existential_metatype $@thick protocol<>.Type, %2 : $*protocol<>
-  strong_release %1 : $B
-  strong_release %0 : $B
-  %99 = tuple (%5 : $@thick protocol<>.Type, %7 : $@thick protocol<>.Type)
-  dealloc_stack %2 : $*protocol<>
-  return %99 : $(@thick protocol<>.Type, @thick protocol<>.Type)
-}
-
-
-// CHECK-LABEL: sil @cse_objc_metatype_to_object
-// CHECK: value_metatype $@objc_metatype
-// CHECK: objc_metatype_to_object
-// CHECK-NOT: value_metatype $@objc_metatype
-// CHECK-NOT: objc_metatype_to_object
-// CHECK: strong_release
-// CHECK: return
-sil @cse_objc_metatype_to_object : $@convention(thin) <T where T : AnyObject> (@owned T) -> @owned (AnyObject,AnyObject) {
-bb0(%0 : $T):
-  %2 = value_metatype $@objc_metatype T.Type, %0 : $T
-  %4 = objc_metatype_to_object %2 : $@objc_metatype T.Type to $AnyObject
-  %5 = value_metatype $@objc_metatype T.Type, %0 : $T
-  %7 = objc_metatype_to_object %5 : $@objc_metatype T.Type to $AnyObject
-  strong_release %0 : $T
-  %9 = tuple (%4: $AnyObject, %7: $AnyObject)
-  return %9 : $(AnyObject, AnyObject)
-}
-
-
-// CHECK-LABEL: sil @cse_objc_existential_metatype_to_object
-// CHECK: existential_metatype $@objc_metatype
-// CHECK: objc_existential_metatype_to_object
-// CHECK-NOT: existential_metatype $@objc_metatype
-// CHECK-NOT: objc_existential_metatype_to_object
-// CHECK: strong_release
-// CHECK: return
-sil @cse_objc_existential_metatype_to_object : $@convention(thin) (@owned XX) -> @owned (AnyObject, AnyObject) {
-bb0(%0 : $XX):
-  %2 = existential_metatype $@objc_metatype XX.Type, %0 : $XX
-  %4 = objc_existential_metatype_to_object %2 : $@objc_metatype XX.Type to $AnyObject
-  %5 = existential_metatype $@objc_metatype XX.Type, %0 : $XX
-  %6 = objc_existential_metatype_to_object %5 : $@objc_metatype XX.Type to $AnyObject
-  strong_release %0 : $XX
-  %7 = tuple (%4: $AnyObject, %6: $AnyObject)
-  return %7 : $(AnyObject, AnyObject)
-}
-
 
 // CHECK-LABEL: sil @cse_raw_pointer_to_ref
 // CHECK: raw_pointer_to_ref
 // CHECK-NOT: raw_pointer_to_ref
 // CHECK: tuple
 // CHECK: return
-sil @cse_raw_pointer_to_ref : $@convention(thin) (Builtin.RawPointer) -> @owned(C,C) {
+sil @cse_raw_pointer_to_ref : $@convention(thin) (Builtin.RawPointer) -> @owned(C, C) {
 bb0(%0 : $Builtin.RawPointer):
   %1 = raw_pointer_to_ref %0 : $Builtin.RawPointer to $C
   %2 = raw_pointer_to_ref %0 : $Builtin.RawPointer to $C
@@ -905,19 +803,6 @@ bb0(%0 : $@sil_unmanaged C):
   return %3: $(C, C)
 }
 
-// CHECK-LABEL: sil @cse_is_nonnull
-// CHECK: is_nonnull
-// CHECK-NOT: is_nonnull
-// CHECK: tuple
-// CHECK: return
-sil @cse_is_nonnull : $@convention(thin) (C) -> (Builtin.Int1, Builtin.Int1) {
-bb0(%0 : $C):
-  %1 = is_nonnull %0 : $C
-  %2 = is_nonnull %0 : $C
-  %3 = tuple (%1: $Builtin.Int1, %2: $Builtin.Int1)
-  return %3: $(Builtin.Int1, Builtin.Int1)
-}
-
 enum Enum1 {
     case Case1
     case Case2
@@ -936,24 +821,6 @@ bb0(%0 : $Enum1):
   %2 = select_enum %0 : $Enum1, case #Enum1.Case1!enumelt: %t, case #Enum1.Case2!enumelt: %f : $Builtin.Int1
   %3 = tuple (%1: $Builtin.Int1, %2: $Builtin.Int1)
   return %3: $(Builtin.Int1, Builtin.Int1)
-}
-
-
-@objc
-class XXX {
-}
-
-// CHECK-LABEL: sil @cse_objc_to_thick_metatype
-// CHECK: objc_to_thick_metatype
-// CHECK-NOT: objc_to_thick_metatype
-// CHECK: tuple
-// CHECK: return
-sil @cse_objc_to_thick_metatype : $@convention(thin) (@objc_metatype XXX.Type) -> (@thick XXX.Type, @thick XXX.Type) {
-bb0(%0 : $@objc_metatype XXX.Type):
-  %1 = objc_to_thick_metatype %0 : $@objc_metatype XXX.Type to $@thick XXX.Type
-  %2 = objc_to_thick_metatype %0 : $@objc_metatype XXX.Type to $@thick XXX.Type
-  %3 = tuple (%1: $@thick XXX.Type, %2: $@thick XXX.Type)
-  return %3: $(@thick XXX.Type, @thick XXX.Type)
 }
 
 // CHECK-LABEL: sil @cse_bridge_object_to_ref
@@ -998,32 +865,6 @@ bb0(%0 : $B):
   return %3 : $()
 }
 
-// CHECK-LABEL:   sil @cse_thin_function_to_pointer
-// CHECK:           [[REF:%[0-9]+]] = thin_function_to_pointer
-// CHECK-NOT:       thin_function_to_pointer
-// CHECK:           tuple ([[REF]] : $Builtin.RawPointer, [[REF]] : $Builtin.RawPointer)
-// CHECK-NEXT:      return
-sil @cse_thin_function_to_pointer : $@convention(thin) (@convention(thin) () -> ()) -> (Builtin.RawPointer, Builtin.RawPointer) {
-bb0(%0 : $@convention(thin) () -> ()):
-  %1 = thin_function_to_pointer %0 : $@convention(thin) () -> () to $Builtin.RawPointer
-  %2 = thin_function_to_pointer %0 : $@convention(thin) () -> () to $Builtin.RawPointer
-  %3 = tuple (%1 : $Builtin.RawPointer, %2 : $Builtin.RawPointer)
-  return %3 : $(Builtin.RawPointer, Builtin.RawPointer)
-}
-
-// CHECK-LABEL:   sil @cse_pointer_to_thin_function
-// CHECK:           [[REF:%[0-9]+]] = pointer_to_thin_function
-// CHECK-NOT:       pointer_to_thin_function
-// CHECK:           tuple ([[REF]] : $@convention(thin) () -> (), [[REF]] : $@convention(thin) () -> ())
-// CHECK-NEXT:      return
-sil @cse_pointer_to_thin_function : $@convention(thin) (Builtin.RawPointer) -> (@convention(thin) () -> (), @convention(thin) () -> ()) {
-bb0(%0 : $Builtin.RawPointer):
-  %1 = pointer_to_thin_function %0 : $Builtin.RawPointer to $@convention(thin) () -> ()
-  %2 = pointer_to_thin_function %0 : $Builtin.RawPointer to $@convention(thin) () -> ()
-  %3 = tuple(%1 : $@convention(thin) () -> (), %2 : $@convention(thin) () -> ())
-  return %3 : $(@convention(thin) () -> (), @convention(thin) () -> ())
-}
-
 sil [_semantics "array.get_count"] @getCount : $@convention(method) (@guaranteed Array<Int>) -> Int
 
 // CHECK-LABEL:   sil @dont_cse_get_count_on_low_level_sil
@@ -1060,11 +901,11 @@ sil  @_TFC4main4PingcfMS0_FT_S0_ : $@convention(method) (@owned Ping) -> @owned 
 // CHECK-NEXT:      return
 sil @_TF4main4ringFCS_4PingT_ : $@convention(thin) (@owned Ping) -> () {
 bb0(%0 : $Ping):
-  %1 = class_method %0 : $Ping, #Ping.ping!1 : Ping -> () -> Ping , $@convention(method) (@guaranteed Ping) -> @owned Ping
-  %2 = class_method %0 : $Ping, #Ping.ping!1 : Ping -> () -> Ping , $@convention(method) (@guaranteed Ping) -> @owned Ping
-  %3 = class_method %0 : $Ping, #Ping.ping!1 : Ping -> () -> Ping , $@convention(method) (@guaranteed Ping) -> @owned Ping
-  %4 = class_method %0 : $Ping, #Ping.ping!1 : Ping -> () -> Ping , $@convention(method) (@guaranteed Ping) -> @owned Ping
-  %5 = class_method %0 : $Ping, #Ping.ping!1 : Ping -> () -> Ping , $@convention(method) (@guaranteed Ping) -> @owned Ping
+  %1 = class_method %0 : $Ping, #Ping.ping : (Ping) -> () -> Ping, $@convention(method) (@guaranteed Ping) -> @owned Ping
+  %2 = class_method %0 : $Ping, #Ping.ping : (Ping) -> () -> Ping, $@convention(method) (@guaranteed Ping) -> @owned Ping
+  %3 = class_method %0 : $Ping, #Ping.ping : (Ping) -> () -> Ping, $@convention(method) (@guaranteed Ping) -> @owned Ping
+  %4 = class_method %0 : $Ping, #Ping.ping : (Ping) -> () -> Ping, $@convention(method) (@guaranteed Ping) -> @owned Ping
+  %5 = class_method %0 : $Ping, #Ping.ping : (Ping) -> () -> Ping, $@convention(method) (@guaranteed Ping) -> @owned Ping
   %6 = apply %1(%0) : $@convention(method) (@guaranteed Ping) -> @owned Ping
   %7 = apply %2(%0) : $@convention(method) (@guaranteed Ping) -> @owned Ping
   %8 = apply %3(%0) : $@convention(method) (@guaranteed Ping) -> @owned Ping
@@ -1074,9 +915,9 @@ bb0(%0 : $Ping):
 }
 
 sil_vtable Ping {
-  #Ping.ping!1: _TFC4main4Ping4pingfS0_FT_S0_	// main.Ping.ping (main.Ping)() -> main.Ping
-  #Ping.deinit!deallocator: _TFC4main4PingD	// main.Ping.__deallocating_deinit
-  #Ping.init!initializer.1: _TFC4main4PingcfMS0_FT_S0_	// main.Ping.init (main.Ping.Type)() -> main.Ping
+  #Ping.ping: @_TFC4main4Ping4pingfS0_FT_S0_	// main.Ping.ping (main.Ping)() -> main.Ping
+  #Ping.deinit!deallocator: @_TFC4main4PingD	// main.Ping.__deallocating_deinit
+  #Ping.init!initializer: @_TFC4main4PingcfMS0_FT_S0_	// main.Ping.init (main.Ping.Type)() -> main.Ping
 }
 
 protocol Reachable {
@@ -1123,11 +964,11 @@ bb0(%0 : $T):
 }
 
 // protocol witness for p.Reachable.reach <A where A: p.Reachable> (A)() -> () in conformance p.T : p.Reachable in p
-sil hidden [transparent] [thunk] @_TTWC1p1TS_9ReachableS_FS1_5reachuRq_S1__fq_FT_T_ : $@convention(witness_method) (@in_guaranteed T) -> () {
+sil hidden [transparent] [thunk] @_TTWC1p1TS_9ReachableS_FS1_5reachuRq_S1__fq_FT_T_ : $@convention(witness_method: Reachable) (@in_guaranteed T) -> () {
 bb0(%0 : $*T):
   %1 = load %0 : $*T                              // users: %2, %3, %4, %5
   strong_retain %1 : $T                           // id: %2
-  %3 = class_method %1 : $T, #T.reach!1 : T -> () -> () , $@convention(method) (@guaranteed T) -> () // user: %4
+  %3 = class_method %1 : $T, #T.reach : (T) -> () -> (), $@convention(method) (@guaranteed T) -> () // user: %4
   %4 = apply %3(%1) : $@convention(method) (@guaranteed T) -> () // user: %6
   strong_release %1 : $T                          // id: %5
   return %4 : $()                                 // id: %6
@@ -1148,31 +989,31 @@ bb0(%0 : $*T):
 // p.foo <A where A: p.Reachable> (A, a : Swift.Int) -> ()
 sil hidden @_TF1p3foouRq_S_9Reachable_FTq_1aSi_T_ : $@convention(thin) <T where T : Reachable> (@in T, Int) -> () {
 bb0(%0 : $*T, %1 : $Int):
-  %4 = witness_method $T, #Reachable.reach!1 : $@convention(witness_method) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> () // user: %5
-  %5 = apply %4<T>(%0) : $@convention(witness_method) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> ()
-  %6 = witness_method $T, #Reachable.reach!1 : $@convention(witness_method) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> () // user: %7
-  %7 = apply %6<T>(%0) : $@convention(witness_method) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> ()
-  %8 = witness_method $T, #Reachable.reach!1 : $@convention(witness_method) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> () // user: %9
-  %9 = apply %8<T>(%0) : $@convention(witness_method) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> ()
-  %10 = witness_method $T, #Reachable.reach!1 : $@convention(witness_method) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> () // user: %11
-  %11 = apply %10<T>(%0) : $@convention(witness_method) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> ()
-  %12 = witness_method $T, #Reachable.reach!1 : $@convention(witness_method) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> () // user: %13
-  %13 = apply %12<T>(%0) : $@convention(witness_method) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> ()
-  %14 = witness_method $T, #Reachable.reach!1 : $@convention(witness_method) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> () // user: %15
-  %15 = apply %14<T>(%0) : $@convention(witness_method) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> ()
+  %4 = witness_method $T, #Reachable.reach : $@convention(witness_method: Reachable) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> () // user: %5
+  %5 = apply %4<T>(%0) : $@convention(witness_method: Reachable) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> ()
+  %6 = witness_method $T, #Reachable.reach : $@convention(witness_method: Reachable) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> () // user: %7
+  %7 = apply %6<T>(%0) : $@convention(witness_method: Reachable) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> ()
+  %8 = witness_method $T, #Reachable.reach : $@convention(witness_method: Reachable) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> () // user: %9
+  %9 = apply %8<T>(%0) : $@convention(witness_method: Reachable) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> ()
+  %10 = witness_method $T, #Reachable.reach : $@convention(witness_method: Reachable) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> () // user: %11
+  %11 = apply %10<T>(%0) : $@convention(witness_method: Reachable) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> ()
+  %12 = witness_method $T, #Reachable.reach : $@convention(witness_method: Reachable) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> () // user: %13
+  %13 = apply %12<T>(%0) : $@convention(witness_method: Reachable) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> ()
+  %14 = witness_method $T, #Reachable.reach : $@convention(witness_method: Reachable) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> () // user: %15
+  %15 = apply %14<T>(%0) : $@convention(witness_method: Reachable) <τ_0_0 where τ_0_0 : Reachable> (@in_guaranteed τ_0_0) -> ()
   destroy_addr %0 : $*T                           // id: %16
   %17 = tuple ()                                  // user: %18
   return %17 : $()                                // id: %18
 }
 
 sil_vtable T {
-  #T.reach!1: _TFC1p1T5reachfS0_FT_T_	// p.T.reach (p.T)() -> ()
-  #T.deinit!deallocator: _TFC1p1TD	// p.T.__deallocating_deinit
-  #T.init!initializer.1: _TFC1p1TcfMS0_FT_S0_	// p.T.init (p.T.Type)() -> p.T
+  #T.reach: @_TFC1p1T5reachfS0_FT_T_	// p.T.reach (p.T)() -> ()
+  #T.deinit!deallocator: @_TFC1p1TD	// p.T.__deallocating_deinit
+  #T.init!initializer: @_TFC1p1TcfMS0_FT_S0_	// p.T.init (p.T.Type)() -> p.T
 }
 
 sil_witness_table hidden T: Reachable module p {
-  method #Reachable.reach!1: @_TTWC1p1TS_9ReachableS_FS1_5reachuRq_S1__fq_FT_T_	// protocol witness for p.Reachable.reach <A where A: p.Reachable> (A)() -> () in conformance p.T : p.Reachable in p
+  method #Reachable.reach: @_TTWC1p1TS_9ReachableS_FS1_5reachuRq_S1__fq_FT_T_	// protocol witness for p.Reachable.reach <A where A: p.Reachable> (A)() -> () in conformance p.T : p.Reachable in p
 }
 
 protocol Flyable {
@@ -1195,7 +1036,7 @@ bb0(%0 : $Airplane):
 }
 
 // protocol witness for p2.Flyable.fly <A where A: p2.Flyable> (A)() -> () in conformance p2.Airplane : p2.Flyable in p2
-sil hidden [transparent] [thunk] @_TTWV2p28AirplaneS_7FlyableS_FS1_3flyuRq_S1__fq_FT_T_ : $@convention(witness_method) (@in_guaranteed Airplane) -> () {
+sil hidden [transparent] [thunk] @_TTWV2p28AirplaneS_7FlyableS_FS1_3flyuRq_S1__fq_FT_T_ : $@convention(witness_method: Flyable) (@in_guaranteed Airplane) -> () {
 bb0(%0 : $*Airplane):
   %1 = alloc_stack $Airplane                      // users: %2, %6
   copy_addr %0 to [initialization] %1 : $*Airplane // id: %2
@@ -1208,7 +1049,7 @@ bb0(%0 : $*Airplane):
 }
 
 // CHECK-LABEL: _TF2p28trytoflyFPS_7Flyable_T_
-// CHECK:           bb0(%0 : $*Flyable):
+// CHECK:           bb0(%0 : $*any Flyable):
 // CHECK-NEXT:      open_existential_addr
 // CHECK-NEXT:      witness_method
 // CHECK-NEXT:      apply
@@ -1225,46 +1066,46 @@ bb0(%0 : $*Airplane):
 // p2.trytofly (p2.Flyable) -> ()
 sil hidden @_TF2p28trytoflyFPS_7Flyable_T_ : $@convention(thin) (@in Flyable) -> () {
 bb0(%0 : $*Flyable):
-  %2 = open_existential_addr %0 : $*Flyable to $*@opened("D8A4A5D8-4C44-11E5-BA43-AC87A3294C0A") Flyable // users: %3, %4
-  %3 = witness_method $@opened("D8A4A5D8-4C44-11E5-BA43-AC87A3294C0A") Flyable, #Flyable.fly!1, %2 : $*@opened("D8A4A5D8-4C44-11E5-BA43-AC87A3294C0A") Flyable : $@convention(witness_method) <τ_0_0 where τ_0_0 : Flyable> (@in_guaranteed τ_0_0) -> () // user: %4
-  %4 = apply %3<@opened("D8A4A5D8-4C44-11E5-BA43-AC87A3294C0A") Flyable>(%2) : $@convention(witness_method) <τ_0_0 where τ_0_0 : Flyable> (@in_guaranteed τ_0_0) -> ()
-  %5 = open_existential_addr %0 : $*Flyable to $*@opened("D8A4B49C-4C44-11E5-BA43-AC87A3294C0A") Flyable // users: %6, %7
-  %6 = witness_method $@opened("D8A4B49C-4C44-11E5-BA43-AC87A3294C0A") Flyable, #Flyable.fly!1, %5 : $*@opened("D8A4B49C-4C44-11E5-BA43-AC87A3294C0A") Flyable : $@convention(witness_method) <τ_0_0 where τ_0_0 : Flyable> (@in_guaranteed τ_0_0) -> () // user: %7
-  %7 = apply %6<@opened("D8A4B49C-4C44-11E5-BA43-AC87A3294C0A") Flyable>(%5) : $@convention(witness_method) <τ_0_0 where τ_0_0 : Flyable> (@in_guaranteed τ_0_0) -> ()
-  %8 = open_existential_addr %0 : $*Flyable to $*@opened("D8A4BCB2-4C44-11E5-BA43-AC87A3294C0A") Flyable // users: %9, %10
-  %9 = witness_method $@opened("D8A4BCB2-4C44-11E5-BA43-AC87A3294C0A") Flyable, #Flyable.fly!1, %8 : $*@opened("D8A4BCB2-4C44-11E5-BA43-AC87A3294C0A") Flyable : $@convention(witness_method) <τ_0_0 where τ_0_0 : Flyable> (@in_guaranteed τ_0_0) -> () // user: %10
-  %10 = apply %9<@opened("D8A4BCB2-4C44-11E5-BA43-AC87A3294C0A") Flyable>(%8) : $@convention(witness_method) <τ_0_0 where τ_0_0 : Flyable> (@in_guaranteed τ_0_0) -> ()
-  %11 = witness_method $@opened("D8A4BCB2-4C44-11E5-BA43-AC87A3294C0A") Flyable, #Flyable.fly!1, %8 : $*@opened("D8A4BCB2-4C44-11E5-BA43-AC87A3294C0A") Flyable : $@convention(witness_method) <τ_0_0 where τ_0_0 : Flyable> (@in_guaranteed τ_0_0) -> () // user: %12
-  %12 = apply %9<@opened("D8A4BCB2-4C44-11E5-BA43-AC87A3294C0A") Flyable>(%8) : $@convention(witness_method) <τ_0_0 where τ_0_0 : Flyable> (@in_guaranteed τ_0_0) -> ()
+  %2 = open_existential_addr immutable_access %0 : $*Flyable to $*@opened("D8A4A5D8-4C44-11E5-BA43-AC87A3294C0A", Flyable) Self // users: %3, %4
+  %3 = witness_method $@opened("D8A4A5D8-4C44-11E5-BA43-AC87A3294C0A", Flyable) Self, #Flyable.fly, %2 : $*@opened("D8A4A5D8-4C44-11E5-BA43-AC87A3294C0A", Flyable) Self : $@convention(witness_method: Flyable) <τ_0_0 where τ_0_0 : Flyable> (@in_guaranteed τ_0_0) -> () // user: %4
+  %4 = apply %3<@opened("D8A4A5D8-4C44-11E5-BA43-AC87A3294C0A", Flyable) Self>(%2) : $@convention(witness_method: Flyable) <τ_0_0 where τ_0_0 : Flyable> (@in_guaranteed τ_0_0) -> ()
+  %5 = open_existential_addr immutable_access %0 : $*Flyable to $*@opened("D8A4B49C-4C44-11E5-BA43-AC87A3294C0A", Flyable) Self // users: %6, %7
+  %6 = witness_method $@opened("D8A4B49C-4C44-11E5-BA43-AC87A3294C0A", Flyable) Self, #Flyable.fly, %5 : $*@opened("D8A4B49C-4C44-11E5-BA43-AC87A3294C0A", Flyable) Self : $@convention(witness_method: Flyable) <τ_0_0 where τ_0_0 : Flyable> (@in_guaranteed τ_0_0) -> () // user: %7
+  %7 = apply %6<@opened("D8A4B49C-4C44-11E5-BA43-AC87A3294C0A", Flyable) Self>(%5) : $@convention(witness_method: Flyable) <τ_0_0 where τ_0_0 : Flyable> (@in_guaranteed τ_0_0) -> ()
+  %8 = open_existential_addr immutable_access %0 : $*Flyable to $*@opened("D8A4BCB2-4C44-11E5-BA43-AC87A3294C0A", Flyable) Self // users: %9, %10
+  %9 = witness_method $@opened("D8A4BCB2-4C44-11E5-BA43-AC87A3294C0A", Flyable) Self, #Flyable.fly, %8 : $*@opened("D8A4BCB2-4C44-11E5-BA43-AC87A3294C0A", Flyable) Self : $@convention(witness_method: Flyable) <τ_0_0 where τ_0_0 : Flyable> (@in_guaranteed τ_0_0) -> () // user: %10
+  %10 = apply %9<@opened("D8A4BCB2-4C44-11E5-BA43-AC87A3294C0A", Flyable) Self>(%8) : $@convention(witness_method: Flyable) <τ_0_0 where τ_0_0 : Flyable> (@in_guaranteed τ_0_0) -> ()
+  %11 = witness_method $@opened("D8A4BCB2-4C44-11E5-BA43-AC87A3294C0A", Flyable) Self, #Flyable.fly, %8 : $*@opened("D8A4BCB2-4C44-11E5-BA43-AC87A3294C0A", Flyable) Self : $@convention(witness_method: Flyable) <τ_0_0 where τ_0_0 : Flyable> (@in_guaranteed τ_0_0) -> () // user: %12
+  %12 = apply %9<@opened("D8A4BCB2-4C44-11E5-BA43-AC87A3294C0A", Flyable) Self>(%8) : $@convention(witness_method: Flyable) <τ_0_0 where τ_0_0 : Flyable> (@in_guaranteed τ_0_0) -> ()
   destroy_addr %0 : $*Flyable                     // id: %11
   %13 = tuple ()                                  // user: %13
   return %13 : $()                                // id: %13
 }
 
 sil_witness_table hidden Airplane: Flyable module p2 {
-  method #Flyable.fly!1: @_TTWV2p28AirplaneS_7FlyableS_FS1_3flyuRq_S1__fq_FT_T_	// protocol witness for p2.Flyable.fly <A where A: p2.Flyable> (A)() -> () in conformance p2.Airplane : p2.Flyable in p2
+  method #Flyable.fly: @_TTWV2p28AirplaneS_7FlyableS_FS1_3flyuRq_S1__fq_FT_T_	// protocol witness for p2.Flyable.fly <A where A: p2.Flyable> (A)() -> () in conformance p2.Airplane : p2.Flyable in p2
 }
 
 
 protocol Pingable { func ping() }
 
 // CHECK-LABEL: CSE_Existential_Simple
-// CHECK: open_existential_addr %0 : $*Pingable to $*@opened("1E467EB8-D5C5-11E5-8C0E-A82066121073")
-// CHECK: witness_method $@opened("1E467EB8-D5C5-11E5-8C0E-A82066121073") Pingable, #Pingable.ping!1, %2
-// CHECK: apply %3<@opened("1E467EB8-D5C5-11E5-8C0E-A82066121073") Pingable>(%2)
-// CHECK: open_existential_addr
+// CHECK: open_existential_addr immutable_access %0 : $*any Pingable to $*@opened("1E467EB8-D5C5-11E5-8C0E-A82066121073", any Pingable)
+// CHECK: witness_method $@opened("1E467EB8-D5C5-11E5-8C0E-A82066121073", any Pingable) Self, #Pingable.ping : {{.*}}, %2
+// CHECK: apply %3<@opened("1E467EB8-D5C5-11E5-8C0E-A82066121073", any Pingable) Self>(%2)
+// CHECK: open_existential_addr immutable_access 
 // CHECK: witness_method
-// CHECK: apply %3<@opened("1E467EB8-D5C5-11E5-8C0E-A82066121073") Pingable>(%2)
+// CHECK: apply %3<@opened("1E467EB8-D5C5-11E5-8C0E-A82066121073", any Pingable) Self>(%2)
 // CHECK: return
 sil hidden @CSE_Existential_Simple : $@convention(thin) (@in Pingable) -> () {
 bb0(%0 : $*Pingable):
-  debug_value_addr %0 : $*Pingable  // let x      // id: %1
-  %2 = open_existential_addr %0 : $*Pingable to $*@opened("1E467EB8-D5C5-11E5-8C0E-A82066121073") Pingable // users: %3, %4
-  %3 = witness_method $@opened("1E467EB8-D5C5-11E5-8C0E-A82066121073") Pingable, #Pingable.ping!1, %2 : $*@opened("1E467EB8-D5C5-11E5-8C0E-A82066121073") Pingable : $@convention(witness_method) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> () // user: %4
-  %4 = apply %3<@opened("1E467EB8-D5C5-11E5-8C0E-A82066121073") Pingable>(%2) : $@convention(witness_method) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> ()
-  %5 = open_existential_addr %0 : $*Pingable to $*@opened("1E4687DC-D5C5-11E5-8C0E-A82066121073") Pingable // users: %6, %7
-  %6 = witness_method $@opened("1E4687DC-D5C5-11E5-8C0E-A82066121073") Pingable, #Pingable.ping!1, %5 : $*@opened("1E4687DC-D5C5-11E5-8C0E-A82066121073") Pingable : $@convention(witness_method) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> () // user: %7
-  %7 = apply %6<@opened("1E4687DC-D5C5-11E5-8C0E-A82066121073") Pingable>(%5) : $@convention(witness_method) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> ()
+  debug_value %0 : $*Pingable, expr op_deref // let x      // id: %1
+  %2 = open_existential_addr immutable_access %0 : $*Pingable to $*@opened("1E467EB8-D5C5-11E5-8C0E-A82066121073", Pingable) Self // users: %3, %4
+  %3 = witness_method $@opened("1E467EB8-D5C5-11E5-8C0E-A82066121073", Pingable) Self, #Pingable.ping, %2 : $*@opened("1E467EB8-D5C5-11E5-8C0E-A82066121073", Pingable) Self : $@convention(witness_method: Pingable) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> () // user: %4
+  %4 = apply %3<@opened("1E467EB8-D5C5-11E5-8C0E-A82066121073", Pingable) Self>(%2) : $@convention(witness_method: Pingable) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> ()
+  %5 = open_existential_addr immutable_access %0 : $*Pingable to $*@opened("1E4687DC-D5C5-11E5-8C0E-A82066121073", Pingable) Self // users: %6, %7
+  %6 = witness_method $@opened("1E4687DC-D5C5-11E5-8C0E-A82066121073", Pingable) Self, #Pingable.ping, %5 : $*@opened("1E4687DC-D5C5-11E5-8C0E-A82066121073", Pingable) Self : $@convention(witness_method: Pingable) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> () // user: %7
+  %7 = apply %6<@opened("1E4687DC-D5C5-11E5-8C0E-A82066121073", Pingable) Self>(%5) : $@convention(witness_method: Pingable) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> ()
   destroy_addr %0 : $*Pingable                    // id: %8
   %9 = tuple ()                                   // user: %10
   return %9 : $()                                 // id: %10
@@ -1273,32 +1114,32 @@ bb0(%0 : $*Pingable):
 // CHECK-LABEL: CSE_Existential_Calls_With_Control_Flow
 sil hidden @CSE_Existential_Calls_With_Control_Flow : $@convention(thin) (@in Pingable, Int) -> () {
 bb0(%0 : $*Pingable, %1 : $Int):
-  debug_value_addr %0 : $*Pingable  // let x      // id: %2
+  debug_value %0 : $*Pingable, expr op_deref // let x      // id: %2
   debug_value %1 : $Int  // let y                 // id: %3
-  %4 = open_existential_addr %0 : $*Pingable to $*@opened("75F1B81A-D6CB-11E5-9470-A82066121073") Pingable // users: %5, %6
-  %5 = witness_method $@opened("75F1B81A-D6CB-11E5-9470-A82066121073") Pingable, #Pingable.ping!1, %4 : $*@opened("75F1B81A-D6CB-11E5-9470-A82066121073") Pingable : $@convention(witness_method) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> () // user: %6
+  %4 = open_existential_addr immutable_access %0 : $*Pingable to $*@opened("75F1B81A-D6CB-11E5-9470-A82066121073", Pingable) Self // users: %5, %6
+  %5 = witness_method $@opened("75F1B81A-D6CB-11E5-9470-A82066121073", Pingable) Self, #Pingable.ping, %4 : $*@opened("75F1B81A-D6CB-11E5-9470-A82066121073", Pingable) Self : $@convention(witness_method: Pingable) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> () // user: %6
 
-  // CHECK: apply %5<@opened("75F1B81A-D6CB-11E5-9470-A82066121073") Pingable>(%4)
-  %6 = apply %5<@opened("75F1B81A-D6CB-11E5-9470-A82066121073") Pingable>(%4) : $@convention(witness_method) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> ()
+  // CHECK: apply %5<@opened("75F1B81A-D6CB-11E5-9470-A82066121073", any Pingable) Self>(%4)
+  %6 = apply %5<@opened("75F1B81A-D6CB-11E5-9470-A82066121073", Pingable) Self>(%4) : $@convention(witness_method: Pingable) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> ()
   %7 = integer_literal $Builtin.Int64, 3          // user: %9
   %8 = integer_literal $Builtin.Int64, 3          // user: %9
   %9 = builtin "cmp_sgt_Int64"(%8 : $Builtin.Int64, %7 : $Builtin.Int64) : $Builtin.Int1 // user: %10
   cond_br %9, bb1, bb2                            // id: %10
 
 bb1:                                              // Preds: bb0
-  %11 = open_existential_addr %0 : $*Pingable to $*@opened("75F1F3AC-D6CB-11E5-9470-A82066121073") Pingable // users: %12, %13
-  %12 = witness_method $@opened("75F1F3AC-D6CB-11E5-9470-A82066121073") Pingable, #Pingable.ping!1, %11 : $*@opened("75F1F3AC-D6CB-11E5-9470-A82066121073") Pingable : $@convention(witness_method) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> () // user: %13
+  %11 = open_existential_addr immutable_access %0 : $*Pingable to $*@opened("75F1F3AC-D6CB-11E5-9470-A82066121073", Pingable) Self // users: %12, %13
+  %12 = witness_method $@opened("75F1F3AC-D6CB-11E5-9470-A82066121073", Pingable) Self, #Pingable.ping, %11 : $*@opened("75F1F3AC-D6CB-11E5-9470-A82066121073", Pingable) Self : $@convention(witness_method: Pingable) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> () // user: %13
 
-  // CHECK: apply %5<@opened("75F1B81A-D6CB-11E5-9470-A82066121073") Pingable>(%4)
-  %13 = apply %12<@opened("75F1F3AC-D6CB-11E5-9470-A82066121073") Pingable>(%11) : $@convention(witness_method) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> ()
+  // CHECK: apply %5<@opened("75F1B81A-D6CB-11E5-9470-A82066121073", any Pingable) Self>(%4)
+  %13 = apply %12<@opened("75F1F3AC-D6CB-11E5-9470-A82066121073", Pingable) Self>(%11) : $@convention(witness_method: Pingable) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> ()
   br bb2                                          // id: %14
 
 bb2:                                              // Preds: bb0 bb1
-  %15 = open_existential_addr %0 : $*Pingable to $*@opened("75F1F5C8-D6CB-11E5-9470-A82066121073") Pingable // users: %16, %17
-  %16 = witness_method $@opened("75F1F5C8-D6CB-11E5-9470-A82066121073") Pingable, #Pingable.ping!1, %15 : $*@opened("75F1F5C8-D6CB-11E5-9470-A82066121073") Pingable : $@convention(witness_method) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> () // user: %17
+  %15 = open_existential_addr immutable_access %0 : $*Pingable to $*@opened("75F1F5C8-D6CB-11E5-9470-A82066121073", Pingable) Self // users: %16, %17
+  %16 = witness_method $@opened("75F1F5C8-D6CB-11E5-9470-A82066121073", Pingable) Self, #Pingable.ping, %15 : $*@opened("75F1F5C8-D6CB-11E5-9470-A82066121073", Pingable) Self : $@convention(witness_method: Pingable) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> () // user: %17
 
-  // CHECK: apply %5<@opened("75F1B81A-D6CB-11E5-9470-A82066121073") Pingable>(%4)
-  %17 = apply %16<@opened("75F1F5C8-D6CB-11E5-9470-A82066121073") Pingable>(%15) : $@convention(witness_method) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> ()
+  // CHECK: apply %5<@opened("75F1B81A-D6CB-11E5-9470-A82066121073", any Pingable) Self>(%4)
+  %17 = apply %16<@opened("75F1F5C8-D6CB-11E5-9470-A82066121073", Pingable) Self>(%15) : $@convention(witness_method: Pingable) <τ_0_0 where τ_0_0 : Pingable> (@in_guaranteed τ_0_0) -> ()
   destroy_addr %0 : $*Pingable                    // id: %18
   %19 = tuple ()                                  // user: %20
 
@@ -1306,3 +1147,212 @@ bb2:                                              // Preds: bb0 bb1
   return %19 : $()                                // id: %20
 }
 
+// CHECK-LABEL: sil @cse_mark_dependence
+// CHECK: mark_dependence
+// CHECK-NOT: mark_dependence
+// CHECK: return
+sil @cse_mark_dependence : $@convention(thin) (@inout Builtin.Int64, @guaranteed Builtin.NativeObject) -> (Builtin.Int64, Builtin.Int64) {
+bb0(%0 : $*Builtin.Int64, %1 : $Builtin.NativeObject):
+  %2 = mark_dependence %0 : $*Builtin.Int64 on %1 : $Builtin.NativeObject
+  %3 = mark_dependence %0 : $*Builtin.Int64 on %1 : $Builtin.NativeObject
+  %4 = load %2 : $*Builtin.Int64
+  %5 = load %3 : $*Builtin.Int64
+  %6 = tuple(%4 : $Builtin.Int64, %5 : $Builtin.Int64)
+  return %6 : $(Builtin.Int64, Builtin.Int64)
+}
+
+protocol Proto : class {
+  func doThis()
+  func doThat()
+}
+
+// Check that all open_existential_ref instructions are CSEd
+// Any reference to the $@opened("1B685052-4796-11E6-B7DF-B8E856428C60", Proto) Self should be replaced by
+// references to $@opened("1B68354A-4796-11E6-B7DF-B8E856428C60", Proto) Self.
+// CHECK-LABEL: sil @cse_open_existential : $@convention(thin) (@guaranteed any Proto, Bool) -> ()
+// CHECK: bb0
+// CHECK: %[[OPENED_EXISTENTIAL:[0-9]+]] = open_existential_ref %{{[0-9]+}} : $any Proto to $@opened("1B68354A-4796-11E6-B7DF-B8E856428C60", any Proto) Self
+// CHECK: %[[WM1:[0-9]+]] = witness_method $@opened("1B68354A-4796-11E6-B7DF-B8E856428C60", any Proto) Self, #Proto.doThis
+// CHECK: apply %[[WM1]]{{.*}}(%[[OPENED_EXISTENTIAL]])
+// CHECK: cond_br
+// CHECK: bb1:
+// CHECK-NEXT: %[[WM2:[0-9]+]] = witness_method $@opened("1B68354A-4796-11E6-B7DF-B8E856428C60", any Proto) Self, #Proto.doThat
+// CHECK-NEXT: apply %[[WM2]]{{.*}}(%[[OPENED_EXISTENTIAL]])
+// CHECK-NOT: 1B6851A6-4796-11E6-B7DF-B8E856428C60
+// CHECK: br bb
+// CHECK: bb2:
+// CHECK-NEXT: apply %[[WM1]]{{.*}}(%[[OPENED_EXISTENTIAL]])
+// CHECK-NOT: 1B6851A6-4796-11E6-B7DF-B8E856428C60
+// CHECK: br bb
+// CHECK: bb3:
+// CHECK-NEXT: tuple
+// CHECK-NEXT: return
+sil @cse_open_existential : $@convention(thin) (@guaranteed Proto, Bool) -> () {
+bb0(%0 : $Proto, %1 : $Bool):
+  %4 = open_existential_ref %0 : $Proto to $@opened("1B68354A-4796-11E6-B7DF-B8E856428C60", Proto) Self
+  %5 = witness_method $@opened("1B68354A-4796-11E6-B7DF-B8E856428C60", Proto) Self, #Proto.doThis, %4 : $@opened("1B68354A-4796-11E6-B7DF-B8E856428C60", Proto) Self : $@convention(witness_method: Proto) <τ_0_0 where τ_0_0 : Proto> (@guaranteed τ_0_0) -> ()
+  %6 = apply %5<@opened("1B68354A-4796-11E6-B7DF-B8E856428C60", Proto) Self>(%4) : $@convention(witness_method: Proto) <τ_0_0 where τ_0_0 : Proto> (@guaranteed τ_0_0) -> ()
+  %7 = struct_extract %1 : $Bool, #Bool._value
+  cond_br %7, bb1, bb2
+
+bb1:
+  %9 = open_existential_ref %0 : $Proto to $@opened("1B685052-4796-11E6-B7DF-B8E856428C60", Proto) Self
+  %10 = witness_method $@opened("1B685052-4796-11E6-B7DF-B8E856428C60", Proto) Self, #Proto.doThat, %9 : $@opened("1B685052-4796-11E6-B7DF-B8E856428C60", Proto) Self : $@convention(witness_method: Proto) <τ_0_0 where τ_0_0 : Proto> (@guaranteed τ_0_0) -> ()
+  %11 = apply %10<@opened("1B685052-4796-11E6-B7DF-B8E856428C60", Proto) Self>(%9) : $@convention(witness_method: Proto) <τ_0_0 where τ_0_0 : Proto> (@guaranteed τ_0_0) -> ()
+  br bb3
+
+bb2:                                              // Preds: bb0
+  %13 = open_existential_ref %0 : $Proto to $@opened("1B6851A6-4796-11E6-B7DF-B8E856428C60", Proto) Self
+  %14 = witness_method $@opened("1B6851A6-4796-11E6-B7DF-B8E856428C60", Proto) Self, #Proto.doThis, %13 : $@opened("1B6851A6-4796-11E6-B7DF-B8E856428C60", Proto) Self : $@convention(witness_method: Proto) <τ_0_0 where τ_0_0 : Proto> (@guaranteed τ_0_0) -> ()
+  %15 = apply %14<@opened("1B6851A6-4796-11E6-B7DF-B8E856428C60", Proto) Self>(%13) : $@convention(witness_method: Proto) <τ_0_0 where τ_0_0 : Proto> (@guaranteed τ_0_0) -> ()
+  %16 = alloc_stack $@opened("1B6851A6-4796-11E6-B7DF-B8E856428C60", Proto) Self
+  store %13 to %16 : $*@opened("1B6851A6-4796-11E6-B7DF-B8E856428C60", Proto) Self
+  // This is to check that result types of instructions are updated by CSE as well.
+  %17 = load %16 : $*@opened("1B6851A6-4796-11E6-B7DF-B8E856428C60", Proto) Self
+  strong_release %17 : $@opened("1B6851A6-4796-11E6-B7DF-B8E856428C60", Proto) Self
+  dealloc_stack %16 : $*@opened("1B6851A6-4796-11E6-B7DF-B8E856428C60", Proto) Self
+  br bb3
+
+bb3:
+  %20 = tuple ()
+  return %20 : $()
+}
+
+// This test is not a repro but used to show why we need a local Cloner object in CSE::processOpenExistentialRef.
+// Discussion:
+// Since the CSE pass can delete instructions and allocate instructions whose state can be cached in the Cloner, we have to use local Cloner object so that we don't accidentally refer to stale state 
+// In this test users of %9 are all cloned and original instructions are deleted. Users of %13 are similarly cloned and original instructions are deleted so the types can be remapped.
+// Instructions can further get deleted in the main CSE pass as well as during SimplifyInstruction.
+// For some heap allocation patterns newly allocated instructions can get the same address of a previously allocated instruction, and can end up referring to a stale state in the Cloner.
+//
+// CHECK-LABEL: sil @cse_open_existential_ref_local_cloner :
+// CHECK: open_existential_ref
+// CHECK-NOT: open_existential_ref
+// CHECK-LABEL: } // end sil function 'cse_open_existential_ref_local_cloner'
+sil @cse_open_existential_ref_local_cloner : $@convention(thin) (@guaranteed Proto, Bool) -> () {
+bb0(%0 : $Proto, %1 : $Bool):
+  %4 = open_existential_ref %0 : $Proto to $@opened("2B68354A-4796-11E6-B7DF-B8E856428C60", Proto) Self
+  %5 = witness_method $@opened("2B68354A-4796-11E6-B7DF-B8E856428C60", Proto) Self, #Proto.doThis, %4 : $@opened("2B68354A-4796-11E6-B7DF-B8E856428C60", Proto) Self : $@convention(witness_method: Proto) <τ_0_0 where τ_0_0 : Proto> (@guaranteed τ_0_0) -> ()
+  %6 = apply %5<@opened("2B68354A-4796-11E6-B7DF-B8E856428C60", Proto) Self>(%4) : $@convention(witness_method: Proto) <τ_0_0 where τ_0_0 : Proto> (@guaranteed τ_0_0) -> ()
+  %9 = open_existential_ref %0 : $Proto to $@opened("2B685052-4796-11E6-B7DF-B8E856428C60", Proto) Self
+  %10 = witness_method $@opened("2B685052-4796-11E6-B7DF-B8E856428C60", Proto) Self, #Proto.doThat, %9 : $@opened("2B685052-4796-11E6-B7DF-B8E856428C60", Proto) Self : $@convention(witness_method: Proto) <τ_0_0 where τ_0_0 : Proto> (@guaranteed τ_0_0) -> ()
+  %11 = apply %10<@opened("2B685052-4796-11E6-B7DF-B8E856428C60", Proto) Self>(%9) : $@convention(witness_method: Proto) <τ_0_0 where τ_0_0 : Proto> (@guaranteed τ_0_0) -> ()
+  %13 = open_existential_ref %0 : $Proto to $@opened("2B6851A6-4796-11E6-B7DF-B8E856428C60", Proto) Self
+  %14 = witness_method $@opened("2B6851A6-4796-11E6-B7DF-B8E856428C60", Proto) Self, #Proto.doThis, %13 : $@opened("2B6851A6-4796-11E6-B7DF-B8E856428C60", Proto) Self : $@convention(witness_method: Proto) <τ_0_0 where τ_0_0 : Proto> (@guaranteed τ_0_0) -> ()
+  %15 = apply %14<@opened("2B6851A6-4796-11E6-B7DF-B8E856428C60", Proto) Self>(%13) : $@convention(witness_method: Proto) <τ_0_0 where τ_0_0 : Proto> (@guaranteed τ_0_0) -> ()
+  %res = tuple ()
+  return %res : $()
+}
+
+// Check that we don't CSE open_existential_ref if they are not compeltely equal.
+// CHECK-LABEL: sil @dont_cse_open_existential_ref
+// CHECK: open_existential_ref
+// CHECK: open_existential_ref
+// CHECK: return
+sil @dont_cse_open_existential_ref : $@convention(thin) (@guaranteed Proto & Ping) -> @owned Ping {
+bb0(%0 : $Proto & Ping):
+  %4 = open_existential_ref %0 : $Proto & Ping to $@opened("3B68354A-4796-11E6-B7DF-B8E856428C60", Proto) Self
+  %5 = witness_method $@opened("3B68354A-4796-11E6-B7DF-B8E856428C60", Proto) Self, #Proto.doThis, %4 : $@opened("3B68354A-4796-11E6-B7DF-B8E856428C60", Proto) Self : $@convention(witness_method: Proto) <τ_0_0 where τ_0_0 : Proto> (@guaranteed τ_0_0) -> ()
+  %6 = apply %5<@opened("3B68354A-4796-11E6-B7DF-B8E856428C60", Proto) Self>(%4) : $@convention(witness_method: Proto) <τ_0_0 where τ_0_0 : Proto> (@guaranteed τ_0_0) -> ()
+  %9 = open_existential_ref %0 : $Proto & Ping to $@opened("3C038746-BE69-11E7-A5C1-685B35C48C83", Proto & Ping) Self
+  %10 = upcast %9 : $@opened("3C038746-BE69-11E7-A5C1-685B35C48C83", Proto & Ping) Self to $Ping
+  %11 = class_method %10 : $Ping, #Ping.ping : (Ping) -> () -> Ping, $@convention(method) (@guaranteed Ping) -> @owned Ping
+  %12 = apply %11(%10) : $@convention(method) (@guaranteed Ping) -> @owned Ping
+  return %12 : $Ping
+}
+
+sil [global_init] @$s4test10testGlobalSivau : $@convention(thin) () -> Builtin.RawPointer
+
+// CHECK-LABEL: sil @cse_global_init
+// CHECK:   [[P:%[0-9]+]] = apply 
+// CHECK:   [[A:%[0-9]+]] = pointer_to_address [[P]] 
+// CHECK:   begin_access [modify] [dynamic] [no_nested_conflict] [[A]]
+// CHECK:   begin_access [read] [dynamic] [no_nested_conflict] [[A]]
+// CHECK: // end sil function 'cse_global_init'
+sil @cse_global_init : $@convention(thin) () -> Int64 {
+bb0:
+  %2 = function_ref @$s4test10testGlobalSivau : $@convention(thin) () -> Builtin.RawPointer
+  %3 = apply %2() : $@convention(thin) () -> Builtin.RawPointer
+  %4 = pointer_to_address %3 : $Builtin.RawPointer to [strict] $*Int64
+  %5 = integer_literal $Builtin.Int64, 42
+  %6 = struct $Int64 (%5 : $Builtin.Int64)
+  %7 = begin_access [modify] [dynamic] [no_nested_conflict] %4 : $*Int64
+  store %6 to %7 : $*Int64
+  end_access %7 : $*Int64
+  %10 = function_ref @$s4test10testGlobalSivau : $@convention(thin) () -> Builtin.RawPointer
+  %11 = apply %10() : $@convention(thin) () -> Builtin.RawPointer
+  %12 = pointer_to_address %11 : $Builtin.RawPointer to [strict] $*Int64
+  %33 = begin_access [read] [dynamic] [no_nested_conflict] %12 : $*Int64
+  %35 = load %33 : $*Int64
+  end_access %33 : $*Int64
+  return %35 : $Int64
+}
+
+// Test init_existential_metatype combining.
+protocol SomeP {}
+
+public enum SpecialEnum : SomeP {}
+
+// CHECK-LABEL: sil @testCSEInitExistentialMetatype : $@convention(thin) (@thick SpecialEnum.Type) -> Bool {
+// CHECK:   [[EMT:%.*]] = init_existential_metatype %0 : $@thick SpecialEnum.Type, $@thick any Any.Type
+// CHECK-NOT: init_existential_metatype
+// CHECK:   builtin "is_same_metatype"([[EMT]] : $@thick any Any.Type, [[EMT]] : $@thick any Any.Type) : $Builtin.Int1
+// CHECK-LABEL: }  // end sil function 'testCSEInitExistentialMetatype'
+sil @testCSEInitExistentialMetatype : $@convention(thin) (@thick SpecialEnum.Type) -> Bool {
+bb0(%0 : $@thick SpecialEnum.Type):
+  %1 = init_existential_metatype %0 : $@thick SpecialEnum.Type, $@thick Any.Type
+  %2 = init_existential_metatype %0 : $@thick SpecialEnum.Type, $@thick Any.Type
+  %3 = builtin "is_same_metatype"(%1 : $@thick Any.Type, %2 : $@thick Any.Type) : $Builtin.Int1
+  %4 = struct $Bool (%3 : $Builtin.Int1)
+  return %4 : $Bool
+}
+
+struct StructWithLazyProperty {
+  var lazyProperty: Int64 { mutating get set }
+  @_hasStorage @_hasInitialValue var lazyPropertyStorage : Int64? { get set }
+}
+
+sil private [lazy_getter] [noinline] @lazy_getter : $@convention(method) (@inout StructWithLazyProperty) -> Int64 {
+bb0(%0 : $*StructWithLazyProperty):
+  %2 = struct_element_addr %0 : $*StructWithLazyProperty, #StructWithLazyProperty.lazyPropertyStorage 
+  %3 = load %2 : $*Optional<Int64>
+  switch_enum %3 : $Optional<Int64>, case #Optional.some!enumelt: bb1, case #Optional.none!enumelt: bb2
+
+bb1(%5 : $Int64):
+  br bb3(%5 : $Int64)
+
+bb2:
+  %9 = integer_literal $Builtin.Int64, 27
+  %10 = struct $Int64 (%9 : $Builtin.Int64)
+  %12 = enum $Optional<Int64>, #Optional.some!enumelt, %10 : $Int64
+  store %12 to %2 : $*Optional<Int64>
+  br bb3(%10 : $Int64)
+
+bb3(%15 : $Int64):
+  return %15 : $Int64
+}
+
+sil @take_int : $@convention(thin) (Int64) -> ()
+
+// CHECK-LABEL: sil @dont_cse_lazy_property_of_overwritten_struct : $@convention(thin) () -> () {
+// CHECK:   [[GETTER:%[0-9]+]] = function_ref @lazy_getter
+// CHECK:   apply [[GETTER]]
+// CHECK:   apply [[GETTER]]
+// CHECK: } // end sil function 'dont_cse_lazy_property_of_overwritten_struct'
+sil @dont_cse_lazy_property_of_overwritten_struct : $@convention(thin) () -> () {
+bb0:
+  %0 = alloc_stack $StructWithLazyProperty
+  %4 = enum $Optional<Int64>, #Optional.none!enumelt
+  %5 = struct $StructWithLazyProperty (%4 : $Optional<Int64>)
+  store %5 to %0 : $*StructWithLazyProperty
+  %7 = function_ref @lazy_getter : $@convention(method) (@inout StructWithLazyProperty) -> Int64
+  %8 = apply %7(%0) : $@convention(method) (@inout StructWithLazyProperty) -> Int64
+  %9 = function_ref @take_int : $@convention(thin) (Int64) -> ()
+  %10 = apply %9(%8) : $@convention(thin) (Int64) -> ()
+  store %5 to %0 : $*StructWithLazyProperty
+  %18 = apply %7(%0) : $@convention(method) (@inout StructWithLazyProperty) -> Int64
+  %20 = apply %9(%18) : $@convention(thin) (Int64) -> ()
+  dealloc_stack %0 : $*StructWithLazyProperty
+  %22 = tuple ()
+  return %22 : $()
+}

@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2021 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -23,39 +23,46 @@
 
 
 import TestsUtils
+
+public let benchmarks =
+  BenchmarkInfo(
+    name: "TypeFlood",
+    runFunction: run_TypeFlood,
+    tags: [.validation, .metadata])
+
 protocol Pingable {}
 
 struct Some1<T> {
   init() {}
-  func foo(x: T) {}
+  func foo(_ x: T) {}
 }
 struct Some0<T> {
   init() {}
-  func foo(x: T) {}
+  func foo(_ x: T) {}
 }
 
 @inline(never)
-func flood<T>(x : T) {
-  Some1<Some1<Some1<Some1<T>>>>() is Pingable
-  Some1<Some1<Some1<Some0<T>>>>() is Pingable
-  Some1<Some1<Some0<Some1<T>>>>() is Pingable
-  Some1<Some1<Some0<Some0<T>>>>() is Pingable
-  Some1<Some0<Some1<Some1<T>>>>() is Pingable
-  Some1<Some0<Some1<Some0<T>>>>() is Pingable
-  Some1<Some0<Some0<Some1<T>>>>() is Pingable
-  Some1<Some0<Some0<Some0<T>>>>() is Pingable
-  Some0<Some1<Some1<Some1<T>>>>() is Pingable
-  Some0<Some1<Some1<Some0<T>>>>() is Pingable
-  Some0<Some1<Some0<Some1<T>>>>() is Pingable
-  Some0<Some1<Some0<Some0<T>>>>() is Pingable
-  Some0<Some0<Some1<Some1<T>>>>() is Pingable
-  Some0<Some0<Some1<Some0<T>>>>() is Pingable
-  Some0<Some0<Some0<Some1<T>>>>() is Pingable
-  Some0<Some0<Some0<Some0<T>>>>() is Pingable
+func flood<T>(_ x: T) {
+  _ = Some1<Some1<Some1<Some1<T>>>>() is Pingable
+  _ = Some1<Some1<Some1<Some0<T>>>>() is Pingable
+  _ = Some1<Some1<Some0<Some1<T>>>>() is Pingable
+  _ = Some1<Some1<Some0<Some0<T>>>>() is Pingable
+  _ = Some1<Some0<Some1<Some1<T>>>>() is Pingable
+  _ = Some1<Some0<Some1<Some0<T>>>>() is Pingable
+  _ = Some1<Some0<Some0<Some1<T>>>>() is Pingable
+  _ = Some1<Some0<Some0<Some0<T>>>>() is Pingable
+  _ = Some0<Some1<Some1<Some1<T>>>>() is Pingable
+  _ = Some0<Some1<Some1<Some0<T>>>>() is Pingable
+  _ = Some0<Some1<Some0<Some1<T>>>>() is Pingable
+  _ = Some0<Some1<Some0<Some0<T>>>>() is Pingable
+  _ = Some0<Some0<Some1<Some1<T>>>>() is Pingable
+  _ = Some0<Some0<Some1<Some0<T>>>>() is Pingable
+  _ = Some0<Some0<Some0<Some1<T>>>>() is Pingable
+  _ = Some0<Some0<Some0<Some0<T>>>>() is Pingable
 }
 
 @inline(never)
-func flood3<T>(x : T) {
+func flood3<T>(_ x: T) {
  flood(Some1<Some1<Some1<Some1<T>>>>())
  flood(Some1<Some1<Some1<Some0<T>>>>())
  flood(Some1<Some1<Some0<Some1<T>>>>())
@@ -75,7 +82,7 @@ func flood3<T>(x : T) {
 }
 
 @inline(never)
-func flood2<T>(x : T) {
+func flood2<T>(_ x: T) {
  flood3(Some1<Some1<Some1<Some1<T>>>>())
  flood3(Some1<Some1<Some1<Some0<T>>>>())
  flood3(Some1<Some1<Some0<Some1<T>>>>())
@@ -95,9 +102,9 @@ func flood2<T>(x : T) {
 }
 
 @inline(never)
-public func run_TypeFlood(N: Int) {
+public func run_TypeFlood(_ n: Int) {
 
-  for _ in 1...N {
+  for _ in 1...n {
     flood3(Some1<Some1<Some1<Int>>>())
     flood3(Some1<Some1<Some0<Int>>>())
     flood3(Some1<Some0<Some1<Int>>>())

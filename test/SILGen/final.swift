@@ -1,4 +1,5 @@
-// RUN: %target-swift-frontend -emit-silgen %s | FileCheck %s
+
+// RUN: %target-swift-emit-silgen -module-name final %s | %FileCheck %s
 
 class TestClass {
 
@@ -18,13 +19,12 @@ class TestDerived : TestClass {
 }
 
 
-// CHECK-LABEL: sil hidden @{{.*}}testDirectDispatch
-// CHECK: bb0(%0 : $TestClass):
-// CHECK: [[FINALMETH:%[0-9]+]] = function_ref @_TFC5final9TestClass11finalMethod
-// CHECK: apply [[FINALMETH]](%0)
-
-// CHECK: [[FINALPROP:%[0-9]+]] = function_ref @_TFC5final9TestClassg13finalPropertySi
-// CHECK: apply [[FINALPROP]](%0)
+// CHECK-LABEL: sil hidden [ossa] @{{.*}}testDirectDispatch{{.*}} : $@convention(thin) (@guaranteed TestClass) -> Int {
+// CHECK: bb0([[ARG:%.*]] : @guaranteed $TestClass):
+// CHECK: [[FINALMETH:%[0-9]+]] = function_ref @$s5final9TestClassC0A6Method{{[_0-9a-zA-Z]*}}F
+// CHECK: apply [[FINALMETH]]([[ARG]])
+// CHECK: [[FINALPROP:%[0-9]+]] = function_ref @$s5final9TestClassC0A8PropertySivg
+// CHECK: apply [[FINALPROP]]([[ARG]])
 func testDirectDispatch(c : TestClass) -> Int {
   return c.finalMethod()+c.finalProperty
 }
@@ -32,14 +32,14 @@ func testDirectDispatch(c : TestClass) -> Int {
 
 // Verify that the non-overriding final methods don't get emitted to the vtable.
 // CHECK-LABEL: sil_vtable TestClass {
-// CHECK-NEXT:  #TestClass.baseMethod!1: _TFC5final9TestClass10baseMethod
+// CHECK-NEXT:  #TestClass.baseMethod: {{.*}} : @$s5final9TestClassC10baseMethod{{[_0-9a-zA-Z]*}}F
+// CHECK-NEXT:  #TestClass.init!allocator: {{.*}} : @$s5final9TestClassC{{[_0-9a-zA-Z]*}}fC
 // CHECK-NEXT:  #TestClass.deinit!
-// CHECK-NEXT:  #TestClass.init!initializer.1: _TFC5final9TestClassc
 // CHECK-NEXT: }
 
 // Verify that overriding final methods don't get emitted to the vtable.
 // CHECK-LABEL: sil_vtable TestDerived {
-// CHECK-NEXT:  #TestClass.baseMethod!1: _TFC5final11TestDerived10baseMethod
-// CHECK-NEXT:  #TestClass.init!initializer.1: _TFC5final11TestDerivedc
+// CHECK-NEXT:  #TestClass.baseMethod: {{.*}} : @$s5final11TestDerivedC10baseMethod{{[_0-9a-zA-Z]*}}F
+// CHECK-NEXT:  #TestClass.init!allocator: {{.*}} : @$s5final11TestDerivedC{{[_0-9a-zA-Z]*}}fC
 // CHECK-NEXT:  #TestDerived.deinit!
 // CHECK-NEXT: }

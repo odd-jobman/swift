@@ -2,14 +2,14 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
-// This file lists words that map to various parts of speech. 
+// This file lists words that map to various parts of speech.
 //===----------------------------------------------------------------------===//
 
 #if !defined(PREPOSITION) && !defined(VERB)
@@ -20,43 +20,40 @@
 #  define PREPOSITION(Word)
 #endif
 
-#ifndef DIRECTIONAL_PREPOSITION
-#  define DIRECTIONAL_PREPOSITION(Word) PREPOSITION(Word)
-#endif
-
 #ifndef VERB
 #  define VERB(Word)
 #endif
 
-DIRECTIONAL_PREPOSITION(above)
-DIRECTIONAL_PREPOSITION(after)
-DIRECTIONAL_PREPOSITION(along)
-DIRECTIONAL_PREPOSITION(alongside)
-DIRECTIONAL_PREPOSITION(as)
-DIRECTIONAL_PREPOSITION(at)
-DIRECTIONAL_PREPOSITION(before)
-DIRECTIONAL_PREPOSITION(below)
-DIRECTIONAL_PREPOSITION(by)
-DIRECTIONAL_PREPOSITION(following)
-DIRECTIONAL_PREPOSITION(for)
-DIRECTIONAL_PREPOSITION(from)
-DIRECTIONAL_PREPOSITION(given)
-DIRECTIONAL_PREPOSITION(in)
-DIRECTIONAL_PREPOSITION(including)
-DIRECTIONAL_PREPOSITION(inside)
-DIRECTIONAL_PREPOSITION(into)
-DIRECTIONAL_PREPOSITION(matching)
-DIRECTIONAL_PREPOSITION(of)
-DIRECTIONAL_PREPOSITION(on)
-DIRECTIONAL_PREPOSITION(passing)
-DIRECTIONAL_PREPOSITION(since)
-DIRECTIONAL_PREPOSITION(to)
-DIRECTIONAL_PREPOSITION(until)
-DIRECTIONAL_PREPOSITION(using)
-DIRECTIONAL_PREPOSITION(via)
-DIRECTIONAL_PREPOSITION(when)
+PREPOSITION(above)
+PREPOSITION(after)
+PREPOSITION(along)
+PREPOSITION(alongside)
+PREPOSITION(as)
+PREPOSITION(at)
+PREPOSITION(before)
+PREPOSITION(below)
+PREPOSITION(by)
+PREPOSITION(following)
+PREPOSITION(for)
+PREPOSITION(from)
+PREPOSITION(given)
+PREPOSITION(in)
+PREPOSITION(including)
+PREPOSITION(inside)
+PREPOSITION(into)
+PREPOSITION(matching)
+PREPOSITION(of)
+PREPOSITION(on)
+PREPOSITION(passing)
+PREPOSITION(preceding)
+PREPOSITION(since)
+PREPOSITION(to)
+PREPOSITION(until)
+PREPOSITION(using)
+PREPOSITION(via)
+PREPOSITION(when)
 PREPOSITION(with)
-DIRECTIONAL_PREPOSITION(within)
+PREPOSITION(within)
 
 VERB(abbreviate)
 VERB(accept)
@@ -265,7 +262,6 @@ VERB(drag)
 VERB(drain)
 VERB(draw)
 VERB(dream)
-VERB(dream)
 VERB(dress)
 VERB(drink)
 VERB(drip)
@@ -345,6 +341,7 @@ VERB(found)
 VERB(freeze)
 VERB(frighten)
 VERB(fry)
+VERB(gain)
 VERB(gather)
 VERB(gaze)
 VERB(generate)
@@ -368,7 +365,6 @@ VERB(guide)
 VERB(hammer)
 VERB(hand)
 VERB(handle)
-VERB(hang)
 VERB(hang)
 VERB(happen)
 VERB(harass)
@@ -636,6 +632,7 @@ VERB(satisfy)
 VERB(save)
 VERB(saw)
 VERB(say)
+VERB(scale)
 VERB(scare)
 VERB(scatter)
 VERB(scold)
@@ -796,6 +793,7 @@ VERB(undress)
 VERB(unfasten)
 VERB(union)
 VERB(unite)
+VERB(unload)
 VERB(unlock)
 VERB(unpack)
 VERB(untidy)

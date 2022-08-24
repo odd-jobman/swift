@@ -2,48 +2,83 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2020 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
-
+//
 // Implementation Note: Because StaticString is used in the
 // implementation of _precondition(), _fatalErrorMessage(), etc., we
 // keep it extremely close to the bare metal.  In particular, because
 // we store only Builtin types, we are guaranteed that no assertions
 // are involved in its construction.  This feature is crucial for
 // preventing infinite recursion even in non-asserting cases.
+//
+//===----------------------------------------------------------------------===//
 
-/// A simple string designed to represent text that is "knowable at
-/// compile-time".
+/// A string type designed to represent text that is known at compile time.
 ///
-/// Logically speaking, each instance looks something like this:
+/// Instances of the `StaticString` type are immutable.
 ///
-///      enum StaticString {
-///        case ascii(start: UnsafePointer<UInt8>, count: Int)
-///        case utf8(start: UnsafePointer<UInt8>, count: Int)
-///        case scalar(UnicodeScalar)
-///      }
-public struct StaticString
-  : _BuiltinUnicodeScalarLiteralConvertible,
-    _BuiltinExtendedGraphemeClusterLiteralConvertible,
-    _BuiltinStringLiteralConvertible,
-    UnicodeScalarLiteralConvertible,
-    ExtendedGraphemeClusterLiteralConvertible,
-    StringLiteralConvertible,
-    CustomStringConvertible,
-    CustomDebugStringConvertible,
-    CustomReflectable {
+/// `StaticString` provides only low-level access to its contents, unlike
+/// Swift's more commonly used `String` type. A static string can use
+/// either of the following as its storage:
+///
+/// * a pointer to a null-terminated sequence of UTF-8 code units:
+///
+///       let emoji: StaticString = "\u{1F600}"
+///       emoji.hasPointerRepresentation  //-> true
+///       emoji.isASCII                   //-> false
+///       emoji.unicodeScalar             //-> Fatal error!
+///       emoji.utf8CodeUnitCount         //-> 4
+///       emoji.utf8Start[0]              //-> 0xF0
+///       emoji.utf8Start[1]              //-> 0x9F
+///       emoji.utf8Start[2]              //-> 0x98
+///       emoji.utf8Start[3]              //-> 0x80
+///       emoji.utf8Start[4]              //-> 0x00
+///
+/// * a single Unicode scalar value, under very limited circumstances:
+///
+///       struct MyStaticScalar: ExpressibleByUnicodeScalarLiteral {
+///           typealias UnicodeScalarLiteralType = StaticString
+///           let value: StaticString
+///           init(unicodeScalarLiteral value: StaticString) {
+///               self.value = value
+///           }
+///       }
+///
+///       let emoji: StaticString = MyStaticScalar("\u{1F600}").value
+///       emoji.hasPointerRepresentation  //-> false
+///       emoji.isASCII                   //-> false
+///       emoji.unicodeScalar.value       //-> 0x1F600
+///       emoji.utf8CodeUnitCount         //-> Fatal error!
+///       emoji.utf8Start                 //-> Fatal error!
+///
+/// You can use the `withUTF8Buffer(_:)` method to access a static string's
+/// contents, regardless of which representation the static string uses.
+///
+///     emoji.withUTF8Buffer { utf8 in
+///         utf8.count  //-> 4
+///         utf8[0]     //-> 0xF0
+///         utf8[1]     //-> 0x9F
+///         utf8[2]     //-> 0x98
+///         utf8[3]     //-> 0x80
+///         utf8[4]     //-> Fatal error!
+///     }
+@frozen
+public struct StaticString: Sendable {
 
-  /// Either a pointer to the start of UTF-8 data, or an integer representation
-  /// of a single Unicode scalar.
-  internal var _startPtrOrData: Builtin.RawPointer
+  /// Either a pointer to the start of UTF-8 data, represented as an integer,
+  /// or an integer representation of a single Unicode scalar.
+  @usableFromInline
+  internal var _startPtrOrData: Builtin.Word
 
   /// If `_startPtrOrData` is a pointer, contains the length of the UTF-8 data
-  /// in bytes.
+  /// in bytes (excluding the null terminator).
+  @usableFromInline
   internal var _utf8CodeUnitCount: Builtin.Word
 
   /// Extra flags:
@@ -51,38 +86,72 @@ public struct StaticString
   /// - bit 0: set to 0 if `_startPtrOrData` is a pointer, or to 1 if it is a
   ///   Unicode scalar.
   ///
-  /// - bit 1: set to 1 if `_startPtrOrData` is a pointer and string data is
-  ///   ASCII.
+  /// - bit 1: set to 1 if `_startPtrOrData` either points to an ASCII code unit
+  ///   sequence, or stores an ASCII scalar value.
+  @usableFromInline
   internal var _flags: Builtin.Int8
 
-  /// A pointer to the beginning of UTF-8 code units.
+  /// Creates an empty static string.
+  @_transparent
+  public init() {
+    self = ""
+  }
+
+  @usableFromInline @_transparent
+  internal init(
+    _start: Builtin.RawPointer,
+    utf8CodeUnitCount: Builtin.Word,
+    isASCII: Builtin.Int1
+  ) {
+    // We don't go through UnsafePointer here to make things simpler for alias
+    // analysis. A higher-level algorithm may be trying to make sure an
+    // unrelated buffer is not accessed or freed.
+    self._startPtrOrData = Builtin.ptrtoint_Word(_start)
+    self._utf8CodeUnitCount = utf8CodeUnitCount
+    self._flags = Bool(isASCII)
+      ? (0x2 as UInt8)._value
+      : (0x0 as UInt8)._value
+  }
+
+  @usableFromInline @_transparent
+  internal init(
+    unicodeScalar: Builtin.Int32
+  ) {
+    self._startPtrOrData = UInt(UInt32(unicodeScalar))._builtinWordValue
+    self._utf8CodeUnitCount = 0._builtinWordValue
+    self._flags = Unicode.Scalar(_builtinUnicodeScalarLiteral: unicodeScalar).isASCII
+      ? (0x3 as UInt8)._value
+      : (0x1 as UInt8)._value
+  }
+
+  /// A pointer to a null-terminated sequence of UTF-8 code units.
   ///
-  /// - Precondition: `self` stores a pointer to either ASCII or UTF-8 code
-  ///   units.
+  /// - Important: Accessing this property when `hasPointerRepresentation` is
+  ///   `false` triggers a runtime error.
   @_transparent
   public var utf8Start: UnsafePointer<UInt8> {
     _precondition(
       hasPointerRepresentation,
       "StaticString should have pointer representation")
-    return UnsafePointer(_startPtrOrData)
+    return UnsafePointer(bitPattern: UInt(_startPtrOrData))!
   }
 
-  /// The stored Unicode scalar value.
+  /// A single Unicode scalar value.
   ///
-  /// - Precondition: `self` stores a single Unicode scalar value.
+  /// - Important: Accessing this property when `hasPointerRepresentation` is
+  ///   `true` triggers a runtime error.
   @_transparent
-  public var unicodeScalar: UnicodeScalar {
+  public var unicodeScalar: Unicode.Scalar {
     _precondition(
       !hasPointerRepresentation,
       "StaticString should have Unicode scalar representation")
-    return UnicodeScalar(UInt32(unsafeBitCast(_startPtrOrData, to: UInt.self)))
+    return Unicode.Scalar(UInt32(UInt(_startPtrOrData)))!
   }
 
-  /// If `self` stores a pointer to ASCII or UTF-8 code units, the
-  /// length in bytes of that data.
+  /// The number of UTF-8 code units (excluding the null terminator).
   ///
-  /// If `self` stores a single Unicode scalar value, the value of
-  /// `utf8CodeUnitCount` is unspecified.
+  /// - Important: Accessing this property when `hasPointerRepresentation` is
+  ///   `false` triggers a runtime error.
   @_transparent
   public var utf8CodeUnitCount: Int {
     _precondition(
@@ -91,90 +160,81 @@ public struct StaticString
     return Int(_utf8CodeUnitCount)
   }
 
-  /// `true` iff `self` stores a pointer to ASCII or UTF-8 code units.
+  @_alwaysEmitIntoClient @_transparent
+  internal var unsafeRawPointer: Builtin.RawPointer {
+    return Builtin.inttoptr_Word(_startPtrOrData)
+  }
+
+  /// A Boolean value that indicates whether the static string stores a
+  /// pointer to a null-terminated sequence of UTF-8 code units.
+  ///
+  /// If `hasPointerRepresentation` is `false`, the static string stores a
+  /// single Unicode scalar value.
   @_transparent
   public var hasPointerRepresentation: Bool {
     return (UInt8(_flags) & 0x1) == 0
   }
 
-  /// `true` if `self` stores a pointer to ASCII code units.
-  ///
-  /// If `self` stores a single Unicode scalar value, the value of
-  /// `isASCII` is unspecified.
+  /// A Boolean value that indicates whether the static string represents only
+  /// ASCII code units (or an ASCII scalar value).
   @_transparent
   public var isASCII: Bool {
     return (UInt8(_flags) & 0x2) != 0
   }
 
-  /// Invoke `body` with a buffer containing the UTF-8 code units of
-  /// `self`.
+  /// Invokes the given closure with a buffer containing the static string's
+  /// UTF-8 code unit sequence (excluding the null terminator).
   ///
-  /// This method works regardless of what `self` stores.
+  /// This method works regardless of whether the static string stores a
+  /// pointer or a single Unicode scalar value.
+  ///
+  /// The pointer argument to `body` is valid only during the execution of
+  /// `withUTF8Buffer(_:)`. Do not store or return the pointer for later use.
+  ///
+  /// - Parameter body: A closure that takes a buffer pointer to the static
+  ///   string's UTF-8 code unit sequence as its sole argument. If the closure
+  ///   has a return value, that value is also used as the return value of the
+  ///   `withUTF8Buffer(_:)` method. The pointer argument is valid only for the
+  ///   duration of the method's execution.
+  /// - Returns: The return value, if any, of the `body` closure.
+  @_transparent
   public func withUTF8Buffer<R>(
-    @noescape invoke body: (UnsafeBufferPointer<UInt8>) -> R) -> R {
+    _ body: (UnsafeBufferPointer<UInt8>) -> R
+  ) -> R {
     if hasPointerRepresentation {
       return body(UnsafeBufferPointer(
-        start: utf8Start, count: Int(utf8CodeUnitCount)))
+        start: utf8Start, count: utf8CodeUnitCount))
     } else {
-      var buffer: UInt64 = 0
-      var i = 0
-      let sink: (UInt8) -> Void = {
-        buffer = buffer | (UInt64($0) << (UInt64(i) * 8))
-        i += 1
-      }
-      UTF8.encode(unicodeScalar, sendingOutputTo: sink)
-      return body(UnsafeBufferPointer(
-        start: UnsafePointer(Builtin.addressof(&buffer)),
-        count: i))
+      return unicodeScalar.withUTF8CodeUnits { body($0) }
     }
   }
+}
 
-  /// Create an empty instance.
-  @_transparent
-  public init() {
-    self = ""
-  }
+extension StaticString: _ExpressibleByBuiltinUnicodeScalarLiteral {
 
-  @_transparent
-  internal init(
-    _start: Builtin.RawPointer,
-    utf8CodeUnitCount: Builtin.Word,
-    isASCII: Builtin.Int1
-  ) {
-    self._startPtrOrData = _start
-    self._utf8CodeUnitCount = utf8CodeUnitCount
-    self._flags = Bool(isASCII) ? (0x2 as UInt8)._value : (0x0 as UInt8)._value
-  }
-
-  @_transparent
-  internal init(
-    unicodeScalar: Builtin.Int32
-  ) {
-    self._startPtrOrData =
-      unsafeBitCast(
-        UInt(UInt32(unicodeScalar)),
-        to: OpaquePointer.self
-      )._rawValue
-    self._utf8CodeUnitCount = 0._builtinWordValue
-    self._flags = UnicodeScalar(_builtinUnicodeScalarLiteral: unicodeScalar).isASCII
-      ? (0x3 as UInt8)._value
-      : (0x1 as UInt8)._value
-  }
-
-  @effects(readonly)
+  @_effects(readonly)
   @_transparent
   public init(_builtinUnicodeScalarLiteral value: Builtin.Int32) {
     self = StaticString(unicodeScalar: value)
   }
+}
 
-  /// Create an instance initialized to `value`.
-  @effects(readonly)
+extension StaticString: ExpressibleByUnicodeScalarLiteral {
+
+  /// Creates an instance initialized to a single Unicode scalar.
+  ///
+  /// Do not call this initializer directly. It may be used by the compiler
+  /// when you initialize a static string with a Unicode scalar.
+  @_effects(readonly)
   @_transparent
   public init(unicodeScalarLiteral value: StaticString) {
     self = value
   }
+}
 
-  @effects(readonly)
+extension StaticString: _ExpressibleByBuiltinExtendedGraphemeClusterLiteral {
+
+  @_effects(readonly)
   @_transparent
   public init(
     _builtinExtendedGraphemeClusterLiteral start: Builtin.RawPointer,
@@ -187,15 +247,25 @@ public struct StaticString
       isASCII: isASCII
     )
   }
+}
 
-  /// Create an instance initialized to `value`.
-  @effects(readonly)
+extension StaticString: ExpressibleByExtendedGraphemeClusterLiteral {
+
+  /// Creates an instance initialized to a single character that is made up of
+  /// one or more Unicode scalar values.
+  ///
+  /// Do not call this initializer directly. It may be used by the compiler
+  /// when you initialize a static string using an extended grapheme cluster.
+  @_effects(readonly)
   @_transparent
   public init(extendedGraphemeClusterLiteral value: StaticString) {
     self = value
   }
+}
 
-  @effects(readonly)
+extension StaticString: _ExpressibleByBuiltinStringLiteral {
+
+  @_effects(readonly)
   @_transparent
   public init(
     _builtinStringLiteral start: Builtin.RawPointer,
@@ -207,47 +277,42 @@ public struct StaticString
       utf8CodeUnitCount: utf8CodeUnitCount,
       isASCII: isASCII)
   }
+}
 
-  /// Create an instance initialized to `value`.
-  @effects(readonly)
+extension StaticString: ExpressibleByStringLiteral {
+
+  /// Creates an instance initialized to the value of a string literal.
+  ///
+  /// Do not call this initializer directly. It may be used by the compiler
+  /// when you initialize a static string using a string literal.
+  @_effects(readonly)
   @_transparent
   public init(stringLiteral value: StaticString) {
     self = value
   }
+}
 
-  /// A textual representation of `self`.
+extension StaticString: CustomStringConvertible {
+
+  /// A textual representation of the static string.
   public var description: String {
-    return withUTF8Buffer {
-      (buffer) in
-      return String._fromWellFormedCodeUnitSequence(UTF8.self, input: buffer)
-    }
+    return withUTF8Buffer { String._uncheckedFromUTF8($0) }
   }
+}
 
-  /// A textual representation of `self`, suitable for debugging.
+extension StaticString: CustomDebugStringConvertible {
+
+  /// A textual representation of the static string, suitable for debugging.
   public var debugDescription: String {
     return self.description.debugDescription
   }
-
-  public func _getMirror() -> _Mirror {
-    return _reflect(self.description)
-  }
 }
 
-extension StaticString {
+#if SWIFT_ENABLE_REFLECTION
+extension StaticString: CustomReflectable {
+
   public var customMirror: Mirror {
-    return Mirror(reflecting: String(self))
+    return Mirror(reflecting: description)
   }
 }
-
-extension StaticString {
-  @available(*, unavailable, renamed: "utf8CodeUnitCount")
-  public var byteSize: Int {
-    fatalError("unavailable function can't be called")
-  }
-
-  @available(*, unavailable, message: "use the 'String(_:)' initializer")
-  public var stringValue: String {
-    fatalError("unavailable function can't be called")
-  }
-}
-
+#endif

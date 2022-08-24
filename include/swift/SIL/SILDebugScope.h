@@ -2,22 +2,26 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
-//
-// This file defines a container for scope information used to
-// generate debug info.
-//
+///
+/// \file
+///
+/// This file defines a container for scope information used to
+/// generate debug info.
+///
 //===----------------------------------------------------------------------===//
 
 #ifndef SWIFT_SIL_DEBUGSCOPE_H
 #define SWIFT_SIL_DEBUGSCOPE_H
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/raw_ostream.h"
 #include "swift/SIL/SILAllocated.h"
 #include "swift/SIL/SILLocation.h"
 
@@ -42,88 +46,56 @@ public:
   /// An optional chain of inlined call sites.
   ///
   /// If this scope is inlined, this points to a special "scope" that
-  /// holds only the location of the call site. The parent scope will be
-  /// the scope of the inlined call site.
-  ///
-  /// Note that compared to the inlinedAt chain in llvm::DILocation
-  /// SILDebugScope represents an inline tree.
+  /// holds the location of the call site.
   const SILDebugScope *InlinedCallSite;
 
   SILDebugScope(SILLocation Loc, SILFunction *SILFn,
                 const SILDebugScope *ParentScope = nullptr,
-                const SILDebugScope *InlinedCallSite = nullptr)
-      : Loc(Loc), InlinedCallSite(InlinedCallSite) {
-    if (ParentScope)
-      Parent = ParentScope;
-    else {
-      assert(SILFn && "no parent provided");
-      Parent = SILFn;
-    }
-  }
+                const SILDebugScope *InlinedCallSite = nullptr);
 
   /// Create a scope for an artificial function.
-  SILDebugScope(SILLocation Loc)
-      : Loc(Loc), InlinedCallSite(nullptr) {}
+  SILDebugScope(SILLocation Loc);
 
-  /// Create an inlined version of CalleeScope.
-  SILDebugScope(const SILDebugScope *CallSiteScope,
-                const SILDebugScope *CalleeScope)
-    : Loc(CalleeScope->Loc), Parent(CalleeScope),
-        InlinedCallSite(CallSiteScope) {
-    assert(CallSiteScope && CalleeScope);
-    if (InlinedCallSite)
-      assert(!InlinedCallSite->InlinedCallSite &&
-             "a call site scope cannot have an inlined call site");
-  }
+  SILLocation getLoc() const { return Loc; }
 
   /// Return the function this scope originated from before being inlined.
-  SILFunction *getInlinedFunction() const {
-    if (Parent.isNull())
-      return nullptr;
+  SILFunction *getInlinedFunction() const;
 
-    const SILDebugScope *Scope = this;
-    while (Scope->Parent.is<const SILDebugScope *>())
-      Scope = Scope->Parent.get<const SILDebugScope *>();
-    assert(Scope->Parent.is<SILFunction *>() && "orphaned scope");
-    return Scope->Parent.get<SILFunction *>();
-  }
-
-  /// Return this scope without inline information.
-  const SILDebugScope *getInlinedScope() const {
-    return InlinedCallSite ? Parent.get<const SILDebugScope*>() : this;
-  }
-  
   /// Return the parent function of this scope. If the scope was
   /// inlined this recursively returns the function it was inlined
   /// into.
-  SILFunction *getParentFunction() const {
-    if (InlinedCallSite)
-      return InlinedCallSite->Parent.get<const SILDebugScope *>()
-          ->getParentFunction();
-    if (auto *ParentScope = Parent.dyn_cast<const SILDebugScope *>())
-      return ParentScope->getParentFunction();
-    return Parent.get<SILFunction *>();
+  SILFunction *getParentFunction() const;
+
+  /// If this is a debug scope associated with an inlined call site, return the
+  /// SILLocation associated with the call site resulting from the final
+  /// inlining.
+  ///
+  /// This allows one to emit diagnostics based off of inlined code's final
+  /// location in the function that was inlined into.
+  SILLocation getOutermostInlineLocation() const {
+    if (!InlinedCallSite)
+      return SILLocation::invalid();
+
+    auto *scope = this;
+    do {
+      scope = scope->InlinedCallSite;
+    } while (scope->InlinedCallSite);
+
+    SILLocation callSite = scope->Loc;
+    if (callSite.isNull() || !callSite.isASTNode())
+      return SILLocation::invalid();
+
+    return callSite;
   }
 
-  typedef SmallVector<const SILDebugScope *, 8> InlineScopeList;
-  static void flatten(const SILDebugScope *DS, InlineScopeList &List);
+  void print(SourceManager &SM, llvm::raw_ostream &OS = llvm::errs(),
+             unsigned Indent = 0) const;
 
-  // Return a flattened representation of the inline scope tree that
-  // is equivalent to the reversed inlined-at chain.
-  InlineScopeList flattenedInlineTree() const {
-    InlineScopeList List;
-    flatten(this, List);
-    return List;
-  }
-
-  void dump(SourceManager &SM, llvm::raw_ostream &OS = llvm::errs(),
-            unsigned Indent = 0) const;
+  void print(SILModule &Mod) const;
 };
 
-#ifndef NDEBUG
 /// Determine whether an instruction may not have a SILDebugScope.
-bool maybeScopeless(SILInstruction &I);
-#endif
+bool maybeScopeless(const SILInstruction &inst);
 
 /// Knows how to make a deep copy of a debug scope.
 class ScopeCloner {

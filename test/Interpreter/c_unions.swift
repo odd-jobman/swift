@@ -1,17 +1,11 @@
-// RUN: rm -rf %t  &&  mkdir %t
+// RUN: %empty-directory(%t)
 // RUN: %target-build-swift -I %S/../Inputs/clang-importer-sdk/platform/any/usr/include %s -o %t/a.out
+// RUN: %target-codesign %t/a.out
 // RUN: %target-run %t/a.out
 // REQUIRES: executable_test
 
 import StdlibUnittest
 
-// Also import modules which are used by StdlibUnittest internally. This
-// workaround is needed to link all required libraries in case we compile
-// StdlibUnittest with -sil-serialize-all.
-import SwiftPrivate
-#if _runtime(_ObjC)
-import ObjectiveC
-#endif
 
 import ctypes
 

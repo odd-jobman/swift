@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -16,19 +16,42 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef SWIFT_SILOPTIMIZER_ANALYSIS_SIMPLIFYINSTRUCTION_H
+#define SWIFT_SILOPTIMIZER_ANALYSIS_SIMPLIFYINSTRUCTION_H
+
+#include "swift/SIL/SILBasicBlock.h"
 #include "swift/SIL/SILInstruction.h"
 
 namespace swift {
 
 class SILInstruction;
+struct InstModCallbacks;
 
-/// \brief Try to simplify the specified instruction, performing local
-/// analysis of the operands of the instruction, without looking at its uses
-/// (e.g. constant folding).  If a simpler result can be found, it is
-/// returned, otherwise a null SILValue is returned.
-SILValue simplifyInstruction(SILInstruction *I);
+/// Replace an instruction with a simplified result and erase it. If the
+/// instruction initiates a scope, do not replace the end of its scope; it will
+/// be deleted along with its parent.
+///
+/// NOTE: When OSSA is enabled this API assumes OSSA is properly formed and will
+/// insert compensating instructions.
+SILBasicBlock::iterator
+replaceAllSimplifiedUsesAndErase(SILInstruction *I, SILValue result,
+                                 InstModCallbacks &callbacks,
+                                 DeadEndBlocks *deadEndBlocks = nullptr);
 
-/// Simplify invocations of builtin operations that may overflow.
+/// Attempt to map \p inst to a simplified result. Upon success, replace \p inst
+/// with this simplified result and erase \p inst. If the instruction initiates
+/// a scope, do not replace the end of its scope; it will be deleted along with
+/// its parent.
+///
+/// NOTE: When OSSA is enabled this API assumes OSSA is properly formed and will
+/// insert compensating instructions.
+/// NOTE: When \p I is in an OSSA function, this fails to optimize if \p
+/// deadEndBlocks is null.
+SILBasicBlock::iterator simplifyAndReplaceAllSimplifiedUsesAndErase(
+    SILInstruction *I, InstModCallbacks &callbacks,
+    DeadEndBlocks *deadEndBlocks = nullptr);
+
+// Simplify invocations of builtin operations that may overflow.
 /// All such operations return a tuple (result, overflow_flag).
 /// This function try to simplify such operations, but returns only a
 /// simplified first element of a tuple. The overflow flag is not returned
@@ -39,3 +62,5 @@ SILValue simplifyInstruction(SILInstruction *I);
 SILValue simplifyOverflowBuiltinInstruction(BuiltinInst *BI);
 
 } // end namespace swift
+
+#endif // SWIFT_SILOPTIMIZER_ANALYSIS_SIMPLIFYINSTRUCTION_H

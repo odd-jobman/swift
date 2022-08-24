@@ -1,15 +1,15 @@
-// RUN: %target-run-simple-swift | FileCheck %s
-// REQUIRES: executable_test
+// RUN: %target-run-simple-swift | %FileCheck %s
 
-// XFAIL: linux
+// REQUIRES: executable_test
+// REQUIRES: objc_interop
 
 import Foundation
 
-func vf(params: CVarArg...) {
+func vf(_ params: CVarArg...) {
 	print("OK")
 }
 
-var a: [AnyObject]! = ["a"]
+var a: [AnyObject]! = ["a" as NSString]
 var s: String! = "s"
 
 vf(a as NSArray)

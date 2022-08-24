@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend -import-objc-header %S/Inputs/StaticInline.h %s -emit-ir | FileCheck %s
+// RUN: %target-swift-frontend -import-objc-header %S/Inputs/StaticInline.h %s -emit-ir | %FileCheck %s
 
 // REQUIRES: objc_interop
 import Foundation
@@ -23,5 +23,5 @@ testDemo()
 
 // Make sure the clang importer puts the selectors and co into the llvm.compiler used variable.
 
-// CHECK: @llvm.compiler.used = appending global [{{.*}} x i8*] [{{.*}} @"OBJC_CLASSLIST_REFERENCES_$_"{{.*}}@OBJC_METH_VAR_NAME_{{.*}}@OBJC_SELECTOR_REFERENCES_{{.*}}@OBJC_METH_VAR_NAME_.1{{.*}}@OBJC_SELECTOR_REFERENCES_.2{{.*}}]
+// CHECK: @llvm.compiler.used = appending global [{{.*}} x i8*] [{{.*}} @"OBJC_CLASSLIST_REFERENCES_$_"{{.*}}@OBJC_METH_VAR_NAME_{{.*}}@OBJC_SELECTOR_REFERENCES_{{.*}}@OBJC_METH_VAR_NAME_.{{.*}}@OBJC_SELECTOR_REFERENCES_.{{.*}}]
 

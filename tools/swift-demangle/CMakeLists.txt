@@ -1,9 +1,8 @@
-add_swift_executable(swift-demangle
+add_swift_host_tool(swift-demangle
   swift-demangle.cpp
-  LINK_LIBRARIES swiftBasic
-  COMPONENT_DEPENDS support)
-
-swift_install_in_component(compiler
-    TARGETS swift-demangle
-    RUNTIME DESTINATION "bin")
-
+  LLVM_LINK_COMPONENTS support
+  SWIFT_COMPONENT compiler
+  )
+target_link_libraries(swift-demangle
+                      PRIVATE
+                        swiftDemangling)

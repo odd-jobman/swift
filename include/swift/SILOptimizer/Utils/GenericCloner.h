@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -22,49 +22,67 @@
 #include "swift/SIL/SILFunction.h"
 #include "swift/SIL/SILInstruction.h"
 #include "swift/SIL/TypeSubstCloner.h"
-#include "swift/SILOptimizer/Utils/Local.h"
+#include "swift/SILOptimizer/Utils/BasicBlockOptUtils.h"
 #include "swift/SILOptimizer/Utils/Generics.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include <functional>
 
 namespace swift {
 
-class GenericCloner : public TypeSubstCloner<GenericCloner> {
+class GenericCloner
+  : public TypeSubstCloner<GenericCloner, SILOptFunctionBuilder> {
+  using SuperTy = TypeSubstCloner<GenericCloner, SILOptFunctionBuilder>;
+
+  SILOptFunctionBuilder &FuncBuilder;
+  IsSerialized_t Serialized;
   const ReabstractionInfo &ReInfo;
   CloneCollector::CallbackType Callback;
+  llvm::SmallDenseMap<const SILDebugScope *, const SILDebugScope *, 8>
+      RemappedScopeCache;
+
+  llvm::SmallVector<AllocStackInst *, 8> AllocStacks;
+  llvm::SmallVector<StoreBorrowInst *, 8> StoreBorrowsToCleanup;
+  llvm::SmallVector<TermInst *, 8> FunctionExits;
+  AllocStackInst *ReturnValueAddr = nullptr;
 
 public:
   friend class SILCloner<GenericCloner>;
 
-  GenericCloner(SILFunction *F,
-                const ReabstractionInfo &ReInfo,
-                TypeSubstitutionMap &ContextSubs,
-                ArrayRef<Substitution> ParamSubs,
-                StringRef NewName,
-                CloneCollector::CallbackType Callback)
-  : TypeSubstCloner(*initCloned(F, ReInfo, NewName), *F, ContextSubs,
-                    ParamSubs), ReInfo(ReInfo), Callback(Callback) {
+  GenericCloner(SILOptFunctionBuilder &FuncBuilder, SILFunction *F,
+                const ReabstractionInfo &ReInfo, SubstitutionMap ParamSubs,
+                StringRef NewName, CloneCollector::CallbackType Callback)
+      : SuperTy(*createDeclaration(FuncBuilder, F, ReInfo, NewName), *F,
+                ParamSubs),
+        FuncBuilder(FuncBuilder), ReInfo(ReInfo), Callback(Callback) {
     assert(F->getDebugScope()->Parent != getCloned()->getDebugScope()->Parent);
   }
   /// Clone and remap the types in \p F according to the substitution
   /// list in \p Subs. Parameters are re-abstracted (changed from indirect to
   /// direct) according to \p ReInfo.
   static SILFunction *
-  cloneFunction(SILFunction *F,
+  cloneFunction(SILOptFunctionBuilder &FuncBuilder,
+                SILFunction *F,
                 const ReabstractionInfo &ReInfo,
-                TypeSubstitutionMap &ContextSubs,
-                ArrayRef<Substitution> ParamSubs,
+                SubstitutionMap ParamSubs,
                 StringRef NewName,
                 CloneCollector::CallbackType Callback =nullptr) {
     // Clone and specialize the function.
-    GenericCloner SC(F, ReInfo, ContextSubs, ParamSubs, NewName, Callback);
+    GenericCloner SC(FuncBuilder, F, ReInfo, ParamSubs,
+                     NewName, Callback);
     SC.populateCloned();
-    SC.cleanUp(SC.getCloned());
     return SC.getCloned();
   }
 
+  void postFixUp(SILFunction *calleeFunction);
+
+  static SILFunction *createDeclaration(SILOptFunctionBuilder &FuncBuilder,
+                                        SILFunction *Orig,
+                                        const ReabstractionInfo &ReInfo,
+                                        StringRef NewName);
+
 protected:
+  void visitTerminator(SILBasicBlock *BB);
+
   // FIXME: We intentionally call SILClonerWithScopes here to ensure
   //        the debug scopes are set correctly for cloned
   //        functions. TypeSubstCloner, SILClonerWithScopes, and
@@ -76,17 +94,22 @@ protected:
     if (Callback)
       Callback(Orig, Cloned);
 
+    if (auto *termInst = dyn_cast<TermInst>(Cloned)) {
+      if (termInst->isFunctionExiting()) {
+        FunctionExits.push_back(termInst);
+      }
+    }
     SILClonerWithScopes<GenericCloner>::postProcess(Orig, Cloned);
   }
 
 private:
-  static SILFunction *initCloned(SILFunction *Orig,
-                                 const ReabstractionInfo &ReInfo,
-                                 StringRef NewName);
   /// Clone the body of the function into the empty function that was created
   /// by initCloned.
   void populateCloned();
   SILFunction *getCloned() { return &getBuilder().getFunction(); }
+
+  const SILDebugScope *remapScope(const SILDebugScope *DS);
+
 };
 
 } // end namespace swift

@@ -1,7 +1,7 @@
-// RUN: rm -rf %t && mkdir -p %t
+// RUN: %empty-directory(%t)
 
-// RUN: %target-swift-ide-test -print-module -source-filename %s -module-to-print=BoolBridgingTests -function-definitions=false -print-regular-comments -F %S/Inputs/mock-sdk > %t.txt
-// RUN: diff -u <(tail +9 %s) %t.txt
+// RUN: %target-swift-ide-test -print-module -source-filename %s -module-to-print=BoolBridgingTests -function-definitions=false -print-regular-comments -skip-unavailable -F %S/Inputs/mock-sdk > %t.txt
+// RUN: diff -u <(tail -n +9 %s) %t.txt
 
 // REQUIRES: objc_interop
 
@@ -42,9 +42,13 @@ func testCBoolFnToBlockTypedef(_: CBoolFn) -> CBoolBlock
 func testObjCBoolFnToBlockTypedef(_: ObjCBoolFn) -> ObjCBoolBlock
 func testDarwinBooleanFnToBlockTypedef(_: DarwinBooleanFn) -> DarwinBooleanBlock
 
-typealias CBoolFnToBlockType = (CBoolFn) -> CBoolBlock
-typealias ObjCCBoolFnToBlockType = (ObjCBoolFn) -> (ObjCBool) -> ObjCBool
+typealias CBoolFnToBlockType = (CBoolFn) -> (Bool) -> Bool
+typealias ObjCBoolFnToBlockType = (ObjCBoolFn) -> (ObjCBool) -> ObjCBool
 typealias DarwinBooleanFnToBlockType = (DarwinBooleanFn) -> (DarwinBoolean) -> DarwinBoolean
+
+var globalObjCBoolFnToBlockFP: @convention(c) (ObjCBoolFn) -> (ObjCBool) -> ObjCBool
+var globalObjCBoolFnToBlockFPP: UnsafeMutablePointer<@convention(c) (ObjCBoolFn) -> (ObjCBool) -> ObjCBool>?
+var globalObjCBoolFnToBlockBP: @convention(block) (ObjCBoolFn) -> (ObjCBool) -> ObjCBool
 
 var globalCBoolFn: CBoolFn
 var globalObjCBoolFn: ObjCBoolFn
@@ -59,9 +63,9 @@ class Test : NSObject {
   var propObjCBool: Bool
   var propDarwinBoolean: Bool
   
-  func testCBool(b: Bool) -> Bool
-  func testObjCBool(b: Bool) -> Bool
-  func testDarwinBoolean(b: Bool) -> Bool
+  func testCBool(_ b: Bool) -> Bool
+  func testObjCBool(_ b: Bool) -> Bool
+  func testDarwinBoolean(_ b: Bool) -> Bool
   
   var propCBoolBlock: (Bool) -> Bool
   var propObjCBoolBlock: (Bool) -> Bool
@@ -71,9 +75,9 @@ class Test : NSObject {
   func testObjCBoolFn(toBlock fp: @convention(c) (ObjCBool) -> ObjCBool) -> (Bool) -> Bool
   func testDarwinBooleanFn(toBlock fp: @convention(c) (DarwinBoolean) -> DarwinBoolean) -> (Bool) -> Bool
   
-  func produceCBoolBlockTypedef(outBlock: AutoreleasingUnsafeMutablePointer<(@convention(block) (Bool) -> Bool)?>)
-  func produceObjCBoolBlockTypedef(outBlock: AutoreleasingUnsafeMutablePointer<(@convention(block) (ObjCBool) -> ObjCBool)?>)
-  func produceDarwinBooleanBlockTypedef(outBlock: AutoreleasingUnsafeMutablePointer<(@convention(block) (DarwinBoolean) -> DarwinBoolean)?>)
+  func produceCBoolBlockTypedef(_ outBlock: AutoreleasingUnsafeMutablePointer<(@convention(block) (Bool) -> Bool)?>)
+  func produceObjCBoolBlockTypedef(_ outBlock: AutoreleasingUnsafeMutablePointer<(@convention(block) (ObjCBool) -> ObjCBool)?>)
+  func produceDarwinBooleanBlockTypedef(_ outBlock: AutoreleasingUnsafeMutablePointer<(@convention(block) (DarwinBoolean) -> DarwinBoolean)?>)
   
   init()
 }

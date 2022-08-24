@@ -1,13 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # ===--- swift-bench.py ------------------------------*- coding: utf-8 -*-===//
 #
 # This source file is part of the Swift.org open source project
 #
-# Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+# Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 # Licensed under Apache License v2.0 with Runtime Library Exception
 #
-# See http://swift.org/LICENSE.txt for license information
-# See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+# See https://swift.org/LICENSE.txt for license information
+# See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 
 # This file implements a test harness for running Swift performance benchmarks.
 #
@@ -32,8 +32,6 @@
 # Ideas for the harness improvement and development are welcomed here:
 # rdar://problem/18072938
 
-from __future__ import print_function
-
 import argparse
 import math
 import os
@@ -42,9 +40,40 @@ import subprocess
 import sys
 
 
-# Calculate the population standard deviation
-def pstdev(l):
-    return (sum((x - sum(l) / float(len(l))) ** 2 for x in l) / len(l)) ** 0.5
+# This regular expression is looking for Swift functions named `bench_*`
+# that take no arguments and return an Int.  The Swift code for such
+# a function is:
+#
+#     func bench_myname() {
+#         // function body goes here
+#     }
+BENCH_RE = re.compile(
+    r"^\s*"             # whitespace at the start of the line
+    r"func\s+"          # 'func' keyword, which must be followed by
+                        # at least one space
+    r"bench_([a-zA-Z0-9_]+)\s*"
+                        # name of the function
+    r"\s*\(\s*\)"       # argument list
+    r"\s*->\s*Int\s*"   # return type
+    r"({)?"             # opening brace of the function body
+    r"\s*$"             # whitespace ot the end of the line
+)
+
+
+def pstdev(sample):
+    """Given a list of numbers, return the population standard deviation.
+
+    For a population x_1, x_2, ..., x_N with mean M, the standard deviation
+    is defined as
+
+        sqrt( 1/N * [ (x_1 - M)^2 + (x_2 - M)^2 + ... + (x_N - M)^2 ] )
+    """
+    if len(sample) == 0:
+        raise ValueError("Cannot calculate the standard deviation of an "
+                         "empty list!")
+    mean = sum(sample) / float(len(sample))
+    inner = 1.0 / len(sample) * (sum((x - mean) ** 2 for x in sample))
+    return math.sqrt(inner)
 
 
 class SwiftBenchHarness(object):
@@ -74,7 +103,9 @@ class SwiftBenchHarness(object):
             "-v", "--verbosity",
             help="increase output verbosity", type=int)
         parser.add_argument("files", help="input files", nargs='+')
-        parser.add_argument('-c', '--compiler', help="compiler to use")
+        parser.add_argument(
+            '-c', '--compiler',
+            help="compiler to use", default="swiftc")
         parser.add_argument(
             '-t', '--timelimit',
             help="Time limit for every test", type=int)
@@ -87,12 +118,9 @@ class SwiftBenchHarness(object):
         if args.verbosity:
             self.verbose_level = args.verbosity
         self.sources = args.files
+        self.compiler = args.compiler
         if args.flags:
             self.opt_flags = args.flags
-        if args.compiler:
-            self.compiler = args.compiler
-        else:
-            self.compiler = 'swiftc'
         if args.timelimit and args.timelimit > 0:
             self.time_limit = args.timelimit
         if args.sampletime and args.sampletime > 0:
@@ -116,9 +144,10 @@ func _opaqueGetInt64(x: Int) -> Int
 
 @inline(never)
 public func getInt(x: Int) -> Int {
-#if arch(i386) || arch(arm)
+#if arch(i386) || arch(arm) || arch(arm64_32)|| arch(powerpc)
   return _opaqueGetInt32(x)
-#elseif arch(x86_64) || arch(arm64) || arch(powerpc64) || arch(powerpc64le)
+#elseif arch(x86_64) || arch(arm64) || arch(powerpc64) || \
+arch(powerpc64le) || arch(s390x)
   return _opaqueGetInt64(x)
 #else
   return x
@@ -139,13 +168,13 @@ func Consume(x: Int) { if False() { println(x) } }
 func main() {
   var N = 1
   var name = ""
-  if Process.arguments.count > 1 {
-    N = Process.arguments[1].toInt()!
+  if CommandLine.arguments.count > 1 {
+    N = CommandLine.arguments[1].toInt()!
   }
 """
-        main_body = """
+        main_body = r"""
   name = "%s"
-  if Process.arguments.count <= 2 || Process.arguments[2] == name {
+  if CommandLine.arguments.count <= 2 || CommandLine.arguments[2] == name {
     let start = __mach_absolute_time__()
     for _ in 1...N {
       bench_%s()
@@ -159,15 +188,12 @@ func main() {
 main()
 """
 
-        bench_re = re.compile(
-            "^\s*func\s\s*bench_([a-zA-Z0-9_]+)" +
-            "\s*\(\s*\)\s*->\s*Int\s*({)?\s*$")
         with open(name) as f:
             lines = list(f)
         output = header
         looking_for_curly_brace = False
         test_names = []
-        for l in lines:
+        for lineno, l in enumerate(lines, start=1):
             if looking_for_curly_brace:
                 output += l
                 if "{" not in l:
@@ -176,13 +202,13 @@ main()
                 output += into_bench
                 continue
 
-            m = bench_re.match(l)
+            m = BENCH_RE.match(l)
             if m:
                 output += before_bench
                 output += l
                 bench_name = m.group(1)
-                # TODO: Keep track of the line number as well
-                self.log("Benchmark found: %s" % bench_name, 3)
+                self.log("Benchmark found: %s (line %d)" %
+                         (bench_name, lineno), 3)
                 self.tests[
                     name + ":" +
                     bench_name] = Test(bench_name, name, "", "")

@@ -1,31 +1,36 @@
-// RUN: rm -rf %t
-// RUN: mkdir %t
-// RUN: echo "public var x = Int64()" | %target-swift-frontend -module-name FooBar -emit-module -o %t -
+// RUN: %empty-directory(%t)
+// RUN: echo "public var x = Int64()" \
+// RUN:   | %target-swift-frontend -module-name FooBar -emit-module -o %t -
 // RUN: %target-swift-frontend %s -O -I %t -emit-ir -g -o %t.ll
-// RUN: FileCheck %s < %t.ll
-// RUN: FileCheck %s -check-prefix=TRANSPARENT-CHECK < %t.ll
+// RUN: %FileCheck %s < %t.ll
+// RUN: %FileCheck %s -check-prefix=TRANSPARENT-CHECK < %t.ll
 
-// CHECK: define{{( protected)?( signext)?}} i32 @main
-// CHECK: tail call { i64, i1 } @llvm.smul.with.overflow.i64(i64 %[[C:.*]], i64 %[[C]]), !dbg ![[MULSCOPE:.*]]
-// CHECK-DAG: ![[TOPLEVEL:.*]] = !DIFile(filename: "inlinescopes.swift"
+// CHECK: define{{( dllexport)?}}{{( protected)?( signext)?}} i32 @main{{.*}}
+// CHECK: call swiftcc i64 @"$s4main8noinlineys5Int64VADF"(i64 %{{.*}})
+// CHECK-SAME: !dbg ![[CALL:.*]]
+// CHECK-DAG: ![[TOPLEVEL:.*]] = !DIFile(filename: "{{.*}}inlinescopes.swift"
 
 import FooBar
 
-func markUsed<T>(t: T) {}
+@inline(never)
+func use(_ x: Int64) -> Int64 { return x }
+
+@inline(never)
+func noinline(_ x: Int64) -> Int64 { return use(x) }
+
+@_transparent
+func transparent(_ x: Int64) -> Int64 { return noinline(x) }
+
 
 @inline(__always)
-func square(x: Int64) -> Int64 {
-// CHECK-DAG: ![[MULSCOPE]] = !DILocation(line: [[@LINE+2]], column: {{.*}}, scope: ![[MUL:.*]], inlinedAt: ![[INLINED:.*]])
-// CHECK-DAG: ![[MUL:.*]] = distinct !DILexicalBlock(
-  let res = x * x
-// *(Int, Int) is a transparent function and should not show up in the debug info.
-// TRANSPARENT-CHECK-NOT: !DISubprogram(name: "_TFsoi1mFTSiSi_Si"
-  return res
+func inlined(_ x: Int64) -> Int64 {
+// CHECK-DAG: ![[CALL]] = !DILocation(line: [[@LINE+4]], column: {{.*}}, scope: ![[SCOPE:.*]], inlinedAt: ![[INLINED:.*]])
+// Check if the inlined and removed function still has the correct linkage name.
+// CHECK-DAG: ![[SCOPE]] = distinct !DILexicalBlock(scope: ![[INLINED:[0-9]+]],
+// CHECK-DAG: ![[INLINED]] = distinct !DISubprogram(name: "inlined", linkageName: "$s4main7inlinedys5Int64VADF"
+  let result = transparent(x)
+// TRANSPARENT-CHECK-NOT: !DISubprogram(name: "transparent"
+  return result
 }
-let c = Int64(x)
 // CHECK-DAG: !DIGlobalVariable(name: "y",{{.*}} file: ![[TOPLEVEL]],{{.*}} line: [[@LINE+1]]
-let y = square(c)
-markUsed(y)
-
-// Check if the inlined and removed square function still has the correct linkage name in the debug info.
-// CHECK-DAG: !DISubprogram(name: "square", linkageName: "_TF4main6squareFVs5Int64S0_"
+public let y = inlined(x)

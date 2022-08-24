@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -21,8 +21,8 @@
 //   - FunctionPointerBox is a box for function pointers.
 //   - ObjCRetainableBox is a box for Objective-C object pointers,
 //     using objc_{retain,release}.
-//   - UnknownRetainableBox is a box for void* using
-//     swift_unknown{Retain,Release}.
+//   - UnknownObjectRetainableBox is a box for void* using
+//     swift_unknownObject{Retain,Release}.
 //   - AggregateBox<T...> is a box which uses swift layout rules to
 //     combine a number of different boxes.
 //
@@ -40,11 +40,18 @@
 #ifndef SWIFT_RUNTIME_METADATAIMPL_H
 #define SWIFT_RUNTIME_METADATAIMPL_H
 
-#include "llvm/Support/Compiler.h"
 #include "swift/Runtime/Config.h"
 #include "swift/Runtime/Metadata.h"
 #include "swift/Runtime/HeapObject.h"
+#if SWIFT_OBJC_INTEROP
+#include "swift/Runtime/ObjCBridge.h"
+#endif
+
+#include "WeakReference.h"
+#include "EnumImpl.h"
+
 #include <cstring>
+#include <new>
 #include <type_traits>
 
 namespace swift {
@@ -63,13 +70,9 @@ namespace metadataimpl {
 //   static T *initializeWithTake(T *dest, T *src);
 //   static T *assignWithCopy(T *dest, T *src);
 //   static T *assignWithTake(T *dest, T *src);
-//   static void destroyArray(T *arr, size_t n);
-//   static T *initializeArrayWithCopy(T *dest, T *src, size_t n);
-//   static T *initializeArrayWithTakeFrontToBack(T *dest, T *src, size_t n);
-//   static T *initializeArrayWithTakeBackToFront(T *dest, T *src, size_t n);
 //   // Only if numExtraInhabitants is non-zero:
-//   static void storeExtraInhabitant(T *dest, int index);
-//   static int getExtraInhabitantIndex(const T *src);
+//   static void storeExtraInhabitantTag(T *dest, unsigned index);
+//   static unsigned getExtraInhabitantTag(const T *src);
 // };
 
 /// A box class implemented in terms of C/C++ primitive operations.
@@ -96,65 +99,14 @@ struct NativeBox {
     value->T::~T();
   }
   
-  static void destroyArray(T *array, size_t n) {
-    if (isPOD) return;
-    while (n--) {
-      array->T::~T();
-      array = next(array);
-    }
-  }
-
   static T *initializeWithCopy(T *dest, T *src) {
-    return new (dest) T(*src);
+    return ::new (dest) T(*src);
   }
 
   static T *initializeWithTake(T *dest, T *src) {
-    T *result = new (dest) T(std::move(*src));
+    T *result = ::new (dest) T(std::move(*src));
     src->T::~T();
     return result;
-  }
-  
-  static T *initializeArrayWithCopy(T *dest, T *src, size_t n) {
-    if (isPOD) {
-      std::memcpy(dest, src, n * stride);
-      return dest;
-    }
-    
-    T *r = dest;
-    while (n--) {
-      new (dest) T(*src);
-      dest = next(dest); src = next(src);
-    }
-    return r;
-  }
-  
-  static T *initializeArrayWithTakeFrontToBack(T *dest, T *src, size_t n) {
-    if (isPOD) {
-      std::memmove(dest, src, n * stride);
-      return dest;
-    }
-    
-    T *r = dest;
-    while (n--) {
-      new (dest) T(*src);
-      dest = next(dest); src = next(src);
-    }
-    return r;
-  }
-  
-  static T *initializeArrayWithTakeBackToFront(T *dest, T *src, size_t n) {
-    if (isPOD) {
-      std::memmove(dest, src, n * stride);
-      return dest;
-    }
-    
-    T *r = dest;
-    dest = next(dest, n); src = next(src, n);
-    while (n--) {
-      dest = prev(dest); src = prev(src);
-      new (dest) T(*src);
-    }
-    return r;
   }
   
   static T *assignWithCopy(T *dest, T *src) {
@@ -185,6 +137,11 @@ template <class Impl, class T> struct RetainableBoxBase {
   static constexpr size_t stride = sizeof(T);
   static constexpr bool isPOD = false;
   static constexpr bool isBitwiseTakable = true;
+#ifdef SWIFT_THREADING_NONE
+  static constexpr bool isAtomic = false;
+#else
+  static constexpr bool isAtomic = true;
+#endif
 
   static void destroy(T *addr) {
     Impl::release(*addr);
@@ -197,28 +154,6 @@ template <class Impl, class T> struct RetainableBoxBase {
 
   static T *initializeWithTake(T *dest, T *src) {
     *dest = *src;
-    return dest;
-  }
-  
-  static void destroyArray(T *arr, size_t n) {
-    while (n--)
-      Impl::release(*arr++);
-  }
-  
-  static T *initializeArrayWithCopy(T *dest, T *src, size_t n) {
-    T *r = dest;
-    memcpy(dest, src, n * sizeof(T));
-    while (n--)
-      Impl::retain(*dest++);
-    return r;
-  }
-  
-  static T *initializeArrayWithTakeFrontToBack(T *dest, T *src, size_t n) {
-    memmove(dest, src, n * sizeof(T));
-    return dest;
-  }
-  static T *initializeArrayWithTakeBackToFront(T *dest, T *src, size_t n) {
-    memmove(dest, src, n * sizeof(T));
     return dest;
   }
   
@@ -243,12 +178,12 @@ template <class Impl, class T> struct RetainableBoxBase {
   static constexpr unsigned numExtraInhabitants =
     swift_getHeapObjectExtraInhabitantCount();
 
-  static void storeExtraInhabitant(T *dest, int index) {
-    swift_storeHeapObjectExtraInhabitant((HeapObject**) dest, index);
+  static void storeExtraInhabitantTag(T *dest, unsigned tag) {
+    swift_storeHeapObjectExtraInhabitant((HeapObject**) dest, tag - 1);
   }
 
-  static int getExtraInhabitantIndex(const T *src) {
-    return swift_getHeapObjectExtraInhabitantIndex((HeapObject* const *) src);
+  static unsigned getExtraInhabitantTag(const T *src) {
+    return swift_getHeapObjectExtraInhabitantIndex((HeapObject* const *) src) +1;
   }
 };
 
@@ -256,12 +191,20 @@ template <class Impl, class T> struct RetainableBoxBase {
 struct SwiftRetainableBox :
     RetainableBoxBase<SwiftRetainableBox, HeapObject*> {
   static HeapObject *retain(HeapObject *obj) {
-    swift_retain(obj);
+    if (isAtomic) {
+      swift_retain(obj);
+    } else {
+      swift_nonatomic_retain(obj);
+    }
     return obj;
   }
 
   static void release(HeapObject *obj) {
-    swift_release(obj);
+    if (isAtomic) {
+      swift_release(obj);
+    } else {
+      swift_nonatomic_release(obj);
+    }
   }
 };
 
@@ -269,12 +212,20 @@ struct SwiftRetainableBox :
 struct SwiftUnownedRetainableBox :
     RetainableBoxBase<SwiftUnownedRetainableBox, HeapObject*> {
   static HeapObject *retain(HeapObject *obj) {
-    swift_unownedRetain(obj);
+    if (isAtomic) {
+      swift_unownedRetain(obj);
+    } else {
+      swift_nonatomic_unownedRetain(obj);
+    }
     return obj;
   }
 
   static void release(HeapObject *obj) {
-    swift_unownedRelease(obj);
+    if (isAtomic) {
+      swift_unownedRelease(obj);
+    } else {
+      swift_nonatomic_unownedRelease(obj);
+    }
   }
 
 #if SWIFT_OBJC_INTEROP
@@ -282,13 +233,13 @@ struct SwiftUnownedRetainableBox :
   // disabled.
   static constexpr unsigned numExtraInhabitants = 1;
 
-  static void storeExtraInhabitant(HeapObject **dest, int index) {
-    assert(index == 0);
+  static void storeExtraInhabitant(HeapObject **dest, unsigned index) {
+    assert(index == 1);
     *dest = nullptr;
   }
 
-  static int getExtraInhabitantIndex(const HeapObject * const *src) {
-    return (*src == nullptr ? 0 : -1);
+  static unsigned getExtraInhabitantTag(const HeapObject * const *src) {
+    return (*src == nullptr ? 1 : 0);
   }
 #endif
 };
@@ -310,38 +261,6 @@ struct WeakRetainableBoxBase {
   //   static T *initializeWithTake(T *dest, T *src);
   //   static T *assignWithCopy(T *dest, T *src);
   //   static T *assignWithTake(T *dest, T *src);
-  // The array value witnesses are implemented pessimistically assuming the
-  // type is nontrivially copyable and takable.
-
-  static void destroyArray(T *arr, size_t n) {
-    while (n--)
-      Impl::destroy(arr++);
-  }
-  
-  static T *initializeArrayWithCopy(T *dest, T *src, size_t n) {
-    T *r = dest;
-    while (n--)
-      Impl::initializeWithCopy(dest++, src++);
-    return r;
-  }
-  
-  static T *initializeArrayWithTakeFrontToBack(T *dest, T *src, size_t n) {
-    T *r = dest;
-    while (n--)
-      Impl::initializeWithTake(dest++, src++);
-    return r;
-  }
-  static T *initializeArrayWithTakeBackToFront(T *dest, T *src, size_t n) {
-    T *r = dest;
-
-    dest += n;
-    src  += n;
-
-    while (n--)
-      Impl::initializeWithTake(--dest, --src);
-
-    return r;
-  }
 };
 
 /// A box implementation class for Swift weak object pointers.
@@ -373,20 +292,17 @@ struct SwiftWeakRetainableBox :
 };
 
 #if SWIFT_OBJC_INTEROP
-extern "C" void *objc_retain(void *obj);
-extern "C" void objc_release(void *obj);
-
 /// A box implementation class for Objective-C object pointers.
 struct ObjCRetainableBox : RetainableBoxBase<ObjCRetainableBox, void*> {
   static constexpr unsigned numExtraInhabitants =
     swift_getHeapObjectExtraInhabitantCount();
 
   static void *retain(void *obj) {
-    return objc_retain(obj);
+    return objc_retain((id)obj);
   }
 
   static void release(void *obj) {
-    objc_release(obj);
+    objc_release((id)obj);
   }
 };
 
@@ -395,35 +311,35 @@ struct ObjCUnownedRetainableBox
     : WeakRetainableBoxBase<ObjCUnownedRetainableBox, UnownedReference> {
 
   static constexpr unsigned numExtraInhabitants = 1;
-  static void storeExtraInhabitant(UnownedReference *dest, int index) {
-    assert(index == 0);
+  static void storeExtraInhabitantTag(UnownedReference *dest, unsigned index) {
+    assert(index == 1);
     dest->Value = nullptr;
   }
-  static int getExtraInhabitantIndex(const UnownedReference *src) {
-    return (src->Value == nullptr ? 0 : -1);
+  static unsigned getExtraInhabitantTag(const UnownedReference *src) {
+    return (src->Value == nullptr ? 1 : 0);
   }
 
   static void destroy(UnownedReference *ref) {
-    swift_unknownUnownedDestroy(ref);
+    swift_unknownObjectUnownedDestroy(ref);
   }
   static UnownedReference *initializeWithCopy(UnownedReference *dest,
                                               UnownedReference *src) {
-    swift_unknownUnownedCopyInit(dest, src);
+    swift_unknownObjectUnownedCopyInit(dest, src);
     return dest;
   }
   static UnownedReference *initializeWithTake(UnownedReference *dest,
                                               UnownedReference *src) {
-    swift_unknownUnownedTakeInit(dest, src);
+    swift_unknownObjectUnownedTakeInit(dest, src);
     return dest;
   }
   static UnownedReference *assignWithCopy(UnownedReference *dest,
                                           UnownedReference *src) {
-    swift_unknownUnownedCopyAssign(dest, src);
+    swift_unknownObjectUnownedCopyAssign(dest, src);
     return dest;
   }
   static UnownedReference *assignWithTake(UnownedReference *dest,
                                           UnownedReference *src) {
-    swift_unknownUnownedTakeAssign(dest, src);
+    swift_unknownObjectUnownedTakeAssign(dest, src);
     return dest;
   }
 };
@@ -432,26 +348,26 @@ struct ObjCUnownedRetainableBox
 struct ObjCWeakRetainableBox :
     WeakRetainableBoxBase<ObjCWeakRetainableBox, WeakReference> {
   static void destroy(WeakReference *ref) {
-    swift_unknownWeakDestroy(ref);
+    swift_unknownObjectWeakDestroy(ref);
   }
   static WeakReference *initializeWithCopy(WeakReference *dest,
                                            WeakReference *src) {
-    swift_unknownWeakCopyInit(dest, src);
+    swift_unknownObjectWeakCopyInit(dest, src);
     return dest;
   }
   static WeakReference *initializeWithTake(WeakReference *dest,
                                            WeakReference *src) {
-    swift_unknownWeakTakeInit(dest, src);
+    swift_unknownObjectWeakTakeInit(dest, src);
     return dest;
   }
   static WeakReference *assignWithCopy(WeakReference *dest,
                                        WeakReference *src) {
-    swift_unknownWeakCopyAssign(dest, src);
+    swift_unknownObjectWeakCopyAssign(dest, src);
     return dest;
   }
   static WeakReference *assignWithTake(WeakReference *dest,
                                        WeakReference *src) {
-    swift_unknownWeakTakeAssign(dest, src);
+    swift_unknownObjectWeakTakeAssign(dest, src);
     return dest;
   }
 };
@@ -459,22 +375,31 @@ struct ObjCWeakRetainableBox :
 #endif
 
 /// A box implementation class for unknown-retainable object pointers.
-struct UnknownRetainableBox : RetainableBoxBase<UnknownRetainableBox, void*> {
+struct UnknownObjectRetainableBox
+    : RetainableBoxBase<UnknownObjectRetainableBox, void *> {
   static void *retain(void *obj) {
 #if SWIFT_OBJC_INTEROP
-    swift_unknownRetain(obj);
+    swift_unknownObjectRetain(obj);
     return obj;
 #else
-    swift_retain(static_cast<HeapObject *>(obj));
+    if (isAtomic) {
+      swift_retain(static_cast<HeapObject *>(obj));
+    } else {
+      swift_nonatomic_retain(static_cast<HeapObject *>(obj));
+    }
     return static_cast<HeapObject *>(obj);
 #endif
   }
 
   static void release(void *obj) {
 #if SWIFT_OBJC_INTEROP
-    swift_unknownRelease(obj);
+    swift_unknownObjectRelease(obj);
 #else
-    swift_release(static_cast<HeapObject *>(obj));
+    if (isAtomic) {
+      swift_release(static_cast<HeapObject *>(obj));
+    } else {
+      swift_nonatomic_release(static_cast<HeapObject *>(obj));
+    }
 #endif
   }
 };
@@ -482,23 +407,12 @@ struct UnknownRetainableBox : RetainableBoxBase<UnknownRetainableBox, void*> {
 /// A box implementation class for BridgeObject.
 struct BridgeObjectBox :
     RetainableBoxBase<BridgeObjectBox, void*> {
-  // TODO: Enable the nil extra inhabitant.
-  static constexpr unsigned numExtraInhabitants = 1;
-      
   static void *retain(void *obj) {
     return swift_bridgeObjectRetain(obj);
   }
 
   static void release(void *obj) {
     swift_bridgeObjectRelease(obj);
-  }
-      
-  static void storeExtraInhabitant(void **dest, int index) {
-    *dest = nullptr;
-  }
-
-  static int getExtraInhabitantIndex(void* const *src) {
-    return *src == nullptr ? 0 : -1;
   }
 };
   
@@ -510,12 +424,29 @@ struct PointerPointerBox : NativeBox<void**> {
   static constexpr unsigned numExtraInhabitants =
     swift_getHeapObjectExtraInhabitantCount();
 
-  static void storeExtraInhabitant(void ***dest, int index) {
-    swift_storeHeapObjectExtraInhabitant((HeapObject**) dest, index);
+  static void storeExtraInhabitantTag(void ***dest, unsigned tag) {
+    swift_storeHeapObjectExtraInhabitant((HeapObject**) dest, tag - 1);
   }
 
-  static int getExtraInhabitantIndex(void ** const *src) {
-    return swift_getHeapObjectExtraInhabitantIndex((HeapObject* const *) src);
+  static unsigned getExtraInhabitantTag(void ** const *src) {
+    return swift_getHeapObjectExtraInhabitantIndex((HeapObject* const *) src)+1;
+  }
+};
+
+/// A box implementation class for raw pointers.
+///
+/// Note that this is used for imported `void * _Nonnull`, which may include
+/// reinterpret_cast-ed integers, so we only get NULL as an extra inhabitant.
+struct RawPointerBox : NativeBox<void*> {
+  static constexpr unsigned numExtraInhabitants = 1;
+
+  static void storeExtraInhabitantTag(void **dest, unsigned tag) {
+    assert(tag == 1);
+    *dest = nullptr;
+  }
+
+  static unsigned getExtraInhabitantTag(void* const *src) {
+    return *src == nullptr ? 1 : 0;
   }
 };
 
@@ -526,12 +457,12 @@ struct FunctionPointerBox : NativeBox<void*> {
   static constexpr unsigned numExtraInhabitants =
     swift_getFunctionPointerExtraInhabitantCount();
 
-  static void storeExtraInhabitant(void **dest, int index) {
-    swift_storeFunctionPointerExtraInhabitant(dest, index);
+  static void storeExtraInhabitantTag(void **dest, unsigned tag) {
+    swift_storeFunctionPointerExtraInhabitant(dest, tag - 1);
   }
 
-  static int getExtraInhabitantIndex(void * const *src) {
-    return swift_getFunctionPointerExtraInhabitantIndex(src);
+  static unsigned getExtraInhabitantTag(void * const *src) {
+    return swift_getFunctionPointerExtraInhabitantIndex(src) + 1;
   }
 };
 
@@ -627,7 +558,9 @@ struct AggregateBox {
   using Helper = AggregateBoxHelper<0, EltBoxes...>;
   static constexpr size_t size = Helper::endOffset;
   static constexpr size_t alignment = Helper::alignment;
-  static constexpr size_t stride = roundUpToAlignment(size, alignment);
+  static constexpr size_t rawStride = roundUpToAlignment(size, alignment);
+  static constexpr size_t stride = rawStride == 0 ? 1 : rawStride;
+
   static constexpr bool isPOD = Helper::isPOD;
   static constexpr bool isBitwiseTakable = Helper::isBitwiseTakable;
 
@@ -653,55 +586,6 @@ struct AggregateBox {
   static char *assignWithTake(char *dest, char *src) {
     return Helper::assignWithTake(dest, src);
   }
-  
-  static void destroyArray(char *array, size_t n) {
-    if (isPOD)
-      return;
-    while (n--) {
-      destroy(array);
-      array += stride;
-    }
-  }
-  static char *initializeArrayWithCopy(char *dest, char *src, size_t n) {
-    if (isPOD) {
-      std::memcpy(dest, src, n * stride);
-      return dest;
-    }
-    
-    char *r = dest;
-    while (n--) {
-      initializeWithCopy(dest, src);
-      dest += stride; src += stride;
-    }
-    return r;
-  }
-  static char *initializeArrayWithTakeFrontToBack(char *dest, char *src, size_t n) {
-    if (isPOD) {
-      std::memmove(dest, src, n * stride);
-      return dest;
-    }
-    
-    char *r = dest;
-    while (n--) {
-      initializeWithTake(dest, src);
-      dest += stride; src += stride;
-    }
-    return r;
-  }
-  static char *initializeArrayWithTakeBackToFront(char *dest, char *src, size_t n) {
-    if (isPOD) {
-      std::memmove(dest, src, n * stride);
-      return dest;
-    }
-    
-    char *r = dest;
-    dest += stride * n; src += stride * n;
-    while (n--) {
-      dest -= stride; src -= stride;
-      initializeWithTake(dest, src);
-    }
-    return r;
-  }
 };
   
 /// A template for using the Swift allocation APIs with a known size
@@ -719,96 +603,65 @@ struct SwiftAllocator {
 
 /// A CRTP class which provides basic implementations for a number of
 /// value witnesses relating to buffers.
-template <class Impl> struct BufferValueWitnessesBase {
-  static void destroyBuffer(ValueBuffer *buffer, const Metadata *self) {
-    Impl::destroy(Impl::projectBuffer(buffer, self), self);
-    Impl::deallocateBuffer(buffer, self);
-  }
-
-  static OpaqueValue *initializeBufferWithCopyOfBuffer(ValueBuffer *dest,
-                                                       ValueBuffer *src,
-                                                       const Metadata *self) {
-    return Impl::initializeBufferWithCopy(dest,
-                                          Impl::projectBuffer(src, self),
-                                          self);
-  }
-
-  static OpaqueValue *initializeBufferWithCopy(ValueBuffer *dest,
-                                               OpaqueValue *src,
-                                               const Metadata *self) {
-    return Impl::initializeWithCopy(Impl::allocateBuffer(dest, self), src, self);
-  }
-
-  static OpaqueValue *initializeBufferWithTake(ValueBuffer *dest,
-                                               OpaqueValue *src,
-                                               const Metadata *self) {
-    return Impl::initializeWithTake(Impl::allocateBuffer(dest, self), src, self);
-  }
-};
+template <class Impl>
+struct BufferValueWitnessesBase {};
 
 /// How should a type be packed into a fixed-size buffer?
 enum class FixedPacking {
   Allocate,
   OffsetZero
 };
-constexpr FixedPacking getFixedPacking(size_t size, size_t alignment) {
-  return (canBeInline(size, alignment) ? FixedPacking::OffsetZero
-                                       : FixedPacking::Allocate);
+constexpr FixedPacking getFixedPacking(bool isBitwiseTakable, size_t size,
+                                       size_t alignment) {
+  return (canBeInline(isBitwiseTakable, size, alignment)
+              ? FixedPacking::OffsetZero
+              : FixedPacking::Allocate);
 }
 
 /// A CRTP base class which provides default implementations of a
 /// number of value witnesses.
-template <class Impl, size_t Size, size_t Alignment,
-          FixedPacking Packing = getFixedPacking(Size, Alignment)>
+template <class Impl, bool isBitwiseTakable, size_t Size, size_t Alignment,
+          FixedPacking Packing =
+              getFixedPacking(isBitwiseTakable, Size, Alignment)>
 struct BufferValueWitnesses;
 
 /// An implementation of ValueBase suitable for classes that can be
 /// allocated inline.
-template <class Impl, size_t Size, size_t Alignment>
-struct BufferValueWitnesses<Impl, Size, Alignment, FixedPacking::OffsetZero>
+template <class Impl, bool isBitwiseTakable, size_t Size, size_t Alignment>
+struct BufferValueWitnesses<Impl, isBitwiseTakable, Size, Alignment,
+                            FixedPacking::OffsetZero>
     : BufferValueWitnessesBase<Impl> {
   static constexpr bool isInline = true;
 
-  static OpaqueValue *allocateBuffer(ValueBuffer *buffer, const Metadata *self) {
-    return reinterpret_cast<OpaqueValue*>(buffer);
-  }
-  static OpaqueValue *projectBuffer(ValueBuffer *buffer, const Metadata *self) {
-    return reinterpret_cast<OpaqueValue*>(buffer);
-  }
-  static OpaqueValue *initializeBufferWithTakeOfBuffer(ValueBuffer *dest,
+  static OpaqueValue *initializeBufferWithCopyOfBuffer(ValueBuffer *dest,
                                                        ValueBuffer *src,
                                                        const Metadata *self) {
-    return Impl::initializeWithTake(reinterpret_cast<OpaqueValue*>(dest),
-                                    reinterpret_cast<OpaqueValue*>(src),
-                                    self);
+    return Impl::initializeWithCopy(reinterpret_cast<OpaqueValue *>(dest),
+                                    reinterpret_cast<OpaqueValue *>(src), self);
   }
-  static void deallocateBuffer(ValueBuffer *buffer, const Metadata *self) {}
 };
 
 /// An implementation of BufferValueWitnesses suitable for types that
 /// cannot be allocated inline.
-template <class Impl, size_t Size, size_t Alignment>
-struct BufferValueWitnesses<Impl, Size, Alignment, FixedPacking::Allocate>
+template <class Impl, bool isBitwiseTakable, size_t Size, size_t Alignment>
+struct BufferValueWitnesses<Impl, isBitwiseTakable, Size, Alignment,
+                            FixedPacking::Allocate>
     : BufferValueWitnessesBase<Impl> {
   static constexpr bool isInline = false;
 
-  static OpaqueValue *allocateBuffer(ValueBuffer *buffer, const Metadata *self) {
-    OpaqueValue *value =
-      static_cast<OpaqueValue*>(SwiftAllocator<Size, Alignment>::alloc());
-    buffer->PrivateData[0] = value;
-    return value;
-  }
-  static OpaqueValue *projectBuffer(ValueBuffer *buffer, const Metadata *self) {
-    return reinterpret_cast<OpaqueValue*>(buffer->PrivateData[0]);
-  }
-  static void deallocateBuffer(ValueBuffer *buffer, const Metadata *self) {
-    SwiftAllocator<Size, Alignment>::dealloc(buffer->PrivateData[0]);
-  }
-  static OpaqueValue *initializeBufferWithTakeOfBuffer(ValueBuffer *dest,
+  static OpaqueValue *initializeBufferWithCopyOfBuffer(ValueBuffer *dest,
                                                        ValueBuffer *src,
                                                        const Metadata *self) {
-    dest->PrivateData[0] = src->PrivateData[0];
-    return (OpaqueValue*) dest->PrivateData[0];
+    auto wtable = self->getValueWitnesses();
+    auto reference = src->PrivateData[0];
+    dest->PrivateData[0] = reference;
+    swift_retain(reinterpret_cast<HeapObject *>(reference));
+    // Project the address of the value in the buffer.
+    unsigned alignMask = wtable->getAlignmentMask();
+    // Compute the byte offset of the object in the box.
+    unsigned byteOffset = (sizeof(HeapObject) + alignMask) & ~alignMask;
+    auto *bytePtr = reinterpret_cast<char *>(reference);
+    return reinterpret_cast<OpaqueValue *>(bytePtr + byteOffset);
   }
 };
 
@@ -816,78 +669,113 @@ struct BufferValueWitnesses<Impl, Size, Alignment, FixedPacking::Allocate>
 /// fixed in size.
 template <class Impl, bool IsKnownAllocated>
 struct NonFixedBufferValueWitnesses : BufferValueWitnessesBase<Impl> {
-  static OpaqueValue *allocateBuffer(ValueBuffer *buffer, const Metadata *self) {
-    auto vwtable = self->getValueWitnesses();
-    if (!IsKnownAllocated && vwtable->isValueInline()) {
-      return reinterpret_cast<OpaqueValue*>(buffer);
-    } else {
-      OpaqueValue *value =
-        static_cast<OpaqueValue*>(swift_slowAlloc(vwtable->size,
-                                                  vwtable->getAlignmentMask()));
-      buffer->PrivateData[0] = value;
-      return value;
-    }
-  }
 
-  static OpaqueValue *projectBuffer(ValueBuffer *buffer, const Metadata *self) {
-    auto vwtable = self->getValueWitnesses();
-    if (!IsKnownAllocated && vwtable->isValueInline()) {
-      return reinterpret_cast<OpaqueValue*>(buffer);
-    } else {
-      return reinterpret_cast<OpaqueValue*>(buffer->PrivateData[0]);
-    }
-  }
-
-  static void deallocateBuffer(ValueBuffer *buffer, const Metadata *self) {
-    auto vwtable = self->getValueWitnesses();
-    if (IsKnownAllocated || !vwtable->isValueInline()) {
-      swift_slowDealloc(buffer->PrivateData[0], vwtable->size,
-                        vwtable->getAlignmentMask());
-    }
-  }
-
-  static OpaqueValue *initializeBufferWithTakeOfBuffer(ValueBuffer *dest,
+  static OpaqueValue *initializeBufferWithCopyOfBuffer(ValueBuffer *dest,
                                                        ValueBuffer *src,
                                                        const Metadata *self) {
     auto vwtable = self->getValueWitnesses();
-    if (!IsKnownAllocated && !vwtable->isValueInline()) {
-      return Impl::initializeWithTake(reinterpret_cast<OpaqueValue*>(dest),
+    (void)vwtable;
+    if (!IsKnownAllocated && vwtable->isValueInline()) {
+      return Impl::initializeWithCopy(reinterpret_cast<OpaqueValue*>(dest),
                                       reinterpret_cast<OpaqueValue*>(src),
                                       self);
     } else {
-      dest->PrivateData[0] = src->PrivateData[0];
-      return (OpaqueValue*) dest->PrivateData[0];
+      auto reference = src->PrivateData[0];
+      dest->PrivateData[0] = reference;
+      swift_retain(reinterpret_cast<HeapObject*>(reference));
+      // Project the address of the value in the buffer.
+      unsigned alignMask = vwtable->getAlignmentMask();
+      // Compute the byte offset of the object in the box.
+      unsigned byteOffset = (sizeof(HeapObject) + alignMask) & ~alignMask;
+      auto *bytePtr = reinterpret_cast<char *>(reference);
+      return reinterpret_cast<OpaqueValue *>(bytePtr + byteOffset);
     }
   }
 };
 
+/// Provides implementations for
+/// getEnumTagSinglePayload/storeEnumTagSinglePayload.
+template <class Impl, bool isBitwiseTakable, size_t Size, size_t Alignment,
+          bool hasExtraInhabitants>
+struct FixedSizeBufferValueWitnesses;
+
+/// A fixed size buffer value witness that can rely on the presents of the extra
+/// inhabitant functions.
+template <class Impl, bool isBitwiseTakable, size_t Size, size_t Alignment>
+struct FixedSizeBufferValueWitnesses<Impl, isBitwiseTakable, Size, Alignment,
+                                     true /*hasExtraInhabitants*/>
+    : BufferValueWitnesses<Impl, isBitwiseTakable, Size, Alignment> {
+
+  static unsigned getEnumTagSinglePayload(const OpaqueValue *enumAddr,
+                                          unsigned numEmptyCases,
+                                          const Metadata *self) {
+    return getEnumTagSinglePayloadImpl(enumAddr, numEmptyCases, self, Size,
+                                       Impl::extraInhabitantCount,
+                                       Impl::getExtraInhabitantTag);
+  }
+
+  static void storeEnumTagSinglePayload(OpaqueValue *enumAddr,
+                                        unsigned whichCase,
+                                        unsigned numEmptyCases,
+                                        const Metadata *self) {
+    return storeEnumTagSinglePayloadImpl(enumAddr, whichCase, numEmptyCases,
+                                         self, Size, Impl::extraInhabitantCount,
+                                         Impl::storeExtraInhabitantTag);
+  }
+};
+
+/// A fixed size buffer value witness that cannot rely on the presents of the
+/// extra inhabitant functions.
+template <class Impl, bool isBitwiseTakable, size_t Size, size_t Alignment>
+struct FixedSizeBufferValueWitnesses<Impl, isBitwiseTakable, Size, Alignment,
+                                     false /*hasExtraInhabitants*/>
+    : BufferValueWitnesses<Impl, isBitwiseTakable, Size, Alignment> {
+
+  static unsigned getEnumTagSinglePayload(const OpaqueValue *enumAddr,
+                                          unsigned numEmptyCases,
+                                          const Metadata *self) {
+    return getEnumTagSinglePayloadImpl(enumAddr, numEmptyCases, self, Size, 0,
+                                       nullptr);
+  }
+
+  static void storeEnumTagSinglePayload(OpaqueValue *enumAddr,
+                                        unsigned whichCase,
+                                        unsigned numEmptyCases,
+                                        const Metadata *self) {
+    return storeEnumTagSinglePayloadImpl(enumAddr, whichCase, numEmptyCases,
+                                         self, Size, 0, nullptr);
+  }
+};
+
+static constexpr bool hasExtraInhabitants(unsigned numExtraInhabitants) {
+  return numExtraInhabitants != 0;
+}
 /// A class which provides default implementations of various value
 /// witnesses based on a box's value operations.
 ///
 /// The box type has to provide a numExtraInhabitants member, but as
 /// long as it's zero, the rest is fine.
 template <class Box>
-struct ValueWitnesses : BufferValueWitnesses<ValueWitnesses<Box>,
-                                             Box::size, Box::alignment>
-{
-  using Base = BufferValueWitnesses<ValueWitnesses<Box>,
-                                    Box::size, Box::alignment>;
+struct ValueWitnesses
+    : FixedSizeBufferValueWitnesses<
+          ValueWitnesses<Box>, Box::isBitwiseTakable, Box::size, Box::alignment,
+          hasExtraInhabitants(Box::numExtraInhabitants)> {
+  using Base = FixedSizeBufferValueWitnesses<
+      ValueWitnesses<Box>, Box::isBitwiseTakable, Box::size, Box::alignment,
+      hasExtraInhabitants(Box::numExtraInhabitants)>;
 
   static constexpr size_t size = Box::size;
   static constexpr size_t stride = Box::stride;
   static constexpr size_t alignment = Box::alignment;
   static constexpr bool isPOD = Box::isPOD;
   static constexpr bool isBitwiseTakable = Box::isBitwiseTakable;
-  static constexpr unsigned numExtraInhabitants = Box::numExtraInhabitants;
-  static constexpr bool hasExtraInhabitants = (numExtraInhabitants != 0);
+  static constexpr unsigned extraInhabitantCount = Box::numExtraInhabitants;
+  static constexpr bool hasExtraInhabitants = (extraInhabitantCount != 0);
   static constexpr ValueWitnessFlags flags =
     ValueWitnessFlags().withAlignmentMask(alignment - 1)
-                       .withInlineStorage(Base::isInline)
+                       .withInlineStorage(Base::isInline && isBitwiseTakable)
                        .withPOD(isPOD)
-                       .withBitwiseTakable(isBitwiseTakable)
-                       .withExtraInhabitants(hasExtraInhabitants);
-  static constexpr ExtraInhabitantFlags extraInhabitantFlags =
-    ExtraInhabitantFlags().withNumExtraInhabitants(numExtraInhabitants);
+                       .withBitwiseTakable(isBitwiseTakable);
 
   static void destroy(OpaqueValue *value, const Metadata *self) {
     return Box::destroy((typename Box::type*) value);
@@ -917,47 +805,20 @@ struct ValueWitnesses : BufferValueWitnesses<ValueWitnesses<Box>,
                                               (typename Box::type*) src);
   }
 
-  static void destroyArray(OpaqueValue *array, size_t n, const Metadata *self) {
-    return Box::destroyArray((typename Box::type*)array, n);
-  }
-  
-  static OpaqueValue *initializeArrayWithCopy(OpaqueValue *dest,
-                                              OpaqueValue *src,
-                                              size_t n,
-                                              const Metadata *self) {
-    return (OpaqueValue*) Box::initializeArrayWithCopy((typename Box::type*) dest,
-                                                 (typename Box::type*) src, n);
-  }
-  
-  static OpaqueValue *initializeArrayWithTakeFrontToBack(OpaqueValue *dest,
-                                              OpaqueValue *src,
-                                              size_t n,
-                                              const Metadata *self) {
-    return (OpaqueValue*) Box::initializeArrayWithTakeFrontToBack(
-                                                   (typename Box::type*) dest,
-                                                   (typename Box::type*) src, n);
-  }
-  
-  static OpaqueValue *initializeArrayWithTakeBackToFront(OpaqueValue *dest,
-                                              OpaqueValue *src,
-                                              size_t n,
-                                              const Metadata *self) {
-    return (OpaqueValue*) Box::initializeArrayWithTakeBackToFront(
-                                                   (typename Box::type*) dest,
-                                                   (typename Box::type*) src, n);
-  }
-  
   // These should not get instantiated if the type doesn't have extra
   // inhabitants.
 
-  static void storeExtraInhabitant(OpaqueValue *dest, int index,
-                                   const Metadata *self) {
-    Box::storeExtraInhabitant((typename Box::type*) dest, index);
+  SWIFT_CC(swift)
+  static void storeExtraInhabitantTag(OpaqueValue *dest, unsigned tag,
+                                      unsigned xiCount, const Metadata *self) {
+    Box::storeExtraInhabitantTag((typename Box::type*) dest, tag);
   }
 
-  static int getExtraInhabitantIndex(const OpaqueValue *src,
-                                     const Metadata *self) {
-    return Box::getExtraInhabitantIndex((typename Box::type const *) src);
+  SWIFT_CC(swift)
+  static unsigned getExtraInhabitantTag(const OpaqueValue *src,
+                                        unsigned xiCount,
+                                        const Metadata *self) {
+    return Box::getExtraInhabitantTag((typename Box::type const *) src);
   }
 };
 
@@ -979,16 +840,9 @@ struct NonFixedValueWitnesses :
 
   static constexpr unsigned numExtraInhabitants = Box::numExtraInhabitants;
   static constexpr bool hasExtraInhabitants = (numExtraInhabitants != 0);
-  static constexpr ExtraInhabitantFlags extraInhabitantFlags =
-    ExtraInhabitantFlags().withNumExtraInhabitants(numExtraInhabitants);
 
   static void destroy(OpaqueValue *value, const Metadata *self) {
     return Box::destroy((typename Box::type*) value, self);
-  }
-  
-  static void destroyArray(OpaqueValue *array, size_t n,
-                           const Metadata *self) {
-    return Box::destroyArray((typename Box::type*) array, n, self);
   }
   
   static OpaqueValue *initializeWithCopy(OpaqueValue *dest, OpaqueValue *src,
@@ -1005,36 +859,6 @@ struct NonFixedValueWitnesses :
                                                   self);
   }
   
-  static OpaqueValue *initializeArrayWithCopy(OpaqueValue *dest,
-                                              OpaqueValue *src,
-                                              size_t n,
-                                              const Metadata *self) {
-    return (OpaqueValue*) Box::initializeArrayWithCopy(
-                                                  (typename Box::type*) dest,
-                                                  (typename Box::type*) src,
-                                                  n, self);
-  }
-  
-  static OpaqueValue *initializeArrayWithTakeFrontToBack(OpaqueValue *dest,
-                                                         OpaqueValue *src,
-                                                         size_t n,
-                                                         const Metadata *self) {
-    return (OpaqueValue*) Box::initializeArrayWithTakeFrontToBack(
-                                                  (typename Box::type*) dest,
-                                                  (typename Box::type*) src,
-                                                  n, self);
-  }
-
-  static OpaqueValue *initializeArrayWithTakeBackToFront(OpaqueValue *dest,
-                                                         OpaqueValue *src,
-                                                         size_t n,
-                                                         const Metadata *self) {
-    return (OpaqueValue*) Box::initializeArrayWithTakeBackToFront(
-                                                  (typename Box::type*) dest,
-                                                  (typename Box::type*) src,
-                                                  n, self);
-  }
-
   static OpaqueValue *assignWithCopy(OpaqueValue *dest, OpaqueValue *src,
                                      const Metadata *self) {
     return (OpaqueValue*) Box::assignWithCopy((typename Box::type*) dest,
@@ -1049,51 +873,55 @@ struct NonFixedValueWitnesses :
                                               self);
   }
 
+  static unsigned getEnumTagSinglePayload(const OpaqueValue *enumAddr,
+                                          unsigned numEmptyCases,
+                                          const Metadata *self) {
+    auto *payloadWitnesses = self->getValueWitnesses();
+    auto size = payloadWitnesses->getSize();
+    auto numExtraInhabitants = payloadWitnesses->getNumExtraInhabitants();
+
+    return getEnumTagSinglePayloadImpl(enumAddr, numEmptyCases, self, size,
+                                       numExtraInhabitants,
+                                       getExtraInhabitantTag);
+  }
+
+  static void storeEnumTagSinglePayload(OpaqueValue *enumAddr,
+                                        unsigned whichCase,
+                                        unsigned numEmptyCases,
+                                        const Metadata *self) {
+    auto *payloadWitnesses = self->getValueWitnesses();
+    auto size = payloadWitnesses->getSize();
+    auto numExtraInhabitants = payloadWitnesses->getNumExtraInhabitants();
+
+    storeEnumTagSinglePayloadImpl(enumAddr, whichCase, numEmptyCases, self,
+                                  size, numExtraInhabitants,
+                                  storeExtraInhabitantTag);
+  }
+
   // These should not get instantiated if the type doesn't have extra
   // inhabitants.
 
-  static void storeExtraInhabitant(OpaqueValue *dest, int index,
-                                   const Metadata *self) {
-    Box::storeExtraInhabitant((typename Box::type*) dest, index, self);
+  SWIFT_CC(swift)
+  static void storeExtraInhabitantTag(OpaqueValue *dest, unsigned tag,
+                                      unsigned xiCount, const Metadata *self) {
+    Box::storeExtraInhabitantTag((typename Box::type*) dest, tag);
   }
 
-  static int getExtraInhabitantIndex(const OpaqueValue *src,
-                                     const Metadata *self) {
-    return Box::getExtraInhabitantIndex((typename Box::type const *) src,
-                                        self);
+  SWIFT_CC(swift)
+  static unsigned getExtraInhabitantTag(const OpaqueValue *src,
+                                        unsigned xiCount,
+                                        const Metadata *self) {
+    return Box::getExtraInhabitantTag((typename Box::type const *) src);
   }
 };
 
 /// A class which defines a ValueWitnessTable.
-template <class Witnesses,
-          bool HasExtraInhabitants = Witnesses::hasExtraInhabitants>
-struct ValueWitnessTableGenerator;
-
-template <class Witnesses> struct ValueWitnessTableGenerator<Witnesses, false> {
+template <class Witnesses>
+struct ValueWitnessTableGenerator {
   static constexpr const ValueWitnessTable table = {
-#define EACH_WITNESS(ID) Witnesses::ID,
-    FOR_ALL_FUNCTION_VALUE_WITNESSES(EACH_WITNESS)
-#undef EACH_WITNESS
-    Witnesses::size,
-    Witnesses::flags,
-    Witnesses::stride,
-  };
-};
-
-/// A class which defines an ExtraInhabitantsValueWitnessTable.
-template <class Witnesses> struct ValueWitnessTableGenerator<Witnesses, true> {
-  static constexpr const ExtraInhabitantsValueWitnessTable table = {
-    {
-#define EACH_WITNESS(ID) Witnesses::ID,
-      FOR_ALL_FUNCTION_VALUE_WITNESSES(EACH_WITNESS)
-#undef EACH_WITNESS
-      Witnesses::size,
-      Witnesses::flags,
-      Witnesses::stride,
-    },
-    Witnesses::extraInhabitantFlags,
-    Witnesses::storeExtraInhabitant,
-    Witnesses::getExtraInhabitantIndex,
+#define WANT_ONLY_REQUIRED_VALUE_WITNESSES
+#define VALUE_WITNESS(LOWER_ID, UPPER_ID) Witnesses::LOWER_ID,
+#include "swift/ABI/ValueWitness.def"
   };
 };
 

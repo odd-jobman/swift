@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -19,6 +19,9 @@
 #define SWIFT_IRGEN_METADATAPATH_H
 
 #include "swift/Basic/EncodedSequence.h"
+#include "swift/Reflection/MetadataSource.h"
+#include "WitnessIndex.h"
+#include "IRGen.h"
 
 namespace llvm {
   class Value;
@@ -28,10 +31,13 @@ namespace swift {
   class ProtocolDecl;
   class CanType;
   class Decl;
+  enum class MetadataState : size_t;
 
 namespace irgen {
+  class DynamicMetadataRequest;
   class IRGenFunction;
   class LocalTypeDataKey;
+  class MetadataResponse;
 
 /// A path from one source metadata --- either Swift type metadata or a Swift
 /// protocol conformance --- to another.
@@ -42,20 +48,24 @@ class MetadataPath {
       // Some components carry indices.
       // P means the primary index.
 
-      /// Base protocol P of a protocol.
-      InheritedProtocol,
+      /// Associated conformance of a protocol.  P is the WitnessIndex.
+      AssociatedConformance,
+
+      /// Base protocol of a protocol.  P is the WitnessIndex.
+      OutOfLineBaseProtocol,
 
       /// Witness table at requirement index P of a generic nominal type.
       NominalTypeArgumentConformance,
 
       /// Type metadata at requirement index P of a generic nominal type.
       NominalTypeArgument,
-      LastWithPrimaryIndex = NominalTypeArgument,
+
+      /// Conditional conformance at index P (i.e. the P'th element) of a
+      /// conformance.
+      ConditionalConformance,
+      LastWithPrimaryIndex = ConditionalConformance,
 
       // Everything past this point has no index.
-
-      /// The parent metadata of a nominal type.
-      NominalParent,
 
       /// An impossible path.
       Impossible,
@@ -90,12 +100,21 @@ class MetadataPath {
     }
 
     /// Return an abstract measurement of the cost of this component.
-    unsigned cost() const {
-      // Right now, all components cost the same: they take one load.
-      // In the future, maybe some components will be cheaper (no loads,
-      // like loading from a superclass's metadata) or more expensive
-      // (multiple loads, or even a call).
-      return 1;
+    OperationCost cost() const {
+      switch (getKind()) {
+      case Kind::OutOfLineBaseProtocol:
+      case Kind::NominalTypeArgumentConformance:
+      case Kind::NominalTypeArgument:
+      case Kind::ConditionalConformance:
+        return OperationCost::Load;
+
+      case Kind::AssociatedConformance:
+        return OperationCost::Call;
+
+      case Kind::Impossible:
+        llvm_unreachable("cannot compute cost of an impossible path");
+      }
+      llvm_unreachable("bad path component");
     }
 
     static Component decode(const EncodedSequenceBase::Chunk *&ptr) {
@@ -128,11 +147,6 @@ public:
     Path.push_back(Component(Component::Kind::Impossible));
   }
 
-  /// Add a step to this path which gets the parent metadata.
-  void addNominalParentComponent() {
-    Path.push_back(Component(Component::Kind::NominalParent));
-  }
-
   /// Add a step to this path which gets the type metadata stored at
   /// requirement index n in a generic type metadata.
   void addNominalTypeArgumentComponent(unsigned index) {
@@ -146,34 +160,67 @@ public:
                              index));
   }
 
-  /// Add a step to this path which gets the kth inherited protocol from a
-  /// witness table.
-  ///
-  /// k is computed including protocols which do not have witness tables.
-  void addInheritedProtocolComponent(unsigned index) {
-    Path.push_back(Component(Component::Kind::InheritedProtocol, index));
+  /// Add a step to this path which gets the inherited protocol at
+  /// a particular witness index.
+  void addInheritedProtocolComponent(WitnessIndex index) {
+    assert(!index.isPrefix());
+    Path.push_back(Component(Component::Kind::OutOfLineBaseProtocol,
+                             index.getValue()));
+  }
+
+  /// Add a step to this path which gets the associated conformance at
+  /// a particular witness index.
+  void addAssociatedConformanceComponent(WitnessIndex index) {
+    assert(!index.isPrefix());
+    Path.push_back(Component(Component::Kind::AssociatedConformance,
+                             index.getValue()));
+  }
+
+  void addConditionalConformanceComponent(unsigned index) {
+    Path.push_back(Component(Component::Kind::ConditionalConformance, index));
   }
 
   /// Return an abstract measurement of the cost of this path.
-  unsigned cost() const {
-    unsigned cost = 0;
-    for (const Component &component : Path)
+  OperationCost cost() const {
+    auto cost = OperationCost::Free;
+    for (const Component component : Path)
       cost += component.cost();
     return cost;
   }
 
   /// Given a pointer to type metadata, follow a path from it.
-  llvm::Value *followFromTypeMetadata(IRGenFunction &IGF,
-                                      CanType sourceType,
-                                      llvm::Value *source,
-                                      Map<llvm::Value*> *cache) const;
+  MetadataResponse followFromTypeMetadata(IRGenFunction &IGF,
+                                          CanType sourceType,
+                                          MetadataResponse source,
+                                          DynamicMetadataRequest request,
+                                          Map<MetadataResponse> *cache) const;
 
   /// Given a pointer to a protocol witness table, follow a path from it.
-  llvm::Value *followFromWitnessTable(IRGenFunction &IGF,
-                                      CanType conformingType,
-                                      ProtocolConformanceRef conformance,
-                                      llvm::Value *source,
-                                      Map<llvm::Value*> *cache) const;
+  MetadataResponse followFromWitnessTable(IRGenFunction &IGF,
+                                          CanType conformingType,
+                                          ProtocolConformanceRef conformance,
+                                          MetadataResponse source,
+                                          DynamicMetadataRequest request,
+                                          Map<MetadataResponse> *cache) const;
+
+  template <typename Allocator>
+  const reflection::MetadataSource *
+  getMetadataSource(Allocator &A,
+                    const reflection::MetadataSource *Root) const {
+    if (Root == nullptr)
+      return nullptr;
+
+    for (auto C : Path) {
+      switch (C.getKind()) {
+      case Component::Kind::NominalTypeArgument:
+        Root = A.createGenericArgument(C.getPrimaryIndex(), Root);
+        continue;
+      default:
+        return nullptr;
+      }
+    }
+    return Root;
+  }
 
   void dump() const;
   void print(llvm::raw_ostream &out) const;
@@ -184,18 +231,20 @@ public:
   }
 
 private:
-  static llvm::Value *follow(IRGenFunction &IGF,
-                             LocalTypeDataKey key,
-                             llvm::Value *source,
-                             MetadataPath::iterator begin,
-                             MetadataPath::iterator end,
-                             Map<llvm::Value*> *cache);
+  static MetadataResponse follow(IRGenFunction &IGF,
+                                 LocalTypeDataKey key,
+                                 MetadataResponse source,
+                                 MetadataPath::iterator begin,
+                                 MetadataPath::iterator end,
+                                 DynamicMetadataRequest request,
+                                 Map<MetadataResponse> *cache);
 
   /// Follow a single component of a metadata path.
-  static llvm::Value *followComponent(IRGenFunction &IGF,
-                                      LocalTypeDataKey &key,
-                                      llvm::Value *source,
-                                      Component component);
+  static MetadataResponse followComponent(IRGenFunction &IGF,
+                                          LocalTypeDataKey &key,
+                                          MetadataResponse source,
+                                          Component component,
+                                          DynamicMetadataRequest request);
 };
 
 } // end namespace irgen

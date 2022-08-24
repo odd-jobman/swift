@@ -1,11 +1,11 @@
-// RUN: %target-sil-opt -enable-sil-verify-all -inline %s | FileCheck %s
+// RUN: %target-sil-opt -enable-sil-verify-all -inline %s | %FileCheck %s
 // REQUIRES: objc_interop
 
 import Swift
 
 // FIXME: Should go into the standard library.
 public extension _ObjectiveCBridgeable {
-  static func _unconditionallyBridgeFromObjectiveC(source: _ObjectiveCType?)
+  static func _unconditionallyBridgeFromObjectiveC(_ source: _ObjectiveCType?)
       -> Self
 }
 
@@ -13,12 +13,11 @@ public extension _ObjectiveCBridgeable {
 
 struct Butt: _ObjectiveCBridgeable {
   typealias _ObjectiveCType = NSCloud
-  static func _isBridgedToObjectiveC() -> Bool
   func _bridgeToObjectiveC() -> NSCloud
-  static func _forceBridgeFromObjectiveC(source: NSCloud,
-                                         inout result: Butt?)
-  static func _conditionallyBridgeFromObjectiveC(source: NSCloud,
-                                         inout result: Butt?) -> Bool
+  static func _forceBridgeFromObjectiveC(_ source: NSCloud,
+                                         result: inout Butt?)
+  static func _conditionallyBridgeFromObjectiveC(_ source: NSCloud,
+                                         result: inout Butt?) -> Bool
 }
 
 sil @checked_cast_object_to_value : $@convention(thin) () -> () {

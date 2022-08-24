@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -21,13 +21,25 @@
 #include "llvm/Support/FileSystem.h"
 #include <fstream>
 #include <regex>
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
 #include <sys/param.h>
+#elif defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#endif
 
 // FIXME: Platform compatibility.
 #include <dispatch/dispatch.h>
 
 using namespace llvm;
+
+#if defined(_WIN32)
+namespace {
+int STDOUT_FILENO = _fileno(stdout);
+}
+#endif
 
 namespace {
 struct TestOptions {
@@ -53,11 +65,14 @@ struct TestOptions {
   Optional<unsigned> fuzzyWeight;
   Optional<unsigned> popularityBonus;
   StringRef filterRulesJSON;
+  std::string moduleCachePath;
   bool rawOutput = false;
   bool structureOutput = false;
+  bool disableImplicitConcurrencyModuleImport = false;
+  bool disableImplicitStringProcessingModuleImport = false;
   ArrayRef<const char *> compilerArgs;
 };
-}
+} // end anonymous namespace
 static int handleTestInvocation(TestOptions &options);
 
 static sourcekitd_uid_t KeyRequest;
@@ -239,6 +254,12 @@ static bool parseOptions(ArrayRef<const char *> args, TestOptions &options,
         return false;
       }
       options.showTopNonLiteral = uval;
+    } else if (opt == "module-cache-path") {
+      options.moduleCachePath = value.str();
+    } else if (opt == "disable-implicit-concurrency-module-import") {
+      options.disableImplicitConcurrencyModuleImport = true;
+    } else if (opt == "disable-implicit-string-processing-module-import") {
+      options.disableImplicitStringProcessingModuleImport = true;
     }
   }
 
@@ -273,7 +294,7 @@ static void notification_receiver(sourcekitd_response_t resp) {
 }
 
 static int skt_main(int argc, const char **argv) {
-  llvm::sys::PrintStackTraceOnErrorSignal();
+  llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
 
   sourcekitd_initialize();
 
@@ -380,7 +401,6 @@ removeCodeCompletionTokens(StringRef Input, StringRef TokenName,
     if (match[1].str() != TokenName)
       continue;
     *CompletionOffset = CleanFile.size();
-    CleanFile.push_back('\0');
     if (match.size() == 2 || !match[2].matched)
       continue;
 
@@ -389,7 +409,7 @@ removeCodeCompletionTokens(StringRef Input, StringRef TokenName,
     StringRef next = StringRef(fullMatch).split(',').second;
     while (next != "") {
       auto split = next.split(',');
-      prefixes.push_back(split.first);
+      prefixes.push_back(split.first.str());
       next = split.second;
     }
   }
@@ -546,11 +566,12 @@ public:
     return OS;
   }
 };
-}
+} // end anonymous namespace
 
 static void printResponse(sourcekitd_response_t resp, bool raw, bool structure,
                           unsigned indentation) {
   if (raw) {
+    llvm::outs().flush();
     sourcekitd_response_description_dump_filedesc(resp, STDOUT_FILENO);
     return;
   }
@@ -662,9 +683,25 @@ static bool codeCompleteRequest(sourcekitd_uid_t requestUID, const char *name,
       sourcekitd_request_array_set_string(args, SOURCEKITD_ARRAY_APPEND,"-sdk");
       sourcekitd_request_array_set_string(args, SOURCEKITD_ARRAY_APPEND, sdk);
     }
+    if (!options.moduleCachePath.empty()) {
+      sourcekitd_request_array_set_string(args, SOURCEKITD_ARRAY_APPEND, "-module-cache-path");
+      sourcekitd_request_array_set_string(args, SOURCEKITD_ARRAY_APPEND, options.moduleCachePath.c_str());
+    }
     // Add -- options.
     for (const char *arg : options.compilerArgs)
       sourcekitd_request_array_set_string(args, SOURCEKITD_ARRAY_APPEND, arg);
+    if (options.disableImplicitConcurrencyModuleImport) {
+      sourcekitd_request_array_set_string(args, SOURCEKITD_ARRAY_APPEND,
+          "-Xfrontend");
+      sourcekitd_request_array_set_string(args, SOURCEKITD_ARRAY_APPEND,
+          "-disable-implicit-concurrency-module-import");
+    }
+    if (options.disableImplicitStringProcessingModuleImport) {
+      sourcekitd_request_array_set_string(args, SOURCEKITD_ARRAY_APPEND,
+          "-Xfrontend");
+      sourcekitd_request_array_set_string(args, SOURCEKITD_ARRAY_APPEND,
+          "-disable-implicit-string-processing-module-import");
+    }
   }
   sourcekitd_request_dictionary_set_value(request, KeyCompilerArgs, args);
   sourcekitd_request_release(args);
@@ -677,7 +714,7 @@ static bool codeCompleteRequest(sourcekitd_uid_t requestUID, const char *name,
 
 static bool readPopularAPIList(StringRef filename,
                                std::vector<std::string> &result) {
-  std::ifstream in(filename);
+  std::ifstream in(filename.str());
   if (!in.is_open()) {
     llvm::errs() << "error opening '" << filename << "'\n";
     return true;

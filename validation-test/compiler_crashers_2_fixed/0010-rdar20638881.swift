@@ -1,4 +1,4 @@
-// RUN: not %target-swift-frontend %s -parse
+// RUN: not %target-swift-frontend %s -typecheck
 
 public protocol Q_SequenceDefaults {
   typealias Iterator : IteratorProtocol
@@ -36,7 +36,7 @@ extension Q_SequenceDefaults {
     var p = baseAddress
     var iter = self.makeIterator()
     while let element? = iter.next() {
-      p.initialize(with: element)
+      p.initialize(to: element)
       p += 1
     }
   }

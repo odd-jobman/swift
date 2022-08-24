@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,6 +15,8 @@
 
 #include "CodeCompletion.h"
 #include "SourceKit/Core/LangSupport.h"
+//#include "swift/IDE/CodeCompletionContext.h"
+#include "swift/IDE/SwiftCompletionInfo.h"
 #include "llvm/ADT/StringMap.h"
 
 namespace swift {
@@ -22,6 +24,9 @@ class CompilerInvocation;
 }
 
 namespace SourceKit {
+
+  using TypeContextKind = swift::ide::CodeCompletionContext::TypeContextKind;
+
 namespace CodeCompletion {
 
 struct Options {
@@ -33,38 +38,32 @@ struct Options {
   bool addInnerResults = false;
   bool addInnerOperators = true;
   bool addInitsToTopLevel = false;
+  bool callPatternHeuristics = false;
   bool hideUnderscores = true;
   bool reallyHideAllUnderscores = false;
   bool hideLowPriority = true;
   bool hideByNameStyle = true;
   bool fuzzyMatching = true;
+  bool annotatedDescription = false;
+  bool includeObjectLiterals = true;
+  bool addCallWithNoDefaultArgs = true;
   unsigned minFuzzyLength = 2;
   unsigned showTopNonLiteralResults = 3;
 
-  // Options for combining priorities. The defaults are chosen so that a fuzzy
-  // match just breaks ties within a semantic context.  If semanticContextWeight
-  // isn't modified, a fuzzyMatchWeight of N means that a perfect match is worth
-  // the same as the worst possible match N/10 "contexts" ahead of it.
-  unsigned semanticContextWeight = 10 * Completion::numSemanticContexts;
-  unsigned fuzzyMatchWeight = 9;
-  unsigned popularityBonus = 5;
-};
-
-struct SwiftCompletionInfo {
-  swift::ASTContext *swiftASTContext = nullptr;
-  swift::CompilerInvocation *invocation = nullptr;
-  swift::ide::CodeCompletionContext *completionContext = nullptr;
+  // Options for combining priorities.
+  unsigned semanticContextWeight = 7;
+  unsigned fuzzyMatchWeight = 13;
+  unsigned popularityBonus = 2;
 };
 
 typedef llvm::StringMap<PopularityFactor> NameToPopularityMap;
 
 std::vector<Completion *>
 extendCompletions(ArrayRef<SwiftResult *> swiftResults, CompletionSink &sink,
-                  SwiftCompletionInfo &info,
+                  swift::ide::SwiftCompletionInfo &info,
                   const NameToPopularityMap *nameToPopularity,
                   const Options &options, Completion *prefix = nullptr,
-                  Optional<SemanticContextKind> overrideContext = None,
-                  Optional<SemanticContextKind> overrideOperatorContext = None);
+                  bool clearFlair = false);
 
 bool addCustomCompletions(CompletionSink &sink,
                           std::vector<Completion *> &completions,
@@ -77,7 +76,7 @@ class CodeCompletionOrganizer {
   const Options &options;
 public:
   CodeCompletionOrganizer(const Options &options, CompletionKind kind,
-                          bool hasExpectedTypes);
+                          TypeContextKind typeContextKind);
   ~CodeCompletionOrganizer();
 
   static void

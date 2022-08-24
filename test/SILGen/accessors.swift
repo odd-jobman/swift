@@ -1,4 +1,5 @@
-// RUN: %target-swift-frontend -Xllvm -sil-full-demangle -emit-silgen %s | FileCheck %s
+
+// RUN: %target-swift-emit-silgen -module-name accessors -Xllvm -sil-full-demangle %s | %FileCheck %s
 
 // Hold a reference to do to magically become non-POD.
 class Reference {}
@@ -17,61 +18,41 @@ class A { var array = OrdinarySub() }
 func index0() -> Int { return 0 }
 func index1() -> Int { return 1 }
 
-// Verify that there is no unnecessary extra retain of ref.array.
+func someValidPointer<T>() -> UnsafePointer<T> { fatalError() }
+func someValidPointer<T>() -> UnsafeMutablePointer<T> { fatalError() }
+
+// Verify that there is no unnecessary extra copy_value of ref.array.
 // rdar://19002913
-func test0(ref: A) {
+func test0(_ ref: A) {
   ref.array[index0()] = ref.array[index1()]
 }
-// CHECK: sil hidden @_TF9accessors5test0FCS_1AT_ : $@convention(thin) (@owned A) -> () {
-// CHECK: bb0(%0 : $A):
+// CHECK: sil hidden [ossa] @$s9accessors5test0yyAA1ACF : $@convention(thin) (@guaranteed A) -> () {
+// CHECK: bb0([[ARG:%.*]] : @guaranteed $A):
 // CHECK-NEXT: debug_value
 //   Formal evaluation of LHS.
-// CHECK-NEXT: // function_ref accessors.index0 () -> Swift.Int
-// CHECK-NEXT: [[T0:%.*]] = function_ref @_TF9accessors6index0FT_Si
+// CHECK-NEXT: // function_ref accessors.index0() -> Swift.Int
+// CHECK-NEXT: [[T0:%.*]] = function_ref @$s9accessors6index0SiyF
 // CHECK-NEXT: [[INDEX0:%.*]] = apply [[T0]]()
 //   Formal evaluation of RHS.
-// CHECK-NEXT: // function_ref accessors.index1 () -> Swift.Int
-// CHECK-NEXT: [[T0:%.*]] = function_ref @_TF9accessors6index1FT_Si
+// CHECK-NEXT: // function_ref accessors.index1() -> Swift.Int
+// CHECK-NEXT: [[T0:%.*]] = function_ref @$s9accessors6index1SiyF
 // CHECK-NEXT: [[INDEX1:%.*]] = apply [[T0]]()
 //   Formal access to RHS.
-// CHECK-NEXT: [[TEMP:%.*]] = alloc_stack $OrdinarySub
-// CHECK-NEXT: [[T0:%.*]] = class_method %0 : $A, #A.array!getter.1
-// CHECK-NEXT: [[T1:%.*]] = apply [[T0]](%0)
-// CHECK-NEXT: store [[T1]] to [[TEMP]]
-// CHECK-NEXT: [[T0:%.*]] = load [[TEMP]]
+// CHECK-NEXT: [[T0:%.*]] = class_method [[ARG]] : $A, #A.array!getter
+// CHECK-NEXT: [[OWNED_SELF:%.*]] = apply [[T0]]([[ARG]])
+// CHECK-NEXT: [[SELF:%.*]] = begin_borrow [[OWNED_SELF]]
 // CHECK-NEXT: // function_ref accessors.OrdinarySub.subscript.getter : (Swift.Int) -> Swift.Int
-// CHECK-NEXT: [[T1:%.*]] = function_ref @_TFV9accessors11OrdinarySubg9subscriptFSiSi
-// CHECK-NEXT: [[VALUE:%.*]] = apply [[T1]]([[INDEX1]], [[T0]])
-// CHECK-NEXT: release_value [[T0]]
+// CHECK-NEXT: [[T1:%.*]] = function_ref @$s9accessors11OrdinarySubVyS2icig
+// CHECK-NEXT: [[VALUE:%.*]] = apply [[T1]]([[INDEX1]], [[SELF]])
+// CHECK-NEXT: end_borrow [[SELF]]
 //   Formal access to LHS.
-// CHECK-NEXT: [[STORAGE:%.*]] = alloc_stack $Builtin.UnsafeValueBuffer
-// CHECK-NEXT: [[BUFFER:%.*]] = alloc_stack $OrdinarySub
-// CHECK-NEXT: [[T0:%.*]] = address_to_pointer [[BUFFER]]
-// CHECK-NEXT: [[T1:%.*]] = class_method %0 : $A, #A.array!materializeForSet.1
-// CHECK-NEXT: [[T2:%.*]] = apply [[T1]]([[T0]], [[STORAGE]], %0)
-// CHECK-NEXT: [[T3:%.*]] = tuple_extract [[T2]] {{.*}}, 0
-// CHECK-NEXT: [[OPT_CALLBACK:%.*]] = tuple_extract [[T2]] {{.*}}, 1
-// CHECK-NEXT: [[T4:%.*]] = pointer_to_address [[T3]]
-// CHECK-NEXT: [[ADDR:%.*]] = mark_dependence [[T4]] : $*OrdinarySub on %0 : $A
+// CHECK-NEXT: [[T0:%.*]] = class_method [[ARG]] : $A, #A.array!modify
+// CHECK-NEXT: ([[T1:%.*]], [[T2:%.*]]) = begin_apply [[T0]]([[ARG]])
 // CHECK-NEXT: // function_ref accessors.OrdinarySub.subscript.setter : (Swift.Int) -> Swift.Int
-// CHECK-NEXT: [[T0:%.*]] = function_ref @_TFV9accessors11OrdinarySubs9subscriptFSiSi
-// CHECK-NEXT: apply [[T0]]([[VALUE]], [[INDEX0]], [[ADDR]])
-// CHECK-NEXT: switch_enum [[OPT_CALLBACK]] : $Optional<Builtin.RawPointer>, case #Optional.some!enumelt.1: [[WRITEBACK:bb[0-9]+]], case #Optional.none!enumelt: [[CONT:bb[0-9]+]]
-// CHECK:    [[WRITEBACK]]([[CALLBACK_ADDR:%.*]] : $Builtin.RawPointer):
-// CHECK-NEXT: [[CALLBACK:%.*]] = pointer_to_thin_function [[CALLBACK_ADDR]] : $Builtin.RawPointer to $@convention(thin) (Builtin.RawPointer, @inout Builtin.UnsafeValueBuffer, @inout A, @thick A.Type) -> ()
-// CHECK-NEXT: [[TEMP2:%.*]] = alloc_stack $A
-// CHECK-NEXT: store %0 to [[TEMP2]] : $*A
-// CHECK-NEXT: [[T0:%.*]] = metatype $@thick A.Type
-// CHECK-NEXT: [[T1:%.*]] = address_to_pointer [[ADDR]] : $*OrdinarySub to $Builtin.RawPointer
-// CHECK-NEXT: apply [[CALLBACK]]([[T1]], [[STORAGE]], [[TEMP2]], [[T0]])
-// CHECK-NEXT: dealloc_stack [[TEMP2]]
-// CHECK-NEXT: br [[CONT]]
-// CHECK:    [[CONT]]:
-// CHECK-NEXT: dealloc_stack [[BUFFER]]
-// CHECK-NEXT: dealloc_stack [[STORAGE]]
-// CHECK-NEXT: dealloc_stack [[TEMP]]
-//   Balance out the +1 from the function parameter.
-// CHECK-NEXT: strong_release %0
+// CHECK-NEXT: [[SETTER:%.*]] = function_ref @$s9accessors11OrdinarySubVyS2icis
+// CHECK-NEXT: apply [[SETTER]]([[VALUE]], [[INDEX0]], [[T1]])
+// CHECK-NEXT: end_apply [[T2]]
+// CHECK-NEXT: destroy_value [[OWNED_SELF]]
 // CHECK-NEXT: tuple ()
 // CHECK-NEXT: return
 
@@ -85,74 +66,34 @@ struct MutatingSub {
 }
 class B { var array = MutatingSub() }
 
-func test1(ref: B) {
+func test1(_ ref: B) {
   ref.array[index0()] = ref.array[index1()]
 }
-// CHECK-LABEL: sil hidden @_TF9accessors5test1FCS_1BT_ : $@convention(thin) (@owned B) -> () {
-// CHECK:    bb0(%0 : $B):
+// CHECK-LABEL: sil hidden [ossa] @$s9accessors5test1yyAA1BCF : $@convention(thin) (@guaranteed B) -> () {
+// CHECK:    bb0([[ARG:%.*]] : @guaranteed $B):
 // CHECK-NEXT: debug_value
 //   Formal evaluation of LHS.
-// CHECK-NEXT: // function_ref accessors.index0 () -> Swift.Int
-// CHECK-NEXT: [[T0:%.*]] = function_ref @_TF9accessors6index0FT_Si
+// CHECK-NEXT: // function_ref accessors.index0() -> Swift.Int
+// CHECK-NEXT: [[T0:%.*]] = function_ref @$s9accessors6index0SiyF
 // CHECK-NEXT: [[INDEX0:%.*]] = apply [[T0]]()
 //   Formal evaluation of RHS.
-// CHECK-NEXT: // function_ref accessors.index1 () -> Swift.Int
-// CHECK-NEXT: [[T0:%.*]] = function_ref @_TF9accessors6index1FT_Si
+// CHECK-NEXT: // function_ref accessors.index1() -> Swift.Int
+// CHECK-NEXT: [[T0:%.*]] = function_ref @$s9accessors6index1SiyF
 // CHECK-NEXT: [[INDEX1:%.*]] = apply [[T0]]()
 //   Formal access to RHS.
-// CHECK-NEXT: [[STORAGE:%.*]] = alloc_stack $Builtin.UnsafeValueBuffer
-// CHECK-NEXT: [[BUFFER:%.*]] = alloc_stack $MutatingSub
-// CHECK-NEXT: [[T0:%.*]] = address_to_pointer [[BUFFER]]
-// CHECK-NEXT: [[T1:%.*]] = class_method %0 : $B, #B.array!materializeForSet.1
-// CHECK-NEXT: [[T2:%.*]] = apply [[T1]]([[T0]], [[STORAGE]], %0)
-// CHECK-NEXT: [[T3:%.*]] = tuple_extract [[T2]] {{.*}}, 0
-// CHECK-NEXT: [[OPT_CALLBACK:%.*]] = tuple_extract [[T2]] {{.*}}, 1
-// CHECK-NEXT: [[T4:%.*]] = pointer_to_address [[T3]]
-// CHECK-NEXT: [[ADDR:%.*]] = mark_dependence [[T4]] : $*MutatingSub on %0 : $B
+// CHECK-NEXT: [[T0:%.*]] = class_method [[ARG]] : $B, #B.array!modify
+// CHECK-NEXT: ([[T1:%.*]], [[TOKEN:%.*]]) = begin_apply [[T0]]([[ARG]])
 // CHECK-NEXT: // function_ref accessors.MutatingSub.subscript.getter : (Swift.Int) -> Swift.Int
-// CHECK-NEXT: [[T0:%.*]] = function_ref @_TFV9accessors11MutatingSubg9subscriptFSiSi : $@convention(method) (Int, @inout MutatingSub) -> Int 
-// CHECK-NEXT: [[VALUE:%.*]] = apply [[T0]]([[INDEX1]], [[ADDR]])
-// CHECK-NEXT: switch_enum [[OPT_CALLBACK]] : $Optional<Builtin.RawPointer>, case #Optional.some!enumelt.1: [[WRITEBACK:bb[0-9]+]], case #Optional.none!enumelt: [[CONT:bb[0-9]+]]
-// CHECK:    [[WRITEBACK]]([[CALLBACK_ADDR:%.*]] : $Builtin.RawPointer):
-// CHECK-NEXT: [[CALLBACK:%.*]] = pointer_to_thin_function [[CALLBACK_ADDR]] : $Builtin.RawPointer to $@convention(thin) (Builtin.RawPointer, @inout Builtin.UnsafeValueBuffer, @inout B, @thick B.Type) -> ()
-// CHECK-NEXT: [[TEMP2:%.*]] = alloc_stack $B
-// CHECK-NEXT: store %0 to [[TEMP2]] : $*B
-// CHECK-NEXT: [[T0:%.*]] = metatype $@thick B.Type
-// CHECK-NEXT: [[T1:%.*]] = address_to_pointer [[ADDR]] : $*MutatingSub to $Builtin.RawPointer
-// CHECK-NEXT: apply [[CALLBACK]]([[T1]], [[STORAGE]], [[TEMP2]], [[T0]])
-// CHECK-NEXT: dealloc_stack [[TEMP2]]
-// CHECK-NEXT: br [[CONT]]
-// CHECK:    [[CONT]]:
+// CHECK-NEXT: [[T0:%.*]] = function_ref @$s9accessors11MutatingSubVyS2icig : $@convention(method) (Int, @inout MutatingSub) -> Int
+// CHECK-NEXT: [[VALUE:%.*]] = apply [[T0]]([[INDEX1]], [[T1]])
+// CHECK-NEXT: end_apply [[TOKEN]]
 //   Formal access to LHS.
-// CHECK-NEXT: [[STORAGE2:%.*]] = alloc_stack $Builtin.UnsafeValueBuffer
-// CHECK-NEXT: [[BUFFER2:%.*]] = alloc_stack $MutatingSub
-// CHECK-NEXT: [[T0:%.*]] = address_to_pointer [[BUFFER2]]
-// CHECK-NEXT: [[T1:%.*]] = class_method %0 : $B, #B.array!materializeForSet.1
-// CHECK-NEXT: [[T2:%.*]] = apply [[T1]]([[T0]], [[STORAGE2]], %0)
-// CHECK-NEXT: [[T3:%.*]] = tuple_extract [[T2]] {{.*}}, 0
-// CHECK-NEXT: [[OPT_CALLBACK:%.*]] = tuple_extract [[T2]] {{.*}}, 1
-// CHECK-NEXT: [[T4:%.*]] = pointer_to_address [[T3]]
-// CHECK-NEXT: [[ADDR:%.*]] = mark_dependence [[T4]] : $*MutatingSub on %0 : $B
+// CHECK-NEXT: [[T0:%.*]] = class_method [[ARG]] : $B, #B.array!modify
+// CHECK-NEXT: ([[T1:%.*]], [[TOKEN:%.*]]) = begin_apply [[T0]]([[ARG]])
 // CHECK-NEXT: // function_ref accessors.MutatingSub.subscript.setter : (Swift.Int) -> Swift.Int
-// CHECK-NEXT: [[T0:%.*]] = function_ref @_TFV9accessors11MutatingSubs9subscriptFSiSi : $@convention(method) (Int, Int, @inout MutatingSub) -> () 
-// CHECK-NEXT: apply [[T0]]([[VALUE]], [[INDEX0]], [[ADDR]])
-// CHECK-NEXT: switch_enum [[OPT_CALLBACK]] : $Optional<Builtin.RawPointer>, case #Optional.some!enumelt.1: [[WRITEBACK:bb[0-9]+]], case #Optional.none!enumelt: [[CONT:bb[0-9]+]]
-// CHECK:    [[WRITEBACK]]([[CALLBACK_ADDR:%.*]] : $Builtin.RawPointer):
-// CHECK-NEXT: [[CALLBACK:%.*]] = pointer_to_thin_function [[CALLBACK_ADDR]] : $Builtin.RawPointer to $@convention(thin) (Builtin.RawPointer, @inout Builtin.UnsafeValueBuffer, @inout B, @thick B.Type) -> ()
-// CHECK-NEXT: [[TEMP2:%.*]] = alloc_stack $B
-// CHECK-NEXT: store %0 to [[TEMP2]] : $*B
-// CHECK-NEXT: [[T0:%.*]] = metatype $@thick B.Type
-// CHECK-NEXT: [[T1:%.*]] = address_to_pointer [[ADDR]] : $*MutatingSub to $Builtin.RawPointer
-// CHECK-NEXT: apply [[CALLBACK]]([[T1]], [[STORAGE2]], [[TEMP2]], [[T0]])
-// CHECK-NEXT: dealloc_stack [[TEMP2]]
-// CHECK-NEXT: br [[CONT]]
-// CHECK:    [[CONT]]:
-// CHECK-NEXT: dealloc_stack [[BUFFER2]]
-// CHECK-NEXT: dealloc_stack [[STORAGE2]]
-// CHECK-NEXT: dealloc_stack [[BUFFER]]
-// CHECK-NEXT: dealloc_stack [[STORAGE]]
-//   Balance out the +1 from the function parameter.
-// CHECK-NEXT: strong_release %0
+// CHECK-NEXT: [[SETTER:%.*]] = function_ref @$s9accessors11MutatingSubVyS2icis : $@convention(method) (Int, Int, @inout MutatingSub) -> ()
+// CHECK-NEXT: apply [[SETTER]]([[VALUE]], [[INDEX0]], [[T1]])
+// CHECK-NEXT: end_apply [[TOKEN]]
 // CHECK-NEXT: tuple ()
 // CHECK-NEXT: return
 
@@ -163,16 +104,16 @@ struct RecInner {
 }
 struct RecOuter {
   var inner : RecInner {
-    unsafeAddress { return nil }
-    unsafeMutableAddress { return nil }
+    unsafeAddress { return someValidPointer() }
+    unsafeMutableAddress { return someValidPointer() }
   }
 }
-func test_rec(outer: inout RecOuter) -> Int {
+func test_rec(_ outer: inout RecOuter) -> Int {
   return outer.inner[0]
 }
 // This uses the immutable addressor.
-// CHECK: sil hidden @_TF9accessors8test_recFRVS_8RecOuterSi : $@convention(thin) (@inout RecOuter) -> Int {
-// CHECK:   function_ref @_TFV9accessors8RecOuterlu5innerVS_8RecInner : $@convention(method) (RecOuter) -> UnsafePointer<RecInner>
+// CHECK: sil hidden [ossa] @$s9accessors8test_recySiAA8RecOuterVzF : $@convention(thin) (@inout RecOuter) -> Int {
+// CHECK:   function_ref @$s9accessors8RecOuterV5innerAA0B5InnerVvlu : $@convention(method) (RecOuter) -> UnsafePointer<RecInner>
 
 struct Rec2Inner {
   subscript(i: Int) -> Int {
@@ -181,13 +122,81 @@ struct Rec2Inner {
 }
 struct Rec2Outer {
   var inner : Rec2Inner {
-    unsafeAddress { return nil }
-    unsafeMutableAddress { return nil }
+    unsafeAddress { return someValidPointer() }
+    unsafeMutableAddress { return someValidPointer() }
   }
 }
-func test_rec2(outer: inout Rec2Outer) -> Int {
+func test_rec2(_ outer: inout Rec2Outer) -> Int {
   return outer.inner[0]
 }
 // This uses the mutable addressor.
-// CHECK: sil hidden @_TF9accessors9test_rec2FRVS_9Rec2OuterSi : $@convention(thin) (@inout Rec2Outer) -> Int {
-// CHECK:   function_ref @_TFV9accessors9Rec2Outerau5innerVS_9Rec2Inner : $@convention(method) (@inout Rec2Outer) -> UnsafeMutablePointer<Rec2Inner>
+// CHECK: sil hidden [ossa] @$s9accessors9test_rec2ySiAA9Rec2OuterVzF : $@convention(thin) (@inout Rec2Outer) -> Int {
+// CHECK:   function_ref @$s9accessors9Rec2OuterV5innerAA0B5InnerVvau : $@convention(method) (@inout Rec2Outer) -> UnsafeMutablePointer<Rec2Inner>
+
+// SR-12456: Compiler crash on class var override adding observer.
+class SR12456Base {
+  open class var instance: SR12456Base {
+    get {
+      return SR12456Base()
+    }
+    set {}
+  }
+}
+
+class SR12456Subclass : SR12456Base {
+  override class var instance: SR12456Base {
+    didSet {}
+  }
+}
+
+// Make sure we can handle more complicated overrides.
+class Parent<V> {
+  class C<T, U> {
+    class var foo: Int { get { 0 } set {} }
+  }
+  class D<T> : C<T, Int> {}
+  class E : D<Double> {
+    // CHECK-LABEL: sil hidden [ossa] @$s9accessors6ParentC1EC3fooSivgZ : $@convention(method) <V> (@thick Parent<V>.E.Type) -> Int
+    // CHECK: [[TY:%.+]] = upcast {{%.+}} : $@thick Parent<V>.E.Type to $@thick Parent<V>.D<Double>.Type
+    // CHECK: [[UPCASTTY:%.+]] = upcast [[TY]] : $@thick Parent<V>.D<Double>.Type to $@thick Parent<V>.C<Double, Int>.Type
+    // CHECK: [[GETTER:%.+]] = function_ref @$s9accessors6ParentC1CC3fooSivgZ : $@convention(method) <τ_0_0><τ_1_0, τ_1_1> (@thick Parent<τ_0_0>.C<τ_1_0, τ_1_1>.Type) -> Int
+    // CHECK: apply [[GETTER]]<V, Double, Int>([[UPCASTTY]])
+    override class var foo: Int {
+      didSet {}
+    }
+  }
+}
+
+struct Foo {
+  private subscript(privateSubscript x: Void) -> Void {
+    // CHECK-DAG: sil private [ossa] @$s9accessors3FooV16privateSubscriptyyt_tc33_D7F31B09EE737C687DC580B2014D759CLlig : $@convention(method) (Foo) -> () {
+    get {}
+  }
+  private(set) subscript(withPrivateSet x: Void) -> Void {
+    // CHECK-DAG: sil hidden [ossa] @$s9accessors3FooV14withPrivateSetyyt_tcig : $@convention(method) (Foo) -> () {
+    get {}
+    // CHECK-DAG: sil hidden [ossa] @$s9accessors3FooV14withPrivateSetyyt_tcis : $@convention(method) (@inout Foo) -> () {
+    set {}
+  }
+  subscript(withNestedClass x: Void) -> Void {
+    // Check for initializer of NestedClass
+    // CHECK-DAG: sil private [ossa] @$s9accessors3FooV15withNestedClassyyt_tcig0dE0L_CAFycfc : $@convention(method) (@owned NestedClass) -> @owned NestedClass {
+    class NestedClass {}
+  }
+
+  // CHECK-DAG: sil private [ossa] @$s9accessors3FooV15privateVariable33_D7F31B09EE737C687DC580B2014D759CLLytvg : $@convention(method) (Foo) -> () {
+  private var privateVariable: Void {
+    return
+  }
+  private(set) var variableWithPrivateSet: Void {
+    // CHECK-DAG: sil hidden [ossa] @$s9accessors3FooV22variableWithPrivateSetytvg : $@convention(method) (Foo) -> () {
+    get {}
+    // CHECK-DAG: sil hidden [ossa] @$s9accessors3FooV22variableWithPrivateSetytvs : $@convention(method) (@inout Foo) -> () {
+    set {}
+  }
+  var propertyWithNestedClass: Void {
+    // Check for initializer of NestedClass
+    // CHECK-DAG: sil private [ossa] @$s9accessors3FooV23propertyWithNestedClassytvg0eF0L_CAFycfc : $@convention(method) (@owned NestedClass) -> @owned NestedClass {
+    class NestedClass {}
+  }
+}

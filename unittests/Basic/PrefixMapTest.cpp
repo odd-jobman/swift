@@ -1,3 +1,15 @@
+//===--- PrefixMapTest.cpp ------------------------------------------------===//
+//
+// This source file is part of the Swift.org open source project
+//
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
+// Licensed under Apache License v2.0 with Runtime Library Exception
+//
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+//
+//===----------------------------------------------------------------------===//
+
 #include "swift/Basic/PrefixMap.h"
 #include "gtest/gtest.h"
 
@@ -28,7 +40,7 @@ struct Tester {
   // Performs an insert operation and tests that the result matches what
   // we get from the std::map.
   void insert(StringRef key, int value) {
-    auto stdmapResult = StdMap.insert({key, value});
+    auto stdmapResult = StdMap.insert({key.str(), value});
     auto premapResult = PreMap.insert(asArray(key), value);
 
     // Whether or not we modified the map should be the same in both
@@ -45,7 +57,7 @@ struct Tester {
   // Tests that the result of a findPrefix matches what we expect from
   // the std::map.
   void find(StringRef key) {
-    auto stdmapResult = StdMap.lower_bound(key);
+    auto stdmapResult = StdMap.lower_bound(key.str());
     while (stdmapResult == StdMap.end() ||
            !key.startswith(stdmapResult->first)) {
       if (stdmapResult == StdMap.begin()) {
@@ -67,7 +79,7 @@ struct Tester {
     EXPECT_EQ(key.begin() + stdmapResult->first.size(), premapResult.second);
   }
 
-  // Perform a clear operation.  Tests that that actually clears out the map.
+  // Perform a clear operation.  Tests that the operation actually clears out the map.
   void clear() {
     StdMap.clear();
     PreMap.clear();
@@ -100,7 +112,7 @@ struct Tester {
   }
 };
 
-}
+} // end anonymous namespace
 
 TEST(PrefixMapTest, Insert) {
   PrefixMap<char, int> map;

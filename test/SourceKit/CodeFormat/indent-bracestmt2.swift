@@ -17,14 +17,23 @@ class Foo
 // RUN: %sourcekitd-test -req=format -line=7 -length=1 %s >>%t.response
 // RUN: %sourcekitd-test -req=format -line=8 -length=1 %s >>%t.response
 // RUN: %sourcekitd-test -req=format -line=9 -length=1 %s >>%t.response
-// RUN: FileCheck --strict-whitespace %s <%t.response
+// RUN: %FileCheck --strict-whitespace %s <%t.response
 
 // CHECK: key.sourcetext: "class Foo"
 // CHECK: key.sourcetext: "{"
 // CHECK: key.sourcetext: "    func foo()"
 // CHECK: key.sourcetext: "    {"
 // CHECK: key.sourcetext: "        bar()"
-// CHECK: key.sourcetext: "        {"
-// CHECK: key.sourcetext: "        }"
+
+//                             bar()"
+// CHECK: key.sourcetext: "    {"
 // CHECK: key.sourcetext: "    }"
+
+//                             func foo()"
+//                             {"
+//                                 ..."
+// CHECK: key.sourcetext: "    }"
+
+//                         class Foo"
+//                             ..."
 // CHECK: key.sourcetext: "}"

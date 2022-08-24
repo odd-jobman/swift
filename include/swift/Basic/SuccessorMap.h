@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -23,6 +23,7 @@
 #ifndef SWIFT_BASIC_SUCCESSORMAP_H
 #define SWIFT_BASIC_SUCCESSORMAP_H
 
+#include "swift/Basic/Debug.h"
 #include "swift/Basic/LLVM.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
@@ -59,7 +60,7 @@ class SuccessorMap {
     K Begin, End;
     V Value;
 
-    void dump() const {
+    SWIFT_DEBUG_DUMP {
       dumpNode(this);
     }
   };
@@ -159,11 +160,8 @@ public:
 #endif
   }
 
-  void dump() const {
-    // We call dump() on the object instead of using dumpNode here so
-    // that the former will be available in a debug build as long as
-    // something in the program calls dump on the collection.
-    if (Root) Root->dump();
+  SWIFT_DEBUG_DUMP {
+    if (Root) dumpNode(Root);
     else llvm::errs() << "(empty)\n";
   }
 
@@ -457,4 +455,4 @@ private:
 
 } // end namespace swift
 
-#endif
+#endif // SWIFT_BASIC_SUCCESSORMAP_H

@@ -7,15 +7,25 @@
 @interface SEGreebieArray : NSObject
 @end
 
+typedef NS_OPTIONS(NSUInteger, OMWWobbleOptions) {
+  OMWWobbleSideToSide = 0x01,
+  OMWWobbleBackAndForth = 0x02,
+  OMWWobbleToXMLHex = 0x04
+};
+
 @interface OmitNeedlessWords : NSObject
 -(void)jumpToUrl:(nonnull NSURL *)url;
+-(void)jumpToGuid:(nonnull NSGUID *)guid;
+-(void)jumpAgainToGUID:(nonnull NSGUID *)guid;
 -(BOOL)objectIsCompatibleWithObject:(nonnull id)other;
 -(void)insetByX:(NSInteger)x y:(NSInteger)y;
 -(void)setIndirectlyToValue:(nonnull id)object;
 -(void)jumpToTop:(nonnull id)sender;
 -(void)removeWithNoRemorse:(nonnull id)object;
 -(void)bookmarkWithURLs:(nonnull NSArray<NSURL *> *)urls;
+-(void)bookmarkWithGUIDs:(nonnull NSArray<NSGUID *> *)guids;
 -(void)saveToURL:(nonnull NSURL *)url forSaveOperation:(NSInteger)operation;
+-(void)saveToGUID:(nonnull NSGUID *)guid forSaveOperation:(NSInteger)operation;
 -(void)indexWithItemNamed:(nonnull NSString *)name;
 -(void)methodAndReturnError:(NSError **)error;
 -(nullable Class)typeOfString:(nonnull NSString *)string;
@@ -30,6 +40,12 @@
 -(void)drawPolygonWithPoints:(const NSPoint[])points count:(NSInteger)count;
 -(void)drawFilledPolygonWithPoints:(NSPointArray)points count:(NSInteger)count;
 -(void)drawGreebies:(nonnull SEGreebieArray*)greebies;
+-(void)doSomethingBoundBy:(NSInteger)value;
+-(void)doSomethingSeparatedBy:(NSInteger)value;
++(nonnull OmitNeedlessWords *)currentOmitNeedlessWords;
++(void)setCurrentOmitNeedlessWords:(nonnull OmitNeedlessWords *)value;
+-(void)compilerPlugInValue:(NSInteger)value;
+-(void)wobbleWithOptions:(OMWWobbleOptions)options;
 @end
 
 @interface ABCDoodle : NSObject
@@ -43,12 +59,10 @@
 
 @protocol OMWWiggle
 -(void)joinSub;
--(void)conflicting1 NS_SWIFT_NAME(wiggle1());
 @property (readonly) NSInteger conflictingProp1 NS_SWIFT_NAME(wiggleProp1);
 @end
 
 @protocol OMWWaggle
--(void)conflicting1 NS_SWIFT_NAME(waggle1());
 @property (readonly) NSInteger conflictingProp1 NS_SWIFT_NAME(waggleProp1);
 @end
 
@@ -60,6 +74,18 @@
 @interface OMWSub : OMWSuper <OMWWaggle>
 -(void)jumpSuper;
 -(void)joinSub;
--(void)conflicting1;
 @property (readonly) NSInteger conflictingProp1;
+@end
+
+@interface OMWObjectType : NSObject
+-(void)_enumerateObjectTypesWithHandler:(nonnull void (^)(void))handler;
+@end
+
+@interface OMWTerrifyingGarbage4DTypeRefMask_t : NSObject
+-(void)throwGarbageAway;
+-(void)throwGarbage4DAwayHarder;
+-(void)throwGarbage4DTypeRefMask_tAwayHardest;
+-(void)burnGarbage;
+-(void)carefullyBurnGarbage4D;
+-(void)veryCarefullyBurnGarbage4DTypeRefMask_t;
 @end

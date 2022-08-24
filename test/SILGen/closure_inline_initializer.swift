@@ -1,6 +1,6 @@
-// RUN: %target-swift-frontend -emit-silgen %s | FileCheck %s
+// RUN: %target-swift-emit-silgen %s | %FileCheck %s
 
-// CHECK-LABEL: sil shared @_TFIvV26closure_inline_initializer3Foo3fooSiiU_FT_Si
+// CHECK-LABEL: sil private [ossa] @$s26closure_inline_initializer3FooV3fooSivpfiSiyXEfU_
 
 struct Foo {
   var foo: Int = { 2 }()

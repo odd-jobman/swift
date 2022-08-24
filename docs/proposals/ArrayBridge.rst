@@ -4,20 +4,20 @@
 ..
 .. This source file is part of the Swift.org open source project
 ..
-.. Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+.. Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 .. Licensed under Apache License v2.0 with Runtime Library Exception
 ..
-.. See http://swift.org/LICENSE.txt for license information
-.. See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+.. See https://swift.org/LICENSE.txt for license information
+.. See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 ..
 .. ===---------------------------------------------------------------------===..
 
 =====================================
  Bridging Swift Arrays to/from Cocoa
-=====================================   
+=====================================
 
 :Authors: Chris Lattner, Joe Groff, Dave Abrahams
-          
+
 :Summary: Unifying a fast C-style array with a Cocoa class cluster
           that can represent arbitrarily complex data structures is
           challenging.  In a space where no approach satisfies all
@@ -34,7 +34,7 @@ Being "great for Cocoa" means this must work and be efficient::
   var a = [cocoaObject1, cocoaObject2]
   someCocoaObject.takesAnNSArray(a)
 
-  func processViews(views: [AnyObject]) { ... }
+  func processViews(_ views: [AnyObject]) { ... }
   var b = someNSWindow.views // views is an NSArray
   processViews(b)
 

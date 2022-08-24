@@ -1,10 +1,17 @@
-add_swift_library(swiftLLVMPasses
+
+add_swift_host_library(swiftLLVMPasses STATIC
   LLVMSwiftAA.cpp
   LLVMSwiftRCIdentity.cpp
   LLVMARCOpts.cpp
   LLVMARCContract.cpp
   LLVMInlineTree.cpp
-  LLVMStackPromotion.cpp
-  )
+  LLVMMergeFunctions.cpp
+  DbgAddrBlockSplitter.cpp
 
-add_dependencies(swiftLLVMPasses LLVMAnalysis)
+  LLVM_LINK_COMPONENTS
+  analysis
+  )
+target_link_libraries(swiftLLVMPasses PRIVATE
+  swiftDemangling)
+
+set_swift_llvm_is_available(swiftLLVMPasses)

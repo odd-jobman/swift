@@ -1,5 +1,5 @@
-// RUN: %sourcekitd-test -req=index %s -- -serialize-diagnostics -serialize-diagnostics-path %t.dia %s | %sed_clean > %t.response
-// RUN: diff -u %s.response %t.response
+// RUN: %sourcekitd-test -req=index %s -- -Xfrontend -serialize-diagnostics-path -Xfrontend %t.dia -Xfrontend -disable-implicit-concurrency-module-import -Xfrontend -disable-implicit-string-processing-module-import %s | %sed_clean | sed -e 's/key.usr: \".*\"/key.usr: <usr>/g' > %t.response
+// RUN: %diff -u %s.response %t.response
 
 var globV: Int
 
@@ -7,7 +7,7 @@ class CC {
   init() {}
   var instV: CC
   func meth() {}
-  func instanceFunc0(a: Int, b: Float) -> Int {
+  func instanceFunc0(_ a: Int, b: Float) -> Int {
     return 0
   }
   func instanceFunc1(a x: Int, b y: Float) -> Int {
@@ -30,10 +30,10 @@ enum E {
 }
 
 protocol Prot {
-  func protMeth(a: Prot)
+  func protMeth(_ a: Prot)
 }
 
-func foo(a: CC, var b: E) {
+func foo(_ a: CC, b: inout E) {
   globV = 0
   a + a.instV
   a.meth()
@@ -47,12 +47,12 @@ func foo(a: CC, var b: E) {
 typealias CCAlias = CC
 
 extension CC : Prot {
-  func meth2(x: CCAlias) {}
-  func protMeth(a: Prot) {}
+  func meth2(_ x: CCAlias) {}
+  func protMeth(_ a: Prot) {}
   var extV : Int { return 0 }
 }
 
-class SubCC : CC, Prot {}
+class SubCC : CC {}
 
 var globV2: SubCC
 
@@ -71,10 +71,10 @@ class ComputedProperty {
 }
 
 class BC2 {
-  func protMeth(a: Prot) {}
+  func protMeth(_ a: Prot) {}
 }
 class SubC2 : BC2, Prot {
-  override func protMeth(a: Prot) {}
+  override func protMeth(_ a: Prot) {}
 }
 
 class CC2 {
@@ -88,7 +88,7 @@ class CC2 {
   }
 }
 
-func test1(cp: ComputedProperty, sub: CC2) {
+func test1(_ cp: ComputedProperty, sub: CC2) {
   var x = cp.value
   x = cp.readOnly
   cp.value = x
@@ -124,26 +124,10 @@ class SB1 : B1 {
   }
 }
 
-func test3(c: SB1, s: S2) {
+func test3(_ c: SB1, s: S2) {
   test2()
   c.foo()
   s.sfoo()
-}
-
-// Test candidates.
-struct S3 {
-  func test() {} // no.
-}
-protocol P2 {
-  func test() // no.
-}
-class CC3 {
-  func meth() {} // no.
-  class func test1() {} // no.
-  func test2() {} // yes.
-}
-extension CC3 {
-  func test3() {} // yes.
 }
 
 extension Undeclared {

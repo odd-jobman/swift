@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2021 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,6 +15,14 @@
 // ArrayOfGenericPOD.
 //
 // For comparison, we always create three arrays of 200,000 words.
+
+import TestsUtils
+
+public let benchmarks =
+  BenchmarkInfo(
+    name: "ArrayOfPOD",
+    runFunction: run_ArrayOfPOD,
+    tags: [.validation, .api, .Array])
 
 class RefArray<T> {
   var array : [T]
@@ -26,7 +34,7 @@ class RefArray<T> {
 
 @inline(never)
 func genIntArray() {
-  _ = RefArray<Int>(3, count:200_000)
+  blackHole(RefArray<Int>(3, count:200_000))
   // should be a nop
 }
 
@@ -38,23 +46,23 @@ enum PODEnum {
 
 @inline(never)
 func genEnumArray() {
-  _ = RefArray<PODEnum>(PODEnum.Some(3))
+  blackHole(RefArray<PODEnum>(PODEnum.Some(3)))
   // should be a nop
 }
 
 struct S {
-  var x : Int
-  var y : Int
+  var x: Int
+  var y: Int
 }
 @inline(never)
 func genStructArray() {
-  _ = RefArray<S>(S(x:3, y:4))
+  blackHole(RefArray<S>(S(x:3, y:4)))
   // should be a nop
 }
 
 @inline(never)
-public func run_ArrayOfPOD(N: Int) {
-  for _ in 0...N {
+public func run_ArrayOfPOD(_ n: Int) {
+  for _ in 0..<n {
     genIntArray()
     genEnumArray()
     genStructArray()

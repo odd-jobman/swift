@@ -1,6 +1,4 @@
-// RUN: %target-swift-frontend -emit-silgen -sdk %S/Inputs -I %S/Inputs -enable-source-import %s | FileCheck %s
-
-// REQUIRES: objc_interop
+// RUN: %target-swift-emit-silgen -sdk %S/Inputs -I %S/Inputs -enable-source-import -enable-objc-interop %s | %FileCheck %s
 
 import Foundation
 
@@ -10,8 +8,8 @@ protocol CP : class {}
 
 @objc protocol OP {}
 
-// CHECK-LABEL: sil hidden @_TF26metatype_object_conversion16metatypeToObjectFMCS_1CPs9AnyObject_ 
-func metatypeToObject(x: C.Type) -> AnyObject {
+// CHECK-LABEL: sil hidden [ossa] @$s26metatype_object_conversion0A8ToObjectyyXlAA1CCmF
+func metatypeToObject(_ x: C.Type) -> AnyObject {
   // CHECK: bb0([[THICK:%.*]] : $@thick C.Type):
   // CHECK:   [[OBJC:%.*]] = thick_to_objc_metatype [[THICK]]
   // CHECK:   [[OBJECT:%.*]] = objc_metatype_to_object [[OBJC]]
@@ -19,18 +17,19 @@ func metatypeToObject(x: C.Type) -> AnyObject {
   return x
 }
 
-// CHECK-LABEL: sil hidden @_TF26metatype_object_conversion27existentialMetatypeToObjectFPMPS_2CP_Ps9AnyObject_
-func existentialMetatypeToObject(x: CP.Type) -> AnyObject {
-  // CHECK: bb0([[THICK:%.*]] : $@thick CP.Type):
+// CHECK-LABEL: sil hidden [ossa] @$s26metatype_object_conversion27existentialMetatypeToObjectyyXlAA2CP_pXpF
+func existentialMetatypeToObject(_ x: CP.Type) -> AnyObject {
+  // CHECK: bb0([[THICK:%.*]] : $@thick any CP.Type):
   // CHECK:   [[OBJC:%.*]] = thick_to_objc_metatype [[THICK]]
   // CHECK:   [[OBJECT:%.*]] = objc_existential_metatype_to_object [[OBJC]]
   // CHECK:   return [[OBJECT]]
   return x
 }
 
-// CHECK-LABEL: sil hidden @_TF26metatype_object_conversion23protocolToProtocolClassFT_CSo8Protocol
+// CHECK-LABEL: sil hidden [ossa] @$s26metatype_object_conversion23protocolToProtocolClassSo0F0CyF
 func protocolToProtocolClass() -> Protocol {
   // CHECK: [[PROTO:%.*]] = objc_protocol #OP
-  // CHECK: return [[PROTO]]
+  // CHECK: [[COPIED_PROTO:%.*]] = copy_value [[PROTO]]
+  // CHECK: return [[COPIED_PROTO]]
   return OP.self
 }

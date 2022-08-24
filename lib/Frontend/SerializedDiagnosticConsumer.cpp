@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2020 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -14,52 +14,26 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/Frontend/SerializedDiagnostics.h"
+
 #include "swift/Frontend/SerializedDiagnosticConsumer.h"
-#include "swift/Basic/DiagnosticConsumer.h"
+#include "swift/AST/DiagnosticConsumer.h"
+#include "swift/AST/DiagnosticsFrontend.h"
 #include "swift/Basic/LLVM.h"
 #include "swift/Basic/SourceManager.h"
+#include "swift/Frontend/PrintingDiagnosticConsumer.h"
 #include "swift/Parse/Lexer.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/Bitcode/BitstreamWriter.h"
-
-// For constant values only.
-#include "clang/Frontend/SerializedDiagnosticPrinter.h"
+#include "llvm/Bitstream/BitstreamWriter.h"
 
 using namespace swift;
-
-//===----------------------------------------------------------------------===//
-// These must match Clang's diagnostic IDs.  We can consider sharing the
-// header files to avoid this copy-paste.
-//===----------------------------------------------------------------------===//
-
-enum BlockIDs {
-  /// \brief A top-level block which represents any meta data associated
-  /// with the diagnostics, including versioning of the format.
-  BLOCK_META = llvm::bitc::FIRST_APPLICATION_BLOCKID,
-
-  /// \brief The this block acts as a container for all the information
-  /// for a specific diagnostic.
-  BLOCK_DIAG
-};
-
-enum RecordIDs {
-  RECORD_VERSION = 1,
-  RECORD_DIAG,
-  RECORD_SOURCE_RANGE,
-  RECORD_DIAG_FLAG,
-  RECORD_CATEGORY,
-  RECORD_FILENAME,
-  RECORD_FIXIT,
-  RECORD_FIRST = RECORD_VERSION,
-  RECORD_LAST = RECORD_FIXIT
-};
-
-//===----------------------------------------------------------------------===//
+using namespace clang::serialized_diags;
 
 namespace {
 class AbbreviationMap {
@@ -80,59 +54,72 @@ public:
   }
 };
 
-typedef SmallVector<uint64_t, 64> RecordData;
-typedef SmallVectorImpl<uint64_t> RecordDataImpl;
+using RecordData = SmallVector<uint64_t, 64>;
+using RecordDataImpl = SmallVectorImpl<uint64_t>;
 
 struct SharedState : llvm::RefCountedBase<SharedState> {
-  SharedState(std::unique_ptr<raw_ostream> OS)
-      : Stream(Buffer), OS(std::move(OS)), EmittedAnyDiagBlocks(false) { }
+  SharedState(StringRef serializedDiagnosticsPath)
+      : Stream(Buffer),
+        SerializedDiagnosticsPath(serializedDiagnosticsPath),
+        EmittedAnyDiagBlocks(false) {}
 
-  /// \brief The byte buffer for the serialized content.
+  /// The byte buffer for the serialized content.
   llvm::SmallString<1024> Buffer;
 
-  /// \brief The BitStreamWriter for the serialized diagnostics.
+  /// The BitStreamWriter for the serialized diagnostics.
   llvm::BitstreamWriter Stream;
 
-  /// \brief The name of the diagnostics file.
-  std::unique_ptr<raw_ostream> OS;
+  /// The path of the diagnostics file.
+  std::string SerializedDiagnosticsPath;
 
-  /// \brief The set of constructed record abbreviations.
+  /// The set of constructed record abbreviations.
   AbbreviationMap Abbrevs;
 
-  /// \brief A utility buffer for constructing record content.
+  /// A utility buffer for constructing record content.
   RecordData Record;
 
-  /// \brief A text buffer for rendering diagnostic text.
+  /// A text buffer for rendering diagnostic text.
   llvm::SmallString<256> diagBuf;
 
-  /// \brief The collection of files used.
+  /// The collection of files used.
   llvm::DenseMap<const char *, unsigned> Files;
 
-  typedef llvm::DenseMap<const void *, std::pair<unsigned, StringRef> >
-  DiagFlagsTy;
+  /// The collection of categories used.
+  llvm::DenseMap<const char *, unsigned> Categories;
 
-  /// \brief Map for uniquing strings.
+  using DiagFlagsTy =
+      llvm::DenseMap<const void *, std::pair<unsigned, StringRef>>;
+
+  /// Map for uniquing strings.
   DiagFlagsTy DiagFlags;
 
-  /// \brief Whether we have already started emission of any DIAG blocks. Once
+  /// Whether we have already started emission of any DIAG blocks. Once
   /// this becomes \c true, we never close a DIAG block until we know that we're
   /// starting another one or we're done.
   bool EmittedAnyDiagBlocks;
 };
 
-/// \brief Diagnostic consumer that serializes diagnostics to a stream.
+/// Diagnostic consumer that serializes diagnostics to a stream.
 class SerializedDiagnosticConsumer : public DiagnosticConsumer {
-  /// \brief State shared among the various clones of this diagnostic consumer.
+  /// State shared among the various clones of this diagnostic consumer.
   llvm::IntrusiveRefCntPtr<SharedState> State;
+  bool CalledFinishProcessing = false;
+  bool CompilationWasComplete = true;
+
 public:
-  SerializedDiagnosticConsumer(std::unique_ptr<raw_ostream> OS)
-      : State(new SharedState(std::move(OS))) {
+  SerializedDiagnosticConsumer(StringRef serializedDiagnosticsPath)
+      : State(new SharedState(serializedDiagnosticsPath)) {
     emitPreamble();
   }
 
   ~SerializedDiagnosticConsumer() {
-    // FIXME: we may not wish to put this in a destructor.
-    // That's not what clang does.
+    assert(CalledFinishProcessing && "did not call finishProcessing()");
+  }
+
+  bool finishProcessing() override {
+    assert(!CalledFinishProcessing &&
+           "called finishProcessing() multiple times");
+    CalledFinishProcessing = true;
 
     // NOTE: clang also does check for shared instances.  We don't
     // have these yet in Swift, but if we do we need to add an extra
@@ -142,35 +129,60 @@ public:
     if (State->EmittedAnyDiagBlocks)
       exitDiagBlock();
 
-    // Write the generated bitstream to "Out".
-    State->OS->write((char *)&State->Buffer.front(), State->Buffer.size());
-    State->OS->flush();
-    State->OS.reset(0);
+    // Write the generated bitstream to the file.
+    std::error_code EC;
+    std::unique_ptr<llvm::raw_fd_ostream> OS;
+    OS.reset(new llvm::raw_fd_ostream(State->SerializedDiagnosticsPath, EC,
+                                      llvm::sys::fs::OF_None));
+    if (EC) {
+      // Create a temporary diagnostics engine to print the error to stderr.
+      SourceManager dummyMgr;
+      DiagnosticEngine DE(dummyMgr);
+      PrintingDiagnosticConsumer PDC;
+      DE.addConsumer(PDC);
+      DE.diagnose(SourceLoc(), diag::cannot_open_serialized_file,
+                  State->SerializedDiagnosticsPath, EC.message());
+      return true;
+    }
+
+    if (CompilationWasComplete) {
+      OS->write((char *)&State->Buffer.front(), State->Buffer.size());
+      OS->flush();
+    }
+    return false;
   }
 
-  virtual void handleDiagnostic(SourceManager &SM, SourceLoc Loc,
-                                DiagnosticKind Kind, llvm::StringRef Text,
-                                const DiagnosticInfo &Info) override;
+  /// In batch mode, if any error occurs, no primaries can be compiled.
+  /// Some primaries will have errors in their diagnostics files and so
+  /// a client (such as Xcode) can see that those primaries failed.
+  /// Other primaries will have no errors in their diagnostics files.
+  /// In order for the driver to distinguish the two cases without parsing
+  /// the diagnostics, the frontend emits a truncated diagnostics file
+  /// for the latter case.
+  /// The unfortunate aspect is that the truncation discards warnings, etc.
+  
+  void informDriverOfIncompleteBatchModeCompilation() override {
+    CompilationWasComplete = false;
+  }
 
-  /// \brief The version of the diagnostics file.
-  enum { Version = 1 };
+  void handleDiagnostic(SourceManager &SM, const DiagnosticInfo &Info) override;
 
 private:
-  /// \brief Emit bitcode for the preamble.
+  /// Emit bitcode for the preamble.
   void emitPreamble();
 
-  /// \brief Emit bitcode for the BlockInfoBlock (part of the preamble).
+  /// Emit bitcode for the BlockInfoBlock (part of the preamble).
   void emitBlockInfoBlock();
 
-  /// \brief Emit bitcode for metadata block (part of preamble).
+  /// Emit bitcode for metadata block (part of preamble).
   void emitMetaBlock();
 
-  /// \brief Emit bitcode to enter a block for a diagnostic.
+  /// Emit bitcode to enter a block for a diagnostic.
   void enterDiagBlock() {
     State->Stream.EnterSubblock(BLOCK_DIAG, 4);
   }
 
-  /// \brief Emit bitcode to exit a block for a diagnostic.
+  /// Emit bitcode to exit a block for a diagnostic.
   void exitDiagBlock() {
     State->Stream.ExitBlock();
   }
@@ -178,7 +190,10 @@ private:
   // Record identifier for the file.
   unsigned getEmitFile(StringRef Filename);
 
-  /// \brief Add a source location to a record.
+  // Record identifier for the category.
+  unsigned getEmitCategory(StringRef Category);
+
+  /// Add a source location to a record.
   void addLocToRecord(SourceLoc Loc,
                       SourceManager &SM,
                       StringRef Filename,
@@ -187,18 +202,20 @@ private:
   void addRangeToRecord(CharSourceRange Range, SourceManager &SM,
                         StringRef Filename, RecordDataImpl &Record);
 
-  /// \brief Emit the message payload of a diagnostic to bitcode.
+  /// Emit the message payload of a diagnostic to bitcode.
   void emitDiagnosticMessage(SourceManager &SM, SourceLoc Loc,
                              DiagnosticKind Kind,
                              StringRef Text, const DiagnosticInfo &Info);
 };
-}
+} // end anonymous namespace
 
-namespace swift { namespace serialized_diagnostics {
-  DiagnosticConsumer *createConsumer(std::unique_ptr<llvm::raw_ostream> OS) {
-    return new SerializedDiagnosticConsumer(std::move(OS));
+namespace swift {
+namespace serialized_diagnostics {
+  std::unique_ptr<DiagnosticConsumer> createConsumer(StringRef outputPath) {
+    return std::make_unique<SerializedDiagnosticConsumer>(outputPath);
   }
-}}
+} // namespace serialized_diagnostics
+} // namespace swift
 
 unsigned SerializedDiagnosticConsumer::getEmitFile(StringRef Filename) {
   // NOTE: Using Filename.data() here relies on SourceMgr using
@@ -224,6 +241,23 @@ unsigned SerializedDiagnosticConsumer::getEmitFile(StringRef Filename) {
   return entry;
 }
 
+unsigned SerializedDiagnosticConsumer::getEmitCategory(StringRef Category) {
+  unsigned &entry = State->Categories[Category.data()];
+  if (entry)
+    return entry;
+
+  // Lazily generate the record for the category.
+  entry = State->Categories.size();
+  RecordData Record;
+  Record.push_back(RECORD_CATEGORY);
+  Record.push_back(entry);
+  Record.push_back(Category.size());
+  State->Stream.EmitRecordWithBlob(State->Abbrevs.get(RECORD_CATEGORY), Record,
+                                   Category.data());
+
+  return entry;
+}
+
 void SerializedDiagnosticConsumer::addLocToRecord(SourceLoc Loc,
                                                   SourceManager &SM,
                                                   StringRef Filename,
@@ -237,13 +271,14 @@ void SerializedDiagnosticConsumer::addLocToRecord(SourceLoc Loc,
     return;
   }
 
+  auto bufferId = SM.findBufferContainingLoc(Loc);
   unsigned line, col;
-  std::tie(line, col) = SM.getLineAndColumn(Loc);
+  std::tie(line, col) = SM.getPresumedLineAndColumnForLoc(Loc);
 
   Record.push_back(getEmitFile(Filename));
   Record.push_back(line);
   Record.push_back(col);
-  Record.push_back(0);
+  Record.push_back(SM.getLocOffsetInBuffer(Loc, bufferId));
 }
 
 void SerializedDiagnosticConsumer::addRangeToRecord(CharSourceRange Range,
@@ -255,7 +290,7 @@ void SerializedDiagnosticConsumer::addRangeToRecord(CharSourceRange Range,
   addLocToRecord(Range.getEnd(), SM, Filename, Record);
 }
 
-/// \brief Map a Swift DiagosticKind to the diagnostic level expected
+/// Map a Swift DiagnosticKind to the diagnostic level expected
 /// for serialized diagnostics.
 static clang::serialized_diags::Level getDiagnosticLevel(DiagnosticKind Kind) {
   switch (Kind) {
@@ -265,7 +300,11 @@ static clang::serialized_diags::Level getDiagnosticLevel(DiagnosticKind Kind) {
     return clang::serialized_diags::Note;
   case DiagnosticKind::Warning:
     return clang::serialized_diags::Warning;
+  case DiagnosticKind::Remark:
+    return clang::serialized_diags::Remark;
   }
+
+  llvm_unreachable("Unhandled DiagnosticKind in switch.");
 }
 
 void SerializedDiagnosticConsumer::emitPreamble() {
@@ -286,13 +325,13 @@ void SerializedDiagnosticConsumer::emitMetaBlock() {
   Stream.EnterSubblock(BLOCK_META, 3);
   Record.clear();
   Record.push_back(RECORD_VERSION);
-  Record.push_back(Version);
+  Record.push_back(clang::serialized_diags::VersionNumber);
   Stream.EmitRecordWithAbbrev(Abbrevs.get(RECORD_VERSION), Record);
   Stream.ExitBlock();
 }
 
 
-/// \brief Emits a block ID in the BLOCKINFO block.
+/// Emits a block ID in the BLOCKINFO block.
 static void emitBlockID(unsigned ID, const char *Name,
                         llvm::BitstreamWriter &Stream,
                         RecordDataImpl &Record) {
@@ -301,7 +340,7 @@ static void emitBlockID(unsigned ID, const char *Name,
   Stream.EmitRecord(llvm::bitc::BLOCKINFO_CODE_SETBID, Record);
 
   // Emit the block name if present.
-  if (Name == 0 || Name[0] == 0)
+  if (Name == nullptr || Name[0] == 0)
     return;
 
   Record.clear();
@@ -312,10 +351,10 @@ static void emitBlockID(unsigned ID, const char *Name,
   Stream.EmitRecord(llvm::bitc::BLOCKINFO_CODE_BLOCKNAME, Record);
 }
 
-/// \brief Emits a record ID in the BLOCKINFO block.
+/// Emits a record ID in the BLOCKINFO block.
 static void emitRecordID(unsigned ID, const char *Name,
                          llvm::BitstreamWriter &Stream,
-                         RecordDataImpl &Record){
+                         RecordDataImpl &Record) {
   Record.clear();
   Record.push_back(ID);
 
@@ -325,8 +364,9 @@ static void emitRecordID(unsigned ID, const char *Name,
   Stream.EmitRecord(llvm::bitc::BLOCKINFO_CODE_SETRECORDNAME, Record);
 }
 
-/// \brief Emit bitcode for abbreviation for source locations.
-static void addSourceLocationAbbrev(llvm::BitCodeAbbrev *Abbrev) {
+/// Emit bitcode for abbreviation for source locations.
+static void
+addSourceLocationAbbrev(std::shared_ptr<llvm::BitCodeAbbrev> Abbrev) {
   using namespace llvm;
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 10)); // File ID.
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 32)); // Line.
@@ -334,14 +374,15 @@ static void addSourceLocationAbbrev(llvm::BitCodeAbbrev *Abbrev) {
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 32)); // Offset;
 }
 
-/// \brief Emit bitcode for abbreviation for source ranges.
-static void addRangeLocationAbbrev(llvm::BitCodeAbbrev *Abbrev) {
+/// Emit bitcode for abbreviation for source ranges.
+static void
+addRangeLocationAbbrev(std::shared_ptr<llvm::BitCodeAbbrev> Abbrev) {
   addSourceLocationAbbrev(Abbrev);
   addSourceLocationAbbrev(Abbrev);
 }
 
 void SerializedDiagnosticConsumer::emitBlockInfoBlock() {
-  State->Stream.EnterBlockInfoBlock(3);
+  State->Stream.EnterBlockInfoBlock();
 
   using namespace llvm;
   llvm::BitstreamWriter &Stream = State->Stream;
@@ -354,7 +395,7 @@ void SerializedDiagnosticConsumer::emitBlockInfoBlock() {
 
   emitBlockID(BLOCK_META, "Meta", Stream, Record);
   emitRecordID(RECORD_VERSION, "Version", Stream, Record);
-  BitCodeAbbrev *Abbrev = new BitCodeAbbrev();
+  auto Abbrev = std::make_shared<BitCodeAbbrev>();
   Abbrev->Add(BitCodeAbbrevOp(RECORD_VERSION));
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 32));
   Abbrevs.set(RECORD_VERSION, Stream.EmitBlockInfoAbbrev(BLOCK_META, Abbrev));
@@ -372,7 +413,7 @@ void SerializedDiagnosticConsumer::emitBlockInfoBlock() {
   emitRecordID(RECORD_FIXIT, "FixIt", Stream, Record);
 
   // Emit abbreviation for RECORD_DIAG.
-  Abbrev = new BitCodeAbbrev();
+  Abbrev = std::make_shared<BitCodeAbbrev>();
   Abbrev->Add(BitCodeAbbrevOp(RECORD_DIAG));
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 3));  // Diag level.
   addSourceLocationAbbrev(Abbrev);
@@ -383,7 +424,7 @@ void SerializedDiagnosticConsumer::emitBlockInfoBlock() {
   Abbrevs.set(RECORD_DIAG, Stream.EmitBlockInfoAbbrev(BLOCK_DIAG, Abbrev));
 
   // Emit abbreviation for RECORD_CATEGORY.
-  Abbrev = new BitCodeAbbrev();
+  Abbrev = std::make_shared<BitCodeAbbrev>();
   Abbrev->Add(BitCodeAbbrevOp(RECORD_CATEGORY));
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 16)); // Category ID.
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 8));  // Text size.
@@ -391,14 +432,14 @@ void SerializedDiagnosticConsumer::emitBlockInfoBlock() {
   Abbrevs.set(RECORD_CATEGORY, Stream.EmitBlockInfoAbbrev(BLOCK_DIAG, Abbrev));
 
   // Emit abbreviation for RECORD_SOURCE_RANGE.
-  Abbrev = new BitCodeAbbrev();
+  Abbrev = std::make_shared<BitCodeAbbrev>();
   Abbrev->Add(BitCodeAbbrevOp(RECORD_SOURCE_RANGE));
   addRangeLocationAbbrev(Abbrev);
   Abbrevs.set(RECORD_SOURCE_RANGE,
               Stream.EmitBlockInfoAbbrev(BLOCK_DIAG, Abbrev));
 
   // Emit the abbreviation for RECORD_DIAG_FLAG.
-  Abbrev = new BitCodeAbbrev();
+  Abbrev = std::make_shared<BitCodeAbbrev>();
   Abbrev->Add(BitCodeAbbrevOp(RECORD_DIAG_FLAG));
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 10)); // Mapped Diag ID.
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 16)); // Text size.
@@ -407,7 +448,7 @@ void SerializedDiagnosticConsumer::emitBlockInfoBlock() {
                                                            Abbrev));
 
   // Emit the abbreviation for RECORD_FILENAME.
-  Abbrev = new BitCodeAbbrev();
+  Abbrev = std::make_shared<BitCodeAbbrev>();
   Abbrev->Add(BitCodeAbbrevOp(RECORD_FILENAME));
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 10)); // Mapped file ID.
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 32)); // Size.
@@ -418,7 +459,7 @@ void SerializedDiagnosticConsumer::emitBlockInfoBlock() {
                                                           Abbrev));
 
   // Emit the abbreviation for RECORD_FIXIT.
-  Abbrev = new BitCodeAbbrev();
+  Abbrev = std::make_shared<BitCodeAbbrev>();
   Abbrev->Add(BitCodeAbbrevOp(RECORD_FIXIT));
   addRangeLocationAbbrev(Abbrev);
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 16)); // Text size.
@@ -443,7 +484,7 @@ emitDiagnosticMessage(SourceManager &SM,
 
   StringRef filename = "";
   if (Loc.isValid())
-    filename = SM.getIdentifierForBuffer(SM.findBufferContainingLoc(Loc));
+    filename = SM.getDisplayNameForLoc(Loc);
 
   // Emit the RECORD_DIAG record.
   Record.clear();
@@ -451,8 +492,13 @@ emitDiagnosticMessage(SourceManager &SM,
   Record.push_back(getDiagnosticLevel(Kind));
   addLocToRecord(Loc, SM, filename, Record);
 
-  // FIXME: Swift diagnostics currently have no category.
-  Record.push_back(0);
+  // Emit the category.
+  if (!Info.Category.empty()) {
+    Record.push_back(getEmitCategory(Info.Category));
+  } else {
+    Record.push_back(0);
+  }
+
   // FIXME: Swift diagnostics currently have no flags.
   Record.push_back(0);
 
@@ -488,16 +534,13 @@ emitDiagnosticMessage(SourceManager &SM,
   }
 }
 
-void
-SerializedDiagnosticConsumer::handleDiagnostic(SourceManager &SM,
-                                               SourceLoc Loc,
-                                               DiagnosticKind Kind,
-                                               StringRef Text,
-                                               const DiagnosticInfo &Info) {
+void SerializedDiagnosticConsumer::handleDiagnostic(
+    SourceManager &SM, const DiagnosticInfo &Info) {
+
   // Enter the block for a non-note diagnostic immediately, rather
   // than waiting for beginDiagnostic, in case associated notes
   // are emitted before we get there.
-  if (Kind != DiagnosticKind::Note) {
+  if (Info.Kind != DiagnosticKind::Note) {
     if (State->EmittedAnyDiagBlocks)
       exitDiagBlock();
 
@@ -507,14 +550,21 @@ SerializedDiagnosticConsumer::handleDiagnostic(SourceManager &SM,
 
   // Special-case diagnostics with no location.
   // Make sure we bracket all notes as "sub-diagnostics".
-  bool bracketDiagnostic = (Kind == DiagnosticKind::Note);
+  bool bracketDiagnostic = (Info.Kind == DiagnosticKind::Note);
 
   if (bracketDiagnostic)
     enterDiagBlock();
 
-  emitDiagnosticMessage(SM, Loc, Kind, Text, Info);
+  // Actually substitute the diagnostic arguments into the diagnostic text.
+  llvm::SmallString<256> Text;
+  {
+    llvm::raw_svector_ostream Out(Text);
+    DiagnosticEngine::formatDiagnosticText(Out, Info.FormatString,
+                                           Info.FormatArgs);
+  }
+
+  emitDiagnosticMessage(SM, Info.Loc, Info.Kind, Text, Info);
 
   if (bracketDiagnostic)
     exitDiagBlock();
 }
-

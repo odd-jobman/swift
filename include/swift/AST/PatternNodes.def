@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -28,18 +28,25 @@
 # define REFUTABLE_PATTERN(Id, Parent) PATTERN(Id, Parent)
 #endif
 
-PATTERN(Paren, Pattern)
-PATTERN(Tuple, Pattern)
-PATTERN(Named, Pattern)
-PATTERN(Any, Pattern)
-PATTERN(Typed, Pattern)
-PATTERN(Var, Pattern)
-REFUTABLE_PATTERN(Is, Pattern)
-REFUTABLE_PATTERN(NominalType, Pattern)
-REFUTABLE_PATTERN(EnumElement, Pattern)
-REFUTABLE_PATTERN(OptionalSome, Pattern)
-REFUTABLE_PATTERN(Bool, Pattern)
-REFUTABLE_PATTERN(Expr, Pattern)
+#ifndef LAST_PATTERN
+#define LAST_PATTERN(Id)
+#endif
 
-#undef PATTERN
+// Metavars: x (variable binding), pat (pattern), e (expression)
+PATTERN(Paren, Pattern)   // (pat)
+PATTERN(Tuple, Pattern)   // (pat1, ..., patN), N >= 1
+PATTERN(Named, Pattern)   // let pat, var pat
+PATTERN(Any, Pattern)     // _
+PATTERN(Typed, Pattern)   // pat : type
+PATTERN(Binding, Pattern) // x
+REFUTABLE_PATTERN(Is, Pattern)           // x is myclass
+REFUTABLE_PATTERN(EnumElement, Pattern)  // .mycase(pat1, ..., patN)
+                                         // MyType.mycase(pat1, ..., patN)
+REFUTABLE_PATTERN(OptionalSome, Pattern) // pat?  nil
+REFUTABLE_PATTERN(Bool, Pattern)         // true, false
+REFUTABLE_PATTERN(Expr, Pattern)         // e
+LAST_PATTERN(Expr)
+
 #undef REFUTABLE_PATTERN
+#undef PATTERN
+#undef LAST_PATTERN

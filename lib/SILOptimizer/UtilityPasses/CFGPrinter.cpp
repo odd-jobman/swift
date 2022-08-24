@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -29,21 +29,37 @@ using namespace swift;
 //                                  Options
 //===----------------------------------------------------------------------===//
 
+llvm::cl::opt<std::string> SILViewCFGOnlyFun(
+    "sil-view-cfg-only-function", llvm::cl::init(""),
+    llvm::cl::desc("Only produce a graphviz file for this function"));
+
+llvm::cl::opt<std::string> SILViewCFGOnlyFuns(
+    "sil-view-cfg-only-functions", llvm::cl::init(""),
+    llvm::cl::desc("Only produce a graphviz file for the sil for the functions "
+                   "whose name contains this substring"));
+
 //===----------------------------------------------------------------------===//
 //                              Top Level Driver
 //===----------------------------------------------------------------------===//
 
 namespace {
-class SILCFGPrinter : public SILFunctionTransform {
-  StringRef getName() override { return "SIL CFG Printer"; }
 
+class SILCFGPrinter : public SILFunctionTransform {
   /// The entry point to the transformation.
   void run() override {
     SILFunction *F = getFunction();
 
+    // If we are not supposed to dump view this cfg, return.
+    if (!SILViewCFGOnlyFun.empty() && F && F->getName() != SILViewCFGOnlyFun)
+      return;
+    if (!SILViewCFGOnlyFuns.empty() && F &&
+        !F->getName().contains(SILViewCFGOnlyFuns))
+      return;
+
     F->viewCFG();
   }
 };
+
 } // end anonymous namespace
 
 SILTransform *swift::createCFGPrinter() {

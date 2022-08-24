@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -20,76 +20,66 @@
 #define SWIFT_STDLIB_SHIMS_COREFOUNDATIONSHIMS_H
 
 #include "SwiftStdint.h"
+#include "Visibility.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #ifdef __OBJC2__
 #if __LLP64__
-typedef unsigned long long _swift_shims_CFTypeID;
-typedef unsigned long long _swift_shims_CFOptionFlags;
 typedef unsigned long long _swift_shims_CFHashCode;
 typedef signed long long _swift_shims_CFIndex;
 #else
-typedef unsigned long _swift_shims_CFTypeID;
-typedef unsigned long _swift_shims_CFOptionFlags;
 typedef unsigned long _swift_shims_CFHashCode;
 typedef signed long _swift_shims_CFIndex;
 #endif
 
-typedef struct {
-  _swift_shims_CFIndex location;
-  _swift_shims_CFIndex length;
-} _swift_shims_CFRange;
-
-typedef id _swift_shims_CFStringRef;
-typedef const struct _swift_shims_CFAllocator *_swift_shims_CFAllocatorRef;
-typedef __swift_uint32_t _swift_shims_CFStringEncoding;
-typedef _swift_shims_CFOptionFlags _swift_shims_CFStringCompareFlags;
-typedef _swift_shims_CFIndex _swift_shims_CFComparisonResult;
-
 // Consider creating SwiftMacTypes.h for these
 typedef unsigned char _swift_shims_Boolean;
-typedef __swift_uint16_t _swift_shims_UniChar;
+typedef __swift_uint8_t _swift_shims_UInt8;
+typedef __swift_uint32_t _swift_shims_CFStringEncoding;
 
-// Buffer is nullable in case the string is zero-length.
-void _swift_stdlib_CFStringGetCharacters(_swift_shims_CFStringRef __nonnull theString,
-                           _swift_shims_CFRange range,
-                           _swift_shims_UniChar *__nullable buffer);
+/* This is layout-compatible with constant CFStringRefs on Darwin */
+typedef struct __swift_shims_builtin_CFString {
+  const void * _Nonnull isa; // point to __CFConstantStringClassReference
+  unsigned long flags;
+  const __swift_uint8_t * _Nonnull str;
+  unsigned long length;
+} _swift_shims_builtin_CFString;
 
-const _swift_shims_UniChar *__nullable _swift_stdlib_CFStringGetCharactersPtr(
-    _swift_shims_CFStringRef __nonnull theString);
+SWIFT_RUNTIME_STDLIB_API
+__swift_uint8_t _swift_stdlib_isNSString(id _Nonnull obj);
 
-_swift_shims_CFIndex
-    _swift_stdlib_CFStringGetLength(_swift_shims_CFStringRef __nonnull theString);
+SWIFT_RUNTIME_STDLIB_API
+_swift_shims_CFHashCode _swift_stdlib_CFStringHashNSString(id _Nonnull obj);
 
-_swift_shims_CFStringRef __nonnull _swift_stdlib_CFStringCreateWithSubstring(
-    _swift_shims_CFAllocatorRef __nullable alloc,
-    _swift_shims_CFStringRef __nonnull str, _swift_shims_CFRange range);
+SWIFT_RUNTIME_STDLIB_API
+_swift_shims_CFHashCode
+_swift_stdlib_CFStringHashCString(const _swift_shims_UInt8 * _Nonnull bytes,
+                                  _swift_shims_CFIndex length);
 
-_swift_shims_UniChar
-_swift_stdlib_CFStringGetCharacterAtIndex(_swift_shims_CFStringRef __nonnull theString,
-                            _swift_shims_CFIndex idx);
+SWIFT_RUNTIME_STDLIB_API
+const __swift_uint8_t * _Nullable
+_swift_stdlib_NSStringCStringUsingEncodingTrampoline(id _Nonnull obj,
+                                                     unsigned long encoding);
 
-_swift_shims_CFStringRef __nonnull _swift_stdlib_CFStringCreateCopy(
-    _swift_shims_CFAllocatorRef __nullable alloc,
-    _swift_shims_CFStringRef __nonnull theString);
+SWIFT_RUNTIME_STDLIB_API
+__swift_uint8_t
+_swift_stdlib_NSStringGetCStringTrampoline(id _Nonnull obj,
+                                           _swift_shims_UInt8 *_Nonnull buffer,
+                                           _swift_shims_CFIndex maxLength,
+                                           unsigned long encoding);
 
-const char *__nullable _swift_stdlib_CFStringGetCStringPtr(
-    _swift_shims_CFStringRef __nonnull theString,
-    _swift_shims_CFStringEncoding encoding);
-
-_swift_shims_CFComparisonResult
-_swift_stdlib_CFStringCompare(_swift_shims_CFStringRef __nonnull theString1,
-                _swift_shims_CFStringRef __nonnull theString2,
-                _swift_shims_CFStringCompareFlags compareOptions);
-
-_swift_shims_Boolean
-_swift_stdlib_CFStringFindWithOptions(_swift_shims_CFStringRef __nonnull theString,
-                        _swift_shims_CFStringRef __nonnull stringToFind,
-                        _swift_shims_CFRange rangeToSearch,
-                        _swift_shims_CFStringCompareFlags searchOptions,
-                        _swift_shims_CFRange *__nullable result);
-
-_swift_shims_CFStringRef __nonnull _swift_stdlib_objcDebugDescription(id __nonnull nsObject);
+SWIFT_RUNTIME_STDLIB_API
+__swift_uint8_t
+_swift_stdlib_dyld_is_objc_constant_string(const void * _Nonnull addr);
+  
 #endif // __OBJC2__
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
 
 #endif // SWIFT_STDLIB_SHIMS_COREFOUNDATIONSHIMS_H
 

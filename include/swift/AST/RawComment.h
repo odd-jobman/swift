@@ -2,22 +2,26 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef SWIFT_AST_RAW_COMMENT_H
 #define SWIFT_AST_RAW_COMMENT_H
 
-#include "swift/Basic/LLVM.h"
 #include "swift/Basic/SourceLoc.h"
-#include "swift/Basic/SourceManager.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace swift {
+
+class SourceFile;
+class SourceManager;
+
 struct SingleRawComment {
   enum class CommentKind {
     OrdinaryLine,  ///< Any normal // comments
@@ -26,16 +30,14 @@ struct SingleRawComment {
     BlockDoc,      ///< \code /** stuff */ \endcode
   };
 
-  const CharSourceRange Range;
-  const StringRef RawText;
+  CharSourceRange Range;
+  StringRef RawText;
 
   unsigned Kind : 8;
-  unsigned StartColumn : 16;
-  unsigned StartLine;
-  const unsigned EndLine;
+  unsigned ColumnIndent : 16;
 
   SingleRawComment(CharSourceRange Range, const SourceManager &SourceMgr);
-  SingleRawComment(StringRef RawText, unsigned StartColumn);
+  SingleRawComment(StringRef RawText, unsigned ColumnIndent);
 
   SingleRawComment(const SingleRawComment &) = default;
   SingleRawComment &operator=(const SingleRawComment &) = default;
@@ -53,6 +55,10 @@ struct SingleRawComment {
     return getKind() == CommentKind::OrdinaryLine ||
            getKind() == CommentKind::LineDoc;
   }
+
+  bool isGyb() const {
+    return RawText.startswith("// ###");
+  }
 };
 
 struct RawComment {
@@ -67,6 +73,8 @@ struct RawComment {
   bool isEmpty() const {
     return Comments.empty();
   }
+
+  CharSourceRange getCharSourceRange();
 };
 
 struct CommentInfo {

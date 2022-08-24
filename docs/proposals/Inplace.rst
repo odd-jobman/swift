@@ -1,7 +1,5 @@
 :orphan:
 
-.. @raise litre.TestsAreMissing
-
 =====================
  In-Place Operations
 =====================
@@ -24,29 +22,29 @@ sets, it was decided that the canonical ``Set`` interface should be
 written in terms of methods: [#operators]_ ::
 
   struct Set<Element> {
-    public func contains(x: Element) -> Bool                // x ∈ A, A ∋ x
-    public func isSubsetOf(b: Set<Element>) -> Bool         // A ⊆ B
-    public func isStrictSubsetOf(b: Set<Element>) -> Bool   // A ⊂ B
-    public func isSupersetOf(b: Set<Element>) -> Bool       // A ⊇ B
-    public func isStrictSupersetOf(b: Set<Element>) -> Bool // A ⊃ B
+    public func contains(_ x: Element) -> Bool                // x ∈ A, A ∋ x
+    public func isSubsetOf(_ b: Set<Element>) -> Bool         // A ⊆ B
+    public func isStrictSubsetOf(_ b: Set<Element>) -> Bool   // A ⊂ B
+    public func isSupersetOf(_ b: Set<Element>) -> Bool       // A ⊇ B
+    public func isStrictSupersetOf(_ b: Set<Element>) -> Bool // A ⊃ B
     ...
   }
 
 When we started to look at the specifics, however, we ran into a
 familiar pattern::
-   
+
   ...
-    public func union(b: Set<Element>) -> Set<Element>        // A ∪ B
-    public mutating func unionInPlace(b: Set<Element>)        // A ∪= B
+    public func union(_ b: Set<Element>) -> Set<Element>        // A ∪ B
+    public mutating func unionInPlace(_ b: Set<Element>)        // A ∪= B
 
-    public func intersect(b: Set<Element>) -> Set<Element>    // A ∩ B
-    public mutating func intersectInPlace(b: Set<Element>)    // A ∩= B
+    public func intersect(_ b: Set<Element>) -> Set<Element>    // A ∩ B
+    public mutating func intersectInPlace(_ b: Set<Element>)    // A ∩= B
 
-    public func subtract(b: Set<Element>) -> Set<Element>     // A - B
-    public mutating func subtractInPlace(b: Set<Element>)     // A -= B
+    public func subtract(_ b: Set<Element>) -> Set<Element>     // A - B
+    public mutating func subtractInPlace(_ b: Set<Element>)     // A -= B
 
-    public func exclusiveOr(b: Set<Element>) -> Set<Element>  // A ⊕ B
-    public mutating func exclusiveOrInPlace(b: Set<Element>)  // A ⊕= B
+    public func exclusiveOr(_ b: Set<Element>) -> Set<Element>  // A ⊕ B
+    public mutating func exclusiveOrInPlace(_ b: Set<Element>)  // A ⊕= B
 
 We had seen the same pattern when considering the API for
 ``String``, but in that case, there are no obvious operator
@@ -60,9 +58,9 @@ spellings in all of Unicode.  For example::
     public mutating func lowercaseInPlace()
 
     public func replace(
-      pattern: String, with replacement: String) -> String
+      _ pattern: String, with replacement: String) -> String
     public mutating func replaceInPlace(
-      pattern: String, with replacement: String)
+      _ pattern: String, with replacement: String)
 
     public func trim() -> String
     public mutating func trimInPlace()
@@ -92,7 +90,7 @@ We see at least four problems with this kind of API:
    mutating version of ``op(x: T, y: U) -> T`` can always be defined
    as ::
 
-     func opInPlace(inout x: T, y: U) {
+     func opInPlace(x: inout T, y: U) {
        x = op(x, y)
      }
 
@@ -170,9 +168,9 @@ We propose to allow method pairs of the form:
 .. parsed-literal::
 
   extension **X** {
-    func *f*\ (p₀: T₀, p₁: T₁, p₂: T₂, …p\ *n*: T\ *n*) -> **X**
+    func *f*\ (p₀: T₀, p₁: T₁, p₂: T₂, ...p\ *n*: T\ *n*) -> **X**
 
-    func **=**\ *f*\ (p₀: T₀, p₁: T₁, p₂: T₂, …p\ *n*: T\ *n*) -> **Void**
+    func **=**\ *f*\ (p₀: T₀, p₁: T₁, p₂: T₂, ...p\ *n*: T\ *n*) -> **Void**
   }
 
 The second ``=f`` method is known as an **assignment method** [#getset]_.
@@ -192,7 +190,7 @@ The target of an assignment method is always required, even when the
 target is ``self``::
 
   extension Set {
-    mutating func frob(other: Set) {
+    mutating func frob(_ other: Set) {
       let brick = union(other) // self.union(other) implied
       self.=union(other)       // calls the assignment method
       union(other)             // warning: result ignored
@@ -257,7 +255,7 @@ Given an ordinary method of a type ``X``:
 .. parsed-literal::
 
   extension **X** {
-    func *f*\ (p₀: T₀, p₁: T₁, p₂: T₂, …p\ *n*: T\ *n*) -> **X**
+    func *f*\ (p₀: T₀, p₁: T₁, p₂: T₂, ...p\ *n*: T\ *n*) -> **X**
   }
 
 if there is no corresponding *assignment method* in ``X`` with the signature
@@ -265,20 +263,20 @@ if there is no corresponding *assignment method* in ``X`` with the signature
 .. parsed-literal::
 
   extension **X** {
-    func *=f*\ (p₀: T₀, p₁: T₁, p₂: T₂, …p\ *n*: T\ *n*) -> **Void**
+    func *=f*\ (p₀: T₀, p₁: T₁, p₂: T₂, ...p\ *n*: T\ *n*) -> **Void**
   }
 
 we can compile the statement
 
 .. parsed-literal::
 
-  x\ **.=**\ *f*\ (a₀, p₁: a₁, p₂: a₂, …p\ *n*: a\ *n*)
+  x\ **.=**\ *f*\ (a₀, p₁: a₁, p₂: a₂, ...p\ *n*: a\ *n*)
 
 as though it were written:
-  
+
 .. parsed-literal::
 
-  x **= x.**\ *f*\ (a₀, p₁: a₁, p₂: a₂, …p\ *n*: a\ *n*)
+  x **= x.**\ *f*\ (a₀, p₁: a₁, p₂: a₂, ...p\ *n*: a\ *n*)
 
 Generating the Non-Mutating Form
 --------------------------------
@@ -288,7 +286,7 @@ Given an *assignment method* of a value type ``X``:
 .. parsed-literal::
 
   extension **X** {
-    func *=f*\ (p₀: T₀, p₁: T₁, p₂: T₂, …p\ *n*: T\ *n*) -> **Void**
+    func *=f*\ (p₀: T₀, p₁: T₁, p₂: T₂, ...p\ *n*: T\ *n*) -> **Void**
   }
 
 if there is no method in ``X`` with the signature
@@ -296,22 +294,22 @@ if there is no method in ``X`` with the signature
 .. parsed-literal::
 
   extension **X** {
-    func *f*\ (p₀: T₀, p₁: T₁, p₂: T₂, …p\ *n*: T\ *n*) -> **X**
+    func *f*\ (p₀: T₀, p₁: T₁, p₂: T₂, ...p\ *n*: T\ *n*) -> **X**
   }
 
 we can compile the expression
 
 .. parsed-literal::
 
-  **x.**\ *f*\ (a₀, p₁: a₁, p₂: a₂, …p\ *n*: a\ *n*)
+  **x.**\ *f*\ (a₀, p₁: a₁, p₂: a₂, ...p\ *n*: a\ *n*)
 
 as though it were written:
-  
+
 .. parsed-literal::
 
-  { 
+  {
     (var y: X) -> X in
-    y\ **.=**\ *f*\ (a₀, p₁: a₁, p₂: a₂, …p\ *n*: a\ *n*)
+    y\ **.=**\ *f*\ (a₀, p₁: a₁, p₂: a₂, ...p\ *n*: a\ *n*)
     return y
   }(x)
 
@@ -328,7 +326,7 @@ we can compile
   x *op*\ **=** *expression*
 
 as though it were written:
-  
+
 .. parsed-literal::
 
   x **=** x *op* (*expression*)
@@ -340,10 +338,10 @@ or
   x *op* *expression*
 
 as though it were written:
-  
+
 .. parsed-literal::
 
-  { 
+  {
     (var y: X) -> X in
     y *op*\ **=**\ *expression*
     return y
@@ -361,7 +359,7 @@ An assignment operator for an immutable class ``X`` always has the form:
 
 .. parsed-literal::
 
-  func *op*\ **=** (**inout** lhs: X, rhs: Y) {
+  func *op*\ **=** (lhs: **inout** X, rhs: Y) {
     lhs = *expression creating a new X object*
   }
 
@@ -369,7 +367,7 @@ or, with COW optimization:
 
 .. parsed-literal::
 
-  func *op*\ **=** (**inout** lhs: X, rhs: Y) {
+  func *op*\ **=** (lhs: **inout** X, rhs: Y) {
     if isUniquelyReferenced(&lhs) {
       lhs.\ *mutateInPlace*\ (rhs)
     }
@@ -391,7 +389,7 @@ class types::
     let x: Int
     required init(x: Int) { self.x = x }
 
-    func advanced(amount: Int) -> Self {
+    func advanced(_ amount: Int) -> Self {
       return Self(x: self.x + amount)
     }
 
@@ -414,7 +412,7 @@ fine::
     let x: Int
     required init(x: Int) { self.x = x }
 
-    func advanced(amount: Int) -> Self {
+    func advanced(_ amount: Int) -> Self {
       return Self(x: self.x + amount)
     }
   }

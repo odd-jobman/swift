@@ -1,7 +1,7 @@
-// RUN: rm -rf %t && mkdir -p %t
-// RUN: %target-swift-ide-test -skip-deinit=false -print-ast-typechecked -print-accessibility -source-filename=%s | FileCheck %s -check-prefix=CHECK -check-prefix=CHECK-SRC
+// RUN: %empty-directory(%t)
+// RUN: %target-swift-ide-test -skip-deinit=false -print-ast-typechecked -print-access -source-filename=%s | %FileCheck %s -check-prefix=CHECK -check-prefix=CHECK-SRC
 // RUN: %target-swift-frontend -emit-module-path %t/accessibility_print.swiftmodule %s
-// RUN: %target-swift-ide-test -skip-deinit=false -print-module -print-accessibility -module-to-print=accessibility_print -I %t -source-filename=%s | FileCheck %s
+// RUN: %target-swift-ide-test -skip-deinit=false -print-module -print-access -module-to-print=accessibility_print -I %t -source-filename=%s | %FileCheck %s
 
 // This file uses alphabetic prefixes on its declarations because swift-ide-test
 // sorts decls in a module before printing them.
@@ -9,12 +9,14 @@
 // CHECK-LABEL: internal var AA_defaultGlobal
 var AA_defaultGlobal = 0
 
-// CHECK: private{{(\*/)?}} var AB_privateGlobal
-// CHECK: internal{{(\*/)?}} var AC_internalGlobal
-// CHECK: public{{(\*/)?}} var AD_publicGlobal
+// CHECK: {{^}}private{{(\*/)?}} var AB_privateGlobal
+// CHECK: {{^}}internal{{(\*/)?}} var AC_internalGlobal
+// CHECK: {{^}}public{{(\*/)?}} var AD_publicGlobal
+// CHECK: {{^}}fileprivate{{(\*/)?}} var AE_fileprivateGlobal
 private var AB_privateGlobal = 0
 internal var AC_internalGlobal = 0
 public var AD_publicGlobal = 0
+fileprivate var AE_fileprivateGlobal = 0
 
 
 // CHECK-LABEL: internal struct BA_DefaultStruct {
@@ -25,10 +27,10 @@ struct BA_DefaultStruct {
 
 // CHECK-LABEL: private{{(\*/)?}} struct BB_PrivateStruct {
 private struct BB_PrivateStruct {
-  // CHECK: private var x
+  // CHECK: internal var x
   var x = 0
-  // CHECK: private init(x: Int)
-  // CHECK: private init()
+  // CHECK: internal init()
+  // CHECK: internal init(x: Int = 0)
 } // CHECK: {{^[}]}}
 
 // CHECK-LABEL: internal{{(\*/)?}} struct BC_InternalStruct {
@@ -42,16 +44,24 @@ internal struct BC_InternalStruct {
 public struct BD_PublicStruct {
   // CHECK: internal var x
   var x = 0
-  // CHECK: internal init(x: Int)
   // CHECK: internal init()
+  // CHECK: internal init(x: Int = 0)
 } // CHECK: {{^[}]}}
 
 // CHECK-LABEL: public{{(\*/)?}} struct BE_PublicStructPrivateMembers {
 public struct BE_PublicStructPrivateMembers {
   // CHECK: private{{(\*/)?}} var x
   private var x = 0
-  // CHECK: private init(x: Int)
   // CHECK: internal init()
+  // CHECK: private init(x: Int = 0)
+} // CHECK: {{^[}]}}
+
+// CHECK-LABEL: {{^}}fileprivate{{(\*/)?}} struct BF_FilePrivateStruct {
+fileprivate struct BF_FilePrivateStruct {
+  // CHECK: {{^}} internal var x
+  var x = 0
+  // CHECK: {{^}} internal init()
+  // CHECK: {{^}} internal init(x: Int = 0)
 } // CHECK: {{^[}]}}
 
 
@@ -59,7 +69,7 @@ public struct BE_PublicStructPrivateMembers {
 private class CA_PrivateClass {
   // CHECK: {{^}} deinit
   deinit {}
-  // CHECK: private init()
+  // CHECK: internal init()
 } // CHECK: {{^[}]}}
 
 // CHECK-LABEL: internal{{(\*/)?}} class CB_InternalClass
@@ -82,7 +92,7 @@ private enum DA_PrivateEnum {
   // CHECK: {{^}} case Foo
   // CHECK: Bar
   case Foo, Bar
-  // CHECK: private init()
+  // CHECK: internal init()
   init() { self = .Foo }
   // CHECK: private var hashValue
 } // CHECK: {{^[}]}}
@@ -112,9 +122,9 @@ public enum DC_PublicEnum {
 private protocol EA_PrivateProtocol {
   // CHECK: {{^}} associatedtype Foo
   associatedtype Foo
-  // CHECK: private var Bar
+  // CHECK: {{^}} var Bar
   var Bar: Int { get }
-  // CHECK: private func baz()
+  // CHECK: {{^}} func baz()
   func baz()
 } // CHECK: {{^[}]}}
 
@@ -122,9 +132,9 @@ private protocol EA_PrivateProtocol {
 public protocol EB_PublicProtocol {
   // CHECK: {{^}} associatedtype Foo
   associatedtype Foo
-  // CHECK: public var Bar
+  // CHECK: {{^}} var Bar
   var Bar: Int { get }
-  // CHECK: public func baz()
+  // CHECK: {{^}} func baz()
   func baz()
 } // CHECK: {{^[}]}}
 
@@ -135,7 +145,7 @@ public class FC_PublicClass {}
 // CHECK-SRC: {{^}}ex
 // CHECK-LABEL: tension FA_PrivateClass {
 extension FA_PrivateClass {
-  // CHECK: private func a()
+  // CHECK: internal func a()
   func a() {}
 } // CHECK: {{^[}]}}
 
@@ -169,7 +179,7 @@ private extension FE_PublicClass {
   func explicitPrivateExt() {}
   // CHECK: private struct PrivateNested {
   struct PrivateNested {
-    // CHECK: private var x
+    // CHECK: internal var x
     var x: Int
   } // CHECK: }
 } // CHECK: {{^[}]}}
@@ -203,7 +213,7 @@ public extension FE_PublicClass {
 func GA_localTypes() {
   // CHECK-SRC: private struct Local {
   struct Local {
-    // CHECK-SRC: private let x
+    // CHECK-SRC: internal let x
     let x = 0
   }
   _ = Local()
@@ -230,11 +240,11 @@ public struct GB_NestedOuter {
 
 // CHECK-LABEL: private{{(\*/)?}} struct GC_NestedOuterPrivate {
 private struct GC_NestedOuterPrivate {
-  // CHECK: private struct Inner {
+  // CHECK: internal struct Inner {
   struct Inner {
     // CHECK: private{{(\*/)?}} let x
     private let x = 0
-    // CHECK: private let y
+    // CHECK: internal let y
     let y = 0
   }
 } // CHECK: {{^[}]}}
@@ -259,17 +269,17 @@ extension HA_PublicProtocol {
   func unconstrained() {}
 } // CHECK: {{^[}]}}
 
-// CHECK-LABEL: extension HA_PublicProtocol where Assoc == HA_PublicStruct {
+// CHECK-LABEL: extension HA_PublicProtocol where Self.Assoc == HA_PublicStruct {
 extension HA_PublicProtocol where Assoc == HA_PublicStruct {
   // CHECK: internal func constrained()
   func constrained() {}
 } // CHECK: {{^[}]}}
-// CHECK-LABEL: extension HA_PublicProtocol where Assoc == HB_InternalStruct {
+// CHECK-LABEL: extension HA_PublicProtocol where Self.Assoc == HB_InternalStruct {
 extension HA_PublicProtocol where Assoc == HB_InternalStruct {
   // CHECK: internal func constrained()
   func constrained() {}
 } // CHECK: {{^[}]}}
-// CHECK-LABEL: extension HA_PublicProtocol where Assoc == HC_PrivateStruct {
+// CHECK-LABEL: extension HA_PublicProtocol where Self.Assoc == HC_PrivateStruct {
 extension HA_PublicProtocol where Assoc == HC_PrivateStruct {
   // CHECK: private func constrained()
   func constrained() {}
@@ -279,55 +289,88 @@ extension HB_InternalProtocol {
   // CHECK: internal func unconstrained()
   func unconstrained() {}
 } // CHECK: {{^[}]}}
-// CHECK-LABEL: extension HB_InternalProtocol where Assoc == HA_PublicStruct {
+// CHECK-LABEL: extension HB_InternalProtocol where Self.Assoc == HA_PublicStruct {
 extension HB_InternalProtocol where Assoc == HA_PublicStruct {
   // CHECK: internal func constrained()
   func constrained() {}
 } // CHECK: {{^[}]}}
-// CHECK-LABEL: extension HB_InternalProtocol where Assoc == HB_InternalStruct {
+// CHECK-LABEL: extension HB_InternalProtocol where Self.Assoc == HB_InternalStruct {
 extension HB_InternalProtocol where Assoc == HB_InternalStruct {
   // CHECK: internal func constrained()
   func constrained() {}
 } // CHECK: {{^[}]}}
-// CHECK-LABEL: extension HB_InternalProtocol where Assoc == HC_PrivateStruct {
+// CHECK-LABEL: extension HB_InternalProtocol where Self.Assoc == HC_PrivateStruct {
 extension HB_InternalProtocol where Assoc == HC_PrivateStruct {
   // CHECK: private func constrained()
   func constrained() {}
 } // CHECK: {{^[}]}}
 // CHECK-LABEL: extension HC_PrivateProtocol {
 extension HC_PrivateProtocol {
-  // CHECK: private func unconstrained()
+  // CHECK: internal func unconstrained()
   func unconstrained() {}
 } // CHECK: {{^[}]}}
-// CHECK-LABEL: extension HC_PrivateProtocol where Assoc == HA_PublicStruct {
+// CHECK-LABEL: extension HC_PrivateProtocol where Self.Assoc == HA_PublicStruct {
 extension HC_PrivateProtocol where Assoc == HA_PublicStruct {
   // CHECK: private func constrained()
   func constrained() {}
 } // CHECK: {{^[}]}}
-// CHECK-LABEL: extension HC_PrivateProtocol where Assoc == HB_InternalStruct {
+// CHECK-LABEL: extension HC_PrivateProtocol where Self.Assoc == HB_InternalStruct {
 extension HC_PrivateProtocol where Assoc == HB_InternalStruct {
   // CHECK: private func constrained()
   func constrained() {}
 } // CHECK: {{^[}]}}
-// CHECK-LABEL: extension HC_PrivateProtocol where Assoc == HC_PrivateStruct {
+// CHECK-LABEL: extension HC_PrivateProtocol where Self.Assoc == HC_PrivateStruct {
 extension HC_PrivateProtocol where Assoc == HC_PrivateStruct {
   // CHECK: private func constrained()
   func constrained() {}
+} // CHECK: {{^[}]}}
+
+public protocol IA_PublicAssocTypeProto {
+  associatedtype PublicValue
+  var publicValue: PublicValue { get }
+}
+fileprivate protocol IB_FilePrivateAssocTypeProto {
+  associatedtype FilePrivateValue
+  var filePrivateValue: FilePrivateValue { get }
+}
+// CHECK-LABEL: public{{(\*/)?}} class IC_PublicAssocTypeImpl : IA_PublicAssocTypeProto, IB_FilePrivateAssocTypeProto {
+public class IC_PublicAssocTypeImpl: IA_PublicAssocTypeProto, IB_FilePrivateAssocTypeProto {
+  public var publicValue: Int = 0
+  public var filePrivateValue: Int = 0
+  // CHECK-DAG: {{^}} public typealias FilePrivateValue
+  // CHECK-DAG: {{^}} public typealias PublicValue
+} // CHECK: {{^[}]}}
+
+// CHECK-LABEL: private{{(\*/)?}} class ID_PrivateAssocTypeImpl : IA_PublicAssocTypeProto, IB_FilePrivateAssocTypeProto {
+private class ID_PrivateAssocTypeImpl: IA_PublicAssocTypeProto, IB_FilePrivateAssocTypeProto {
+  public var publicValue: Int = 0
+  public var filePrivateValue: Int = 0
+  // CHECK-DAG: {{^}} fileprivate typealias FilePrivateValue
+  // CHECK-DAG: {{^}} fileprivate typealias PublicValue
 } // CHECK: {{^[}]}}
 
 // CHECK-LABEL: class MultipleAttributes {
 class MultipleAttributes {
   // CHECK: {{^}} final {{(/\*)?private(\*/)?}} func foo()
   final private func foo() {}
-}
+} // CHECK: {{^[}]}}
 
 // CHECK-LABEL: public{{(\*/)?}} class PublicInitBase {
 public class PublicInitBase {
   // CHECK: {{^}} {{(/\*)?public(\*/)?}} init()
   public init() {}
-}
+  // CHECK: {{^}} {{(/\*)?fileprivate(\*/)?}} init(other: PublicInitBase)
+  fileprivate init(other: PublicInitBase) {}
+} // CHECK: {{^[}]}}
 
 // CHECK-LABEL: public{{(\*/)?}} class PublicInitInheritor : PublicInitBase {
 public class PublicInitInheritor : PublicInitBase {
-  // CHECK: {{^}} public init()
-}
+  // CHECK: {{^}} override public init()
+  // CHECK: {{^}} override fileprivate init(other: PublicInitBase)
+} // CHECK: {{^[}]}}
+
+// CHECK-LABEL: {{(/\*)?private(\*/)?}} class PublicInitPrivateInheritor : PublicInitBase {
+private class PublicInitPrivateInheritor : PublicInitBase {
+  // CHECK: {{^}} override internal init()
+  // CHECK: {{^}} override fileprivate init(other: PublicInitBase)
+} // CHECK: {{^[}]}}

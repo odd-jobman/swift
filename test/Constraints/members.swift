@@ -1,24 +1,22 @@
-// RUN: %target-parse-verify-swift
-
-import Swift
+// RUN: %target-typecheck-verify-swift -swift-version 5
 
 ////
 // Members of structs
 ////
 
 struct X {
-  func f0(i: Int) -> X { }
+  func f0(_ i: Int) -> X { }
 
-  func f1(i: Int) { }
+  func f1(_ i: Int) { }
 
-  mutating func f1(f: Float) { }
+  mutating func f1(_ f: Float) { }
 
-  func f2<T>(x: T) -> T { }
+  func f2<T>(_ x: T) -> T { }
 }
 
 struct Y<T> {
   func f0(_: T) -> T {}
-  func f1<U>(x: U, y: T) -> (T, U) {}
+  func f1<U>(_ x: U, y: T) -> (T, U) {}
 }
 
 var i : Int
@@ -27,13 +25,15 @@ var yf : Y<Float>
 
 func g0(_: (inout X) -> (Float) -> ()) {}
 
-x.f0(i)
+_ = x.f0(i)
 x.f0(i).f1(i)
-g0(X.f1)
-x.f0(x.f2(1))
-x.f0(1).f2(i)
-yf.f0(1)
-yf.f1(i, y: 1)
+
+g0(X.f1) // expected-error{{cannot reference 'mutating' method as function value}}
+
+_ = x.f0(x.f2(1))
+_ = x.f0(1).f2(i)
+_ = yf.f0(1)
+_ = yf.f1(i, y: 1)
 
 // Members referenced from inside the struct
 struct Z {
@@ -41,7 +41,7 @@ struct Z {
   func getI() -> Int { return i }
   mutating func incI() {}
 
-  func curried(x: Int) -> (Int) -> Int { return { y in x + y } }
+  func curried(_ x: Int) -> (Int) -> Int { return { y in x + y } }
 
   subscript (k : Int) -> Int {
     get {
@@ -58,10 +58,10 @@ struct GZ<T> {
   var i : T
   func getI() -> T { return i }
 
-  func f1<U>(a: T, b: U) -> (T, U) { 
+  func f1<U>(_ a: T, b: U) -> (T, U) {
     return (a, b)
   }
-  
+
   func f2() {
     var f : Float
     var t = f1(i, b: f)
@@ -74,7 +74,7 @@ struct GZ<T> {
 
 var z = Z(i: 0)
 var getI = z.getI
-var incI = z.incI // expected-error{{partial application of 'mutating'}}
+var incI = z.incI // expected-error{{cannot reference 'mutating' method as function value}}
 var zi = z.getI()
 var zcurried1 = z.curried
 var zcurried2 = z.curried(0)
@@ -86,9 +86,6 @@ var zcurriedFull = z.curried(0)(1)
 
 // Module
 Swift.print(3, terminator: "")
-
-var format : String
-format._splitFirstIf({ $0.isASCII })
 
 ////
 // Unqualified references
@@ -109,8 +106,8 @@ var tmp = "foo".debugDescription
 enum W {
   case Omega
 
-  func foo(x: Int) {}
-  func curried(x: Int) -> (Int) -> () {}
+  func foo(_ x: Int) {}
+  func curried(_ x: Int) -> (Int) -> () {}
 }
 
 var w = W.Omega
@@ -120,9 +117,9 @@ var wcurried1 = w.curried
 var wcurried2 = w.curried(0)
 var wcurriedFull : () = w.curried(0)(1)
 
-// Member of enum Type
-func enumMetatypeMember(opt: Int?) {
-  opt.none // expected-error{{static member 'none' cannot be used on instance of type 'Int?'}}
+// Member of enum type
+func enumMetatypeMember(_ opt: Int?) {
+  opt.none // expected-error{{enum case 'none' cannot be used as an instance member}}
 }
 
 ////
@@ -131,7 +128,7 @@ func enumMetatypeMember(opt: Int?) {
 
 // Reference a Type member. <rdar://problem/15034920>
 class G<T> {
-  class In { // expected-error{{nested in generic type}}
+  class In {
     class func foo() {}
   }
 }
@@ -141,222 +138,12 @@ func goo() {
 }
 
 ////
-// Members of archetypes
-////
-
-func id<T>(t: T) -> T { return t }
-
-func doGetLogicValue<T : Boolean>(t: T) {
-  t.boolValue
-}
-
-protocol P {
-  init()
-  func bar(x: Int)
-  mutating func mut(x: Int)
-  static func tum()
-}
-
-extension P {
-  func returnSelfInstance() -> Self {
-    return self
-  }
-
-  func returnSelfOptionalInstance(b: Bool) -> Self? {
-    return b ? self : nil
-  }
-
-  func returnSelfIUOInstance(b: Bool) -> Self! {
-    return b ? self : nil
-  }
-
-  static func returnSelfStatic() -> Self {
-    return Self()
-  }
-
-  static func returnSelfOptionalStatic(b: Bool) -> Self? {
-    return b ? Self() : nil
-  }
-
-  static func returnSelfIUOStatic(b: Bool) -> Self! {
-    return b ? Self() : nil
-  }
-}
-
-protocol ClassP : class {
-  func bas(x: Int)
-}
-
-func generic<T: P>(t: T) {
-  var t = t
-  // Instance member of archetype
-  let _: Int -> () = id(t.bar)
-  let _: () = id(t.bar(0))
-
-  // Static member of archetype metatype
-  let _: () -> () = id(T.tum)
-
-  // Instance member of archetype metatype
-  let _: T -> Int -> () = id(T.bar)
-  let _: Int -> () = id(T.bar(t))
-
-  _ = t.mut // expected-error{{partial application of 'mutating' method is not allowed}}
-  _ = t.tum // expected-error{{static member 'tum' cannot be used on instance of type 'T'}}
-
-  // Instance member of extension returning Self)
-  let _: T -> () -> T = id(T.returnSelfInstance)
-  let _: () -> T = id(T.returnSelfInstance(t))
-  let _: T = id(T.returnSelfInstance(t)())
-
-  let _: () -> T = id(t.returnSelfInstance)
-  let _: T = id(t.returnSelfInstance())
-
-  let _: T -> Bool -> T? = id(T.returnSelfOptionalInstance)
-  let _: Bool -> T? = id(T.returnSelfOptionalInstance(t))
-  let _: T? = id(T.returnSelfOptionalInstance(t)(false))
-
-  let _: Bool -> T? = id(t.returnSelfOptionalInstance)
-  let _: T? = id(t.returnSelfOptionalInstance(true))
-
-  let _: T -> Bool -> T! = id(T.returnSelfIUOInstance)
-  let _: Bool -> T! = id(T.returnSelfIUOInstance(t))
-  let _: T! = id(T.returnSelfIUOInstance(t)(true))
-
-  let _: Bool -> T! = id(t.returnSelfIUOInstance)
-  let _: T! = id(t.returnSelfIUOInstance(true))
-
-  // Static member of extension returning Self)
-  let _: () -> T = id(T.returnSelfStatic)
-  let _: T = id(T.returnSelfStatic())
-
-  let _: Bool -> T? = id(T.returnSelfOptionalStatic)
-  let _: T? = id(T.returnSelfOptionalStatic(false))
-
-  let _: Bool -> T! = id(T.returnSelfIUOStatic)
-  let _: T! = id(T.returnSelfIUOStatic(true))
-}
-
-func genericClassP<T: ClassP>(t: T) {
-  // Instance member of archetype)
-  let _: Int -> () = id(t.bas)
-  let _: () = id(t.bas(0))
-
-  // Instance member of archetype metatype)
-  let _: T -> Int -> () = id(T.bas)
-  let _: Int -> () = id(T.bas(t))
-  let _: () = id(T.bas(t)(1))
-}
-
-////
-// Members of existentials
-////
-
-func existential(p: P) {
-  var p = p
-  // Fully applied mutating method
-  p.mut(1)
-  _ = p.mut // expected-error{{partial application of 'mutating' method is not allowed}}
-
-  // Instance member of existential)
-  let _: Int -> () = id(p.bar)
-  let _: () = id(p.bar(0))
-
-  // Static member of existential metatype)
-  let _: () -> () = id(p.dynamicType.tum)
-
-  // Instance member of extension returning Self
-  let _: () -> P = id(p.returnSelfInstance)
-  let _: P = id(p.returnSelfInstance())
-  let _: P? = id(p.returnSelfOptionalInstance(true))
-  let _: P! = id(p.returnSelfIUOInstance(true))
-}
-
-func staticExistential(p: P.Type, pp: P.Protocol) {
-  let ppp: P = p.init()
-  _ = pp.init() // expected-error{{value of type 'P.Protocol' is a protocol; it cannot be instantiated}}
-  _ = P() // expected-error{{protocol type 'P' cannot be instantiated}}
-
-  // Instance member of metatype
-  let _: P -> Int -> () = P.bar
-  let _: Int -> () = P.bar(ppp)
-  P.bar(ppp)(5)
-
-  // Instance member of metatype value
-  let _: P -> Int -> () = pp.bar
-  let _: Int -> () = pp.bar(ppp)
-  pp.bar(ppp)(5)
-
-  // Static member of existential metatype value
-  let _: () -> () = p.tum
-
-  // Instance member of existential metatype -- not allowed
-  _ = p.bar // expected-error{{instance member 'bar' cannot be used on type 'P'}}
-  _ = p.mut // expected-error{{instance member 'mut' cannot be used on type 'P'}}
-
-  // Static member of metatype -- not allowed
-  _ = pp.tum // expected-error{{static member 'tum' cannot be used on instance of type 'P.Protocol'}}
-  _ = P.tum // expected-error{{static member 'tum' cannot be used on instance of type 'P.Protocol'}}
-
-  // Static member of extension returning Self)
-  let _: () -> P = id(p.returnSelfStatic)
-  let _: P = id(p.returnSelfStatic())
-
-  let _: Bool -> P? = id(p.returnSelfOptionalStatic)
-  let _: P? = id(p.returnSelfOptionalStatic(false))
-
-  let _: Bool -> P! = id(p.returnSelfIUOStatic)
-  let _: P! = id(p.returnSelfIUOStatic(true))
-}
-
-func existentialClassP(p: ClassP) {
-  // Instance member of existential)
-  let _: Int -> () = id(p.bas)
-  let _: () = id(p.bas(0))
-
-  // Instance member of existential metatype)
-  let _: ClassP -> Int -> () = id(ClassP.bas)
-  let _: Int -> () = id(ClassP.bas(p))
-  let _: () = id(ClassP.bas(p)(1))
-}
-
-// Partial application of curried protocol methods
-protocol Scalar {}
-protocol Vector {
-  func scale(c: Scalar) -> Self
-}
-protocol Functional {
-  func apply(v: Vector) -> Scalar
-}
-protocol Coalgebra {
-  func coproduct(f: Functional) -> (v1: Vector, v2: Vector) -> Scalar
-}
-
-// Make sure existential is closed early when we partially apply
-func wrap<T>(t: T) -> T {
-  return t
-}
-
-func exercise(c: Coalgebra, f: Functional, v: Vector) {
-  let _: (Vector, Vector) -> Scalar = wrap(c.coproduct(f))
-  let _: Scalar -> Vector = v.scale
-}
-
-// Make sure existential isn't closed too late
-protocol Copyable {
-  func copy() -> Self
-}
-
-func copyTwice(c: Copyable) -> Copyable {
-  return c.copy().copy()
-}
-
-////
 // Misc ambiguities
 ////
 
 // <rdar://problem/15537772>
 struct DefaultArgs {
-  static func f(a: Int = 0) -> DefaultArgs {
+  static func f(_ a: Int = 0) -> DefaultArgs {
     return DefaultArgs()
   }
   init() {
@@ -366,22 +153,22 @@ struct DefaultArgs {
 
 class InstanceOrClassMethod {
   func method() -> Bool { return true }
-  class func method(other: InstanceOrClassMethod) -> Bool { return false }
+  class func method(_ other: InstanceOrClassMethod) -> Bool { return false }
 }
 
-func testPreferClassMethodToCurriedInstanceMethod(obj: InstanceOrClassMethod) {
+func testPreferClassMethodToCurriedInstanceMethod(_ obj: InstanceOrClassMethod) {
   let result = InstanceOrClassMethod.method(obj)
   let _: Bool = result // no-warning
   let _: () -> Bool = InstanceOrClassMethod.method(obj)
 }
 
 protocol Numeric {
-  func +(x: Self, y: Self) -> Self
+  static func +(x: Self, y: Self) -> Self
 }
 
-func acceptBinaryFunc<T>(x: T, _ fn: (T, T) -> T) { }
+func acceptBinaryFunc<T>(_ x: T, _ fn: (T, T) -> T) { }
 
-func testNumeric<T : Numeric>(x: T) {
+func testNumeric<T : Numeric>(_ x: T) {
   acceptBinaryFunc(x, +)
 }
 
@@ -392,11 +179,11 @@ class PropertyOrMethod {
   func member() -> Int { return 0 }
   let member = false
 
-  class func methodOnClass(obj: PropertyOrMethod) -> Int { return 0 }
+  class func methodOnClass(_ obj: PropertyOrMethod) -> Int { return 0 }
   let methodOnClass = false
 }
 
-func testPreferPropertyToMethod(obj: PropertyOrMethod) {
+func testPreferPropertyToMethod(_ obj: PropertyOrMethod) {
   let result = obj.member
   let resultChecked: Bool = result
   let called = obj.member()
@@ -430,7 +217,7 @@ extension ExtendedWithMutatingMethods {
 class ClassExtendedWithMutatingMethods: ExtendedWithMutatingMethods {}
 class SubclassExtendedWithMutatingMethods: ClassExtendedWithMutatingMethods {}
 
-func testClassExtendedWithMutatingMethods(c: ClassExtendedWithMutatingMethods, // expected-note* {{}}
+func testClassExtendedWithMutatingMethods(_ c: ClassExtendedWithMutatingMethods, // expected-note* {{}}
                                      sub: SubclassExtendedWithMutatingMethods) { // expected-note* {{}}
   c.mutatingMethod() // expected-error{{cannot use mutating member on immutable value: 'c' is a 'let' constant}}
   c.mutableProperty = Foo(foo: 0) // expected-error{{cannot assign to property}}
@@ -506,7 +293,7 @@ extension LedModules {
 class r15117741S {
   static func g() {}
 }
-func test15117741(s: r15117741S) {
+func test15117741(_ s: r15117741S) {
   s.g() // expected-error {{static member 'g' cannot be used on instance of type 'r15117741S'}}
 }
 
@@ -514,7 +301,7 @@ func test15117741(s: r15117741S) {
 // <rdar://problem/22491394> References to unavailable decls sometimes diagnosed as ambiguous
 struct UnavailMember {
   @available(*, unavailable)
-  static var XYZ : X { get {} } // expected-note {{'XYZ' has been explicitly marked unavailable here}}
+  static var XYZ : UnavailMember { get {} } // expected-note {{'XYZ' has been explicitly marked unavailable here}}
 }
 
 let _ : [UnavailMember] = [.XYZ] // expected-error {{'XYZ' is unavailable}}
@@ -528,8 +315,8 @@ struct S22490787 {
 
 func f22490787() {
   var path: S22490787 = S22490787()
-  
-  for p in path {  // expected-error {{type 'S22490787' does not conform to protocol 'Sequence'}}
+
+  for p in path {  // expected-error {{for-in loop requires 'S22490787' to conform to 'Sequence'}}
   }
 }
 
@@ -538,18 +325,461 @@ enum r23942743 {
   case Tomato(cloud: String)
 }
 let _ = .Tomato(cloud: .none)  // expected-error {{reference to member 'Tomato' cannot be resolved without a contextual type}}
+// expected-error@-1 {{cannot infer contextual base in reference to member 'none'}}
 
 
 
-// SR-650: REGRESSION: Assertion failed: (baseTy && "Couldn't find appropriate context"), function getMemberSubstitutions
+// https://github.com/apple/swift/issues/43267
+// REGRESSION: Assertion failed: (baseTy && "Couldn't find appropriate context"), function getMemberSubstitutions
 enum SomeErrorType {
   case StandaloneError
   case UnderlyingError(String)
 
-  static func someErrorFromString(str: String) -> SomeErrorType? {
+  static func someErrorFromString(_ str: String) -> SomeErrorType? {
     if str == "standalone" { return .StandaloneError }
-    if str == "underlying" { return .UnderlyingError }  // expected-error {{contextual member 'UnderlyingError' expects argument of type 'String'}}
+    if str == "underlying" { return .UnderlyingError }  // expected-error {{member 'UnderlyingError' expects argument of type 'String'}}
     return nil
   }
 }
 
+// https://github.com/apple/swift/issues/44801
+// QoI: Better diagnostic when a decl exists, but is not a type
+do {
+  enum E: Error {
+    case Boom
+  }
+
+  do {
+    throw E.Boom
+  } catch let e as E.Boom { // expected-error {{enum case 'Boom' is not a member type of 'E'}}
+  }
+}
+
+// rdar://problem/25341015
+extension Sequence {
+  func r25341015_1() -> Int {
+    return max(1, 2) // expected-error {{use of 'max' refers to instance method rather than global function 'max' in module 'Swift'}} expected-note {{use 'Swift.' to reference the global function in module 'Swift'}}
+  }
+}
+
+class C_25341015 {
+  static func baz(_ x: Int, _ y: Int) {}
+  func baz() {}
+  func qux() {
+    baz(1, 2) // expected-error {{static member 'baz' cannot be used on instance of type 'C_25341015'}} {{5-5=C_25341015.}}
+  }
+}
+
+struct S_25341015 {
+  static func foo(_ x: Int, y: Int) {}
+
+  func foo(z: Int) {}
+  func bar() {
+    foo(1, y: 2) // expected-error {{static member 'foo' cannot be used on instance of type 'S_25341015'}} {{5-5=S_25341015.}}
+  }
+}
+
+func r25341015() {
+  func baz(_ x: Int, _ y: Int) {}
+  class Bar {
+    func baz() {}
+    func qux() {
+      baz(1, 2) // expected-error {{use of 'baz' refers to instance method rather than local function 'baz'}}
+    }
+  }
+}
+
+func r25341015_local(x: Int, y: Int) {}
+func r25341015_inner() {
+  func r25341015_local() {}
+  r25341015_local(x: 1, y: 2) // expected-error {{argument passed to call that takes no arguments}}
+}
+
+// rdar://problem/32854314 - Emit shadowing diagnostics even if argument types do not much completely
+
+func foo_32854314() -> Double {
+  return 42
+}
+
+func bar_32854314() -> Int {
+  return 0
+}
+
+extension Array where Element == Int {
+  func foo() {
+    let _ = min(foo_32854314(), bar_32854314()) // expected-note {{use 'Swift.' to reference the global function in module 'Swift'}} {{13-13=Swift.}}
+    // expected-error@-1 {{use of 'min' refers to instance method rather than global function 'min' in module 'Swift'}}
+  }
+
+  func foo(_ x: Int, _ y: Double) {
+    let _ = min(x, y) // expected-note {{use 'Swift.' to reference the global function in module 'Swift'}} {{13-13=Swift.}}
+    // expected-error@-1 {{use of 'min' refers to instance method rather than global function 'min' in module 'Swift'}}
+  }
+
+  func bar() {
+    let _ = min(1.0, 2) // expected-note {{use 'Swift.' to reference the global function in module 'Swift'}} {{13-13=Swift.}}
+    // expected-error@-1 {{use of 'min' refers to instance method rather than global function 'min' in module 'Swift'}}
+  }
+}
+
+// Crash in diagnoseImplicitSelfErrors()
+
+struct Aardvark {
+  var snout: Int
+
+  mutating func burrow() {
+    dig(&snout, .y) // expected-error {{type 'Int' has no member 'y'}}
+  }
+
+  func dig(_: inout Int, _: Int) {}
+}
+
+func rdar33914444() {
+  struct A {
+    enum R<E: Error> {
+      case e(E) // expected-note {{'e' declared here}}
+    }
+
+    struct S {
+      enum E: Error {
+        case e1
+      }
+
+      let e: R<E>
+    }
+  }
+
+  _ = A.S(e: .e1)
+  // expected-error@-1 {{type 'A.R<A.S.E>' has no member 'e1'; did you mean 'e'?}}
+}
+
+// https://github.com/apple/swift/issues/47898
+// Better diagnostic when instance member of outer type is referenced from
+// nested type
+struct Outer {
+  var outer: Int
+
+  struct Inner {
+    var inner: Int
+
+    func sum() -> Int {
+      return inner + outer
+      // expected-error@-1 {{instance member 'outer' of type 'Outer' cannot be used on instance of nested type 'Outer.Inner'}}
+    }
+  }
+}
+
+// rdar://problem/39514009 - don't crash when trying to diagnose members with special names
+print("hello")[0] // expected-error {{value of type '()' has no subscripts}}
+
+
+func rdar40537782() {
+  class A {}
+  class B : A {
+    override init() {}
+    func foo() -> A { return A() }
+  }
+
+  struct S<T> {
+    init(_ a: T...) {}
+  }
+
+  func bar<T>(_ t: T) {
+    _ = S(B(), .foo(), A()) // expected-error {{type 'A' has no member 'foo'}}
+  }
+}
+
+func rdar36989788() {
+  struct A<T> {
+    func foo() -> A<T> {
+      return self
+    }
+  }
+
+  func bar<T>(_ x: A<T>) -> (A<T>, A<T>) {
+    return (x.foo(), x.undefined()) // expected-error {{value of type 'A<T>' has no member 'undefined'}}
+  }
+}
+
+func rdar46211109() {
+  struct MyIntSequenceStruct: Sequence {
+    struct Iterator: IteratorProtocol {
+      var current = 0
+      mutating func next() -> Int? {
+        return current + 1
+      }
+    }
+
+    func makeIterator() -> Iterator {
+      return Iterator()
+    }
+  }
+
+  func foo<E, S: Sequence>(_ type: E.Type) -> S? where S.Element == E {
+    return nil
+  }
+
+  let _: MyIntSequenceStruct? = foo(Int.Self)
+  // expected-error@-1 {{type 'Int' has no member 'Self'}}
+}
+
+class A {}
+
+enum B {
+  static func foo() {
+    bar(A()) // expected-error {{instance member 'bar' cannot be used on type 'B'}}
+  }
+
+  func bar(_: A) {}
+}
+
+class C {
+  static func foo() {
+    bar(0) // expected-error {{instance member 'bar' cannot be used on type 'C'}}
+  }
+
+  func bar(_: Int) {}
+}
+
+class D {
+  static func foo() {}
+
+  func bar() {
+    foo() // expected-error {{static member 'foo' cannot be used on instance of type 'D'}}
+  }
+}
+
+func rdar_48114578() {
+  struct S<T> {
+    var value: T
+
+    static func valueOf<T>(_ v: T) -> S<T> {
+      return S<T>(value: v)
+    }
+  }
+
+  typealias A = (a: [String]?, b: Int)
+
+  func foo(_ a: [String], _ b: Int) -> S<A> {
+    let v = (a, b)
+    return .valueOf(v)
+  }
+
+  func bar(_ a: [String], _ b: Int) -> S<A> {
+    return .valueOf((a, b)) // Ok
+  }
+}
+
+struct S_Min {
+  var xmin: Int = 42
+}
+
+func xmin(_: Int, _: Float) -> Int { return 0 }
+func xmin(_: Float, _: Int) -> Int { return 0 }
+
+extension S_Min : CustomStringConvertible {
+  public var description: String {
+    return "\(xmin)" // Ok
+  }
+}
+
+// rdar://problem/50679161
+
+func rdar50679161() {
+  struct Point {}
+
+  struct S {
+    var w, h: Point
+  }
+
+  struct Q {
+    init(a: Int, b: Int) {}
+    init(a: Point, b: Point) {}
+  }
+
+  func foo() {
+    _ = { () -> Void in
+      // Missing `.self` or `init` is not diagnosed here because there are errors in
+      // `if let` statement and `MiscDiagnostics` only run if the body is completely valid.
+      var foo = S
+
+      if let v = Int?(1) {
+        var _ = Q(
+          a: v + foo.w,
+          // expected-error@-1 {{instance member 'w' cannot be used on type 'S'}}
+          // expected-error@-2 {{cannot convert value of type 'Point' to expected argument type 'Int'}}
+          b: v + foo.h
+          // expected-error@-1 {{instance member 'h' cannot be used on type 'S'}}
+          // expected-error@-2 {{cannot convert value of type 'Point' to expected argument type 'Int'}}
+        )
+      }
+    }
+
+    _ = { () -> Void in
+      var foo = S
+      // expected-error@-1 {{expected member name or constructor call after type name}}
+      // expected-note@-2 {{add arguments after the type to construct a value of the type}}
+      // expected-note@-3 {{use '.self' to reference the type object}}
+      print(foo)
+    }
+  }
+}
+
+
+func rdar_50467583_and_50909555() {
+  if #available(macOS 11.3, iOS 14.5, tvOS 14.5, watchOS 7.4, *) {
+    // rdar://problem/50467583
+    let _: Set = [Int][] // expected-error {{no 'subscript' candidates produce the expected contextual result type 'Set'}}
+    // expected-error@-1 {{no exact matches in call to subscript}}
+    // expected-note@-2 {{found candidate with type '(Int) -> Int'}}
+    // expected-note@-3 {{found candidate with type '(Range<Int>) -> ArraySlice<Int>'}}
+    // expected-note@-4 {{found candidate with type '((UnboundedRange_) -> ()) -> ArraySlice<Int>'}}
+  }
+  
+  // rdar://problem/50909555
+  struct S {
+    static subscript(x: Int, y: Int) -> Int { // expected-note {{'subscript(_:_:)' declared here}}
+      return 1
+    }
+  }
+
+  func test(_ s: S) {
+    s[1] // expected-error {{static member 'subscript' cannot be used on instance of type 'S'}} {{5-6=S}}
+    // expected-error@-1 {{missing argument for parameter #2 in call}} {{8-8=, <#Int#>}}
+  }
+}
+
+// rdar://problem/46427500
+// https://github.com/apple/swift/issues/51862
+// Nonsensical error message related to constrained extensions
+
+struct S_51862<A, B> {}
+
+extension S_51862 where A == Bool {  // expected-note {{where 'A' = 'Int'}}
+  func foo() {}
+}
+
+func test_51862(_ s: S_51862<Int, Double>) {
+  s.foo() // expected-error {{referencing instance method 'foo()' on 'S_51862' requires the types 'Int' and 'Bool' be equivalent}}
+}
+
+// rdar://problem/34770265 - Better diagnostic needed for constrained extension method call
+extension Dictionary where Key == String { // expected-note {{where 'Key' = 'Int'}}
+  func rdar_34770265_key() {}
+}
+
+extension Dictionary where Value == String { // expected-note {{where 'Value' = 'Int'}}
+  func rdar_34770265_val() {}
+}
+
+func test_34770265(_ dict: [Int: Int]) {
+  dict.rdar_34770265_key()
+  // expected-error@-1 {{referencing instance method 'rdar_34770265_key()' on 'Dictionary' requires the types 'Int' and 'String' be equivalent}}
+  dict.rdar_34770265_val()
+  // expected-error@-1 {{referencing instance method 'rdar_34770265_val()' on 'Dictionary' requires the types 'Int' and 'String' be equivalent}}
+}
+
+// https://github.com/apple/swift/issues/55116
+_ = [.e] // expected-error {{reference to member 'e' cannot be resolved without a contextual type}}
+let _ : [Any] = [.e] // expected-error {{type 'Any' has no member 'e'}}
+_ = [1 :.e] // expected-error {{reference to member 'e' cannot be resolved without a contextual type}}
+_ = [.e: 1] // expected-error {{reference to member 'e' cannot be resolved without a contextual type}}
+let _ : [Int: Any] = [1 : .e] // expected-error {{type 'Any' has no member 'e'}}
+let _ : (Int, Any) = (1, .e) // expected-error {{type 'Any' has no member 'e'}}
+_ = (1, .e) // expected-error {{cannot infer contextual base in reference to member 'e'}}
+
+// https://github.com/apple/swift/issues/55799
+typealias Pair = (Int, Int)
+func test_55799(_ pair: (Int, Int), _ alias: Pair, _ void: Void, labeled: (a: Int, b: Int)) {
+  _ = pair[0] // expected-error {{cannot access element using subscript for tuple type '(Int, Int)'; did you mean to use '.0'?}} {{11-14=.0}}
+  _ = pair[1] // expected-error {{cannot access element using subscript for tuple type '(Int, Int)'; did you mean to use '.1'?}} {{11-14=.1}}
+  _ = pair[2] // expected-error {{cannot access element using subscript for tuple type '(Int, Int)'; use '.' notation instead}} {{none}}
+  _ = pair[100] // expected-error {{cannot access element using subscript for tuple type '(Int, Int)'; use '.' notation instead}} {{none}}
+  _ = pair["string"] // expected-error {{cannot access element using subscript for tuple type '(Int, Int)'; use '.' notation instead}} {{none}}
+  _ = pair[-1] // expected-error {{cannot access element using subscript for tuple type '(Int, Int)'; use '.' notation instead}} {{none}}
+  _ = pair[1, 1] // expected-error {{cannot access element using subscript for tuple type '(Int, Int)'; use '.' notation instead}} {{none}}
+  _ = void[0] // expected-error {{value of type 'Void' has no subscripts}}
+  // Other representations of literals
+  _ = pair[0x00] // expected-error {{cannot access element using subscript for tuple type '(Int, Int)'; use '.' notation instead}} {{none}}
+  _ = pair[0b00] // expected-error {{cannot access element using subscript for tuple type '(Int, Int)'; use '.' notation instead}} {{none}}
+
+  _ = alias[0] // expected-error {{cannot access element using subscript for tuple type 'Pair' (aka '(Int, Int)'); did you mean to use '.0'?}} {{12-15=.0}}
+  _ = alias[1] // expected-error {{cannot access element using subscript for tuple type 'Pair' (aka '(Int, Int)'); did you mean to use '.1'?}} {{12-15=.1}}
+  _ = alias[2] // expected-error {{cannot access element using subscript for tuple type 'Pair' (aka '(Int, Int)'); use '.' notation instead}} {{none}}
+  _ = alias[100] // expected-error {{cannot access element using subscript for tuple type 'Pair' (aka '(Int, Int)'); use '.' notation instead}} {{none}}
+  _ = alias["string"] // expected-error {{cannot access element using subscript for tuple type 'Pair' (aka '(Int, Int)'); use '.' notation instead}} {{none}}
+  _ = alias[-1] // expected-error {{cannot access element using subscript for tuple type 'Pair' (aka '(Int, Int)'); use '.' notation instead}} {{none}}
+  _ = alias[1, 1] // expected-error {{cannot access element using subscript for tuple type 'Pair' (aka '(Int, Int)'); use '.' notation instead}} {{none}}
+  _ = alias[0x00] // expected-error {{cannot access element using subscript for tuple type 'Pair' (aka '(Int, Int)'); use '.' notation instead}} {{none}}
+  _ = alias[0b00] // expected-error {{cannot access element using subscript for tuple type 'Pair' (aka '(Int, Int)'); use '.' notation instead}} {{none}}
+
+  // Labeled tuple base
+  _ = labeled[0] // expected-error {{cannot access element using subscript for tuple type '(a: Int, b: Int)'; did you mean to use '.0'?}} {{14-17=.0}}
+  _ = labeled[1] // expected-error {{cannot access element using subscript for tuple type '(a: Int, b: Int)'; did you mean to use '.1'?}} {{14-17=.1}}
+  _ = labeled[2] // expected-error {{cannot access element using subscript for tuple type '(a: Int, b: Int)'; use '.' notation instead}} {{none}}
+  _ = labeled[100] // expected-error {{cannot access element using subscript for tuple type '(a: Int, b: Int)'; use '.' notation instead}} {{none}}
+  _ = labeled["string"] // expected-error {{cannot access element using subscript for tuple type '(a: Int, b: Int)'; use '.' notation instead}} {{none}}
+  _ = labeled[-1] // expected-error {{cannot access element using subscript for tuple type '(a: Int, b: Int)'; use '.' notation instead}} {{none}}
+  _ = labeled[1, 1] // expected-error {{cannot access element using subscript for tuple type '(a: Int, b: Int)'; use '.' notation instead}} {{none}}
+  _ = labeled[0x00] // expected-error {{cannot access element using subscript for tuple type '(a: Int, b: Int)'; use '.' notation instead}} {{none}}
+  _ = labeled[0b00] // expected-error {{cannot access element using subscript for tuple type '(a: Int, b: Int)'; use '.' notation instead}} {{none}}
+
+  // Suggesting use label access
+  _ = labeled["a"] // expected-error {{cannot access element using subscript for tuple type '(a: Int, b: Int)'; did you mean to use '.a'?}} {{14-19=.a}}
+  _ = labeled["b"] // expected-error {{cannot access element using subscript for tuple type '(a: Int, b: Int)'; did you mean to use '.b'?}} {{14-19=.b}}
+  _ = labeled["c"] // expected-error {{cannot access element using subscript for tuple type '(a: Int, b: Int)'; use '.' notation instead}} {{none}}
+  _ = labeled[""] // expected-error {{cannot access element using subscript for tuple type '(a: Int, b: Int)'; use '.' notation instead}} {{none}}
+
+}
+
+// rdar://problem/66891544 - incorrect diagnostic ("type is ambiguous") when base type of a reference cannot be determined
+func rdar66891544() {
+  func foo<T>(_: T, defaultT: T? = nil) {}
+  func foo<U>(_: U, defaultU: U? = nil) {}
+
+  foo(.bar) // expected-error {{cannot infer contextual base in reference to member 'bar'}}
+}
+
+// rdar://55369704 - extraneous diagnostics produced in combination with missing/misspelled members
+func rdar55369704() {
+  struct S {
+  }
+
+  func test(x: Int, s: S) {
+    _ = x - Int(s.value) // expected-error {{value of type 'S' has no member 'value'}}
+  }
+}
+
+// https://github.com/apple/swift/issues/56885
+do {
+  struct S {
+    var xs: [Int] // expected-note {{'xs' declared here}}
+  }
+  func f(_ s: S) {
+    for (x1, x2) in zip(s.xs, s.ys) {
+      // expected-error@-1 {{value of type 'S' has no member 'ys'; did you mean 'xs'?}}
+    }
+  }
+}
+
+// rdar://92358570
+class SomeClassBound {}
+protocol ClassBoundProtocol: SomeClassBound {
+}
+
+struct RDAR92358570<Element> {}
+
+extension RDAR92358570 where Element : SomeClassBound {
+// expected-note@-1 2 {{where 'Element' = 'any ClassBoundProtocol', 'SomeClassBound' = 'AnyObject'}}
+// expected-note@-2 2 {{where 'Element' = 'any SomeClassBound & ClassBoundProtocol', 'SomeClassBound' = 'AnyObject'}}
+  func doSomething() {}
+  static func doSomethingStatically() {}
+}
+
+func rdar92358570(_ x: RDAR92358570<ClassBoundProtocol>, _ y: RDAR92358570<SomeClassBound & ClassBoundProtocol>) {
+  x.doSomething() // expected-error {{referencing instance method 'doSomething()' on 'RDAR92358570' requires that 'any ClassBoundProtocol' inherit from 'AnyObject'}}
+  RDAR92358570<ClassBoundProtocol>.doSomethingStatically() // expected-error {{referencing static method 'doSomethingStatically()' on 'RDAR92358570' requires that 'any ClassBoundProtocol' inherit from 'AnyObject'}}
+
+  y.doSomething() // expected-error {{referencing instance method 'doSomething()' on 'RDAR92358570' requires that 'any SomeClassBound & ClassBoundProtocol' inherit from 'AnyObject'}}
+  RDAR92358570<SomeClassBound & ClassBoundProtocol>.doSomethingStatically() // expected-error {{referencing static method 'doSomethingStatically()' on 'RDAR92358570' requires that 'any SomeClassBound & ClassBoundProtocol' inherit from 'AnyObject'}}
+}

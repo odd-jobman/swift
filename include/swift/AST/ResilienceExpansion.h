@@ -2,16 +2,18 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef SWIFT_AST_RESILIENCE_EXPANSION_H
 #define SWIFT_AST_RESILIENCE_EXPANSION_H
+
+#include "llvm/Support/raw_ostream.h"
 
 namespace swift {
 
@@ -43,6 +45,17 @@ enum class ResilienceExpansion : unsigned {
 
   Last_ResilienceExpansion = Maximal
 };
+
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                     ResilienceExpansion expansion) {
+  switch (expansion) {
+  case ResilienceExpansion::Minimal:
+    return os << "Minimal";
+  case ResilienceExpansion::Maximal:
+    return os << "Maximal";
+  }
+  llvm_unreachable("Unhandled ResilienceExpansion in switch");
+}
 
 } // namespace swift
 

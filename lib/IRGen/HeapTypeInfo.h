@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -18,7 +18,10 @@
 #ifndef SWIFT_IRGEN_HEAPTYPEINFO_H
 #define SWIFT_IRGEN_HEAPTYPEINFO_H
 
+#include "swift/AST/ASTContext.h"
+#include "clang/AST/Attr.h"
 #include "llvm/IR/DerivedTypes.h"
+
 #include "ExtraInhabitants.h"
 #include "ReferenceTypeInfo.h"
 #include "ScalarTypeInfo.h"
@@ -32,7 +35,7 @@ namespace irgen {
   
 /// The kind of 'isa' encoding a heap object uses to reference its heap
 /// metadata.
-enum class IsaEncoding : unsigned char {
+enum class IsaEncoding : uint8_t {
   /// The object stores a plain pointer to its heap metadata as its first word.
   Pointer,
   /// The object's isa is managed by the Objective-C runtime and must be
@@ -43,7 +46,7 @@ enum class IsaEncoding : unsigned char {
   /// way.
   Unknown = ObjC,
 };
-  
+
 /// HeapTypeInfo - A type designed for use implementing a type
 /// which consists solely of something reference-counted.
 ///
@@ -52,8 +55,15 @@ enum class IsaEncoding : unsigned char {
 /// of this type:
 ///   ReferenceCounting getReferenceCounting() const;
 template <class Impl>
-class HeapTypeInfo : public SingleScalarTypeInfo<Impl, ReferenceTypeInfo> {
-  typedef SingleScalarTypeInfo<Impl, ReferenceTypeInfo> super;
+class HeapTypeInfo
+    : public SingleScalarTypeInfoWithTypeLayout<Impl, ReferenceTypeInfo> {
+  using super = SingleScalarTypeInfoWithTypeLayout<Impl, ReferenceTypeInfo>;
+
+  llvm::Type *getOptionalIntType() const {
+    return llvm::IntegerType::get(this->getStorageType()->getContext(),
+                                  this->getFixedSize().getValueInBits());
+  }
+
 protected:
   using super::asDerived;
 public:
@@ -63,9 +73,16 @@ public:
 
   bool isSingleRetainablePointer(ResilienceExpansion expansion,
                                  ReferenceCounting *refcounting) const override {
-    if(refcounting)
+    if (refcounting)
       *refcounting = asDerived().getReferenceCounting();
     return true;
+  }
+  
+  bool canValueWitnessExtraInhabitantsUpTo(IRGenModule &IGM,
+                                           unsigned index) const override {
+    // Refcounting functions are no-ops when passed a null pointer, which is the
+    // first extra inhabitant.
+    return index == 0;
   }
   
   IsaEncoding getIsaEncoding(ResilienceExpansion expansion) const {
@@ -88,77 +105,132 @@ public:
 
   // Emit the copy/destroy operations required by SingleScalarTypeInfo
   // using strong reference counting.
-  void emitScalarRelease(IRGenFunction &IGF, llvm::Value *value) const {
-    IGF.emitStrongRelease(value, asDerived().getReferenceCounting());
+  virtual void emitScalarRelease(IRGenFunction &IGF, llvm::Value *value,
+                                 Atomicity atomicity) const {
+    assert(asDerived().getReferenceCounting() != ReferenceCounting::Custom);
+    IGF.emitStrongRelease(value, asDerived().getReferenceCounting(), atomicity);
   }
 
   void emitScalarFixLifetime(IRGenFunction &IGF, llvm::Value *value) const {
     return IGF.emitFixLifetime(value);
   }
 
-  void emitScalarRetain(IRGenFunction &IGF, llvm::Value *value) const {
-    IGF.emitStrongRetain(value, asDerived().getReferenceCounting());
+  virtual void emitScalarRetain(IRGenFunction &IGF, llvm::Value *value,
+                                Atomicity atomicity) const {
+    assert(asDerived().getReferenceCounting() != ReferenceCounting::Custom);
+    IGF.emitStrongRetain(value, asDerived().getReferenceCounting(), atomicity);
   }
 
   // Implement the primary retain/release operations of ReferenceTypeInfo
   // using basic reference counting.
-  void strongRetain(IRGenFunction &IGF, Explosion &e) const override {
+  void strongRetain(IRGenFunction &IGF, Explosion &e,
+                    Atomicity atomicity) const override {
+    assert(asDerived().getReferenceCounting() != ReferenceCounting::Custom);
     llvm::Value *value = e.claimNext();
-    asDerived().emitScalarRetain(IGF, value);
+    asDerived().emitScalarRetain(IGF, value, atomicity);
   }
 
-  void strongRelease(IRGenFunction &IGF, Explosion &e) const override {
+  void strongRelease(IRGenFunction &IGF, Explosion &e,
+                     Atomicity atomicity) const override {
+    assert(asDerived().getReferenceCounting() != ReferenceCounting::Custom);
     llvm::Value *value = e.claimNext();
-    asDerived().emitScalarRelease(IGF, value);
+    asDerived().emitScalarRelease(IGF, value, atomicity);
   }
 
-  void strongRetainUnowned(IRGenFunction &IGF, Explosion &e) const override {
-    llvm::Value *value = e.claimNext();
-    IGF.emitStrongRetainUnowned(value, asDerived().getReferenceCounting());
+#define REF_STORAGE_HELPER(Name) \
+  const TypeInfo * \
+  create##Name##StorageType(TypeConverter &TC, \
+                            bool isOptional) const override { \
+    return TC.create##Name##StorageType(this->getStorageType(), \
+                                        asDerived().getReferenceCounting(), \
+                                        isOptional); \
   }
-
-  void strongRetainUnownedRelease(IRGenFunction &IGF,
-                                  Explosion &e) const override {
-    llvm::Value *value = e.claimNext();
-    IGF.emitStrongRetainAndUnownedRelease(value,
-                                          asDerived().getReferenceCounting());
+#define NEVER_LOADABLE_CHECKED_REF_STORAGE_HELPER(Name, name) \
+  void name##LoadStrong(IRGenFunction &IGF, Address src, \
+                         Explosion &out, bool isOptional) const override { \
+    llvm::Value *value = IGF.emit##Name##LoadStrong(src, \
+                                          this->getStorageType(), \
+                                          asDerived().getReferenceCounting()); \
+    if (isOptional) { \
+      out.add(IGF.Builder.CreatePtrToInt(value, getOptionalIntType())); \
+    } else { \
+      out.add(value); \
+    } \
+  } \
+  void name##TakeStrong(IRGenFunction &IGF, Address src, \
+                         Explosion &out, bool isOptional) const override { \
+    llvm::Value *value = IGF.emit##Name##TakeStrong(src, \
+                                          this->getStorageType(), \
+                                          asDerived().getReferenceCounting()); \
+    if (isOptional) { \
+      out.add(IGF.Builder.CreatePtrToInt(value, getOptionalIntType())); \
+    } else { \
+      out.add(value); \
+    } \
+  } \
+  void name##Init(IRGenFunction &IGF, Explosion &in, \
+                  Address dest, bool isOptional) const override { \
+    llvm::Value *value = in.claimNext(); \
+    if (isOptional) { \
+      assert(value->getType() == getOptionalIntType()); \
+      value = IGF.Builder.CreateIntToPtr(value, this->getStorageType()); \
+    } \
+    IGF.emit##Name##Init(value, dest, asDerived().getReferenceCounting()); \
+  } \
+  void name##Assign(IRGenFunction &IGF, Explosion &in, \
+                    Address dest, bool isOptional) const override { \
+    llvm::Value *value = in.claimNext(); \
+    if (isOptional) { \
+      assert(value->getType() == getOptionalIntType()); \
+      value = IGF.Builder.CreateIntToPtr(value, this->getStorageType()); \
+    } \
+    IGF.emit##Name##Assign(value, dest, asDerived().getReferenceCounting()); \
   }
-
-  void unownedRetain(IRGenFunction &IGF, Explosion &e) const override {
-    llvm::Value *value = e.claimNext();
-    IGF.emitUnownedRetain(value, asDerived().getReferenceCounting());
+#define ALWAYS_LOADABLE_CHECKED_REF_STORAGE_HELPER(Name, name)                 \
+  void strongRetain##Name(IRGenFunction &IGF, Explosion &e,                    \
+                          Atomicity atomicity) const override {                \
+    assert(asDerived().getReferenceCounting() != ReferenceCounting::Custom);   \
+    llvm::Value *value = e.claimNext();                                        \
+    assert(asDerived().getReferenceCounting() == ReferenceCounting::Native);   \
+    IGF.emitNativeStrongRetain##Name(value, atomicity);                        \
+  }                                                                            \
+  void strongRetain##Name##Release(IRGenFunction &IGF, Explosion &e,           \
+                                   Atomicity atomicity) const override {       \
+    assert(asDerived().getReferenceCounting() != ReferenceCounting::Custom);   \
+    llvm::Value *value = e.claimNext();                                        \
+    assert(asDerived().getReferenceCounting() == ReferenceCounting::Native);   \
+    IGF.emitNativeStrongRetainAnd##Name##Release(value, atomicity);            \
+  }                                                                            \
+  void name##Retain(IRGenFunction &IGF, Explosion &e, Atomicity atomicity)     \
+      const override {                                                         \
+    assert(asDerived().getReferenceCounting() != ReferenceCounting::Custom);   \
+    llvm::Value *value = e.claimNext();                                        \
+    assert(asDerived().getReferenceCounting() == ReferenceCounting::Native);   \
+    IGF.emitNative##Name##Retain(value, atomicity);                            \
+  }                                                                            \
+  void name##Release(IRGenFunction &IGF, Explosion &e, Atomicity atomicity)    \
+      const override {                                                         \
+    assert(asDerived().getReferenceCounting() != ReferenceCounting::Custom);   \
+    llvm::Value *value = e.claimNext();                                        \
+    assert(asDerived().getReferenceCounting() == ReferenceCounting::Native);   \
+    IGF.emitNative##Name##Release(value, atomicity);                           \
   }
-
-  void unownedRelease(IRGenFunction &IGF, Explosion &e) const override {
-    llvm::Value *value = e.claimNext();
-    IGF.emitUnownedRelease(value, asDerived().getReferenceCounting());
-  }
-
-  void unownedLoadStrong(IRGenFunction &IGF, Address src,
-                         Explosion &out) const override {
-    llvm::Value *value = IGF.emitUnownedLoadStrong(src, this->getStorageType(),
-                                           asDerived().getReferenceCounting());
-    out.add(value);
-  }
-
-  void unownedTakeStrong(IRGenFunction &IGF, Address src,
-                         Explosion &out) const override {
-    llvm::Value *value = IGF.emitUnownedTakeStrong(src, this->getStorageType(),
-                                           asDerived().getReferenceCounting());
-    out.add(value);
-  }
-
-  void unownedInit(IRGenFunction &IGF, Explosion &in,
-                   Address dest) const override {
-    IGF.emitUnownedInit(in.claimNext(), dest,
-                        asDerived().getReferenceCounting());
-  }
-
-  void unownedAssign(IRGenFunction &IGF, Explosion &in,
-                     Address dest) const override {
-    IGF.emitUnownedAssign(in.claimNext(), dest,
-                          asDerived().getReferenceCounting());
-  }
+#define NEVER_LOADABLE_CHECKED_REF_STORAGE(Name, name, ...) \
+  NEVER_LOADABLE_CHECKED_REF_STORAGE_HELPER(Name, name) \
+  REF_STORAGE_HELPER(Name)
+#define ALWAYS_LOADABLE_CHECKED_REF_STORAGE(Name, name, ...) \
+  ALWAYS_LOADABLE_CHECKED_REF_STORAGE_HELPER(Name, name) \
+  REF_STORAGE_HELPER(Name)
+#define SOMETIMES_LOADABLE_CHECKED_REF_STORAGE(Name, name, ...) \
+  NEVER_LOADABLE_CHECKED_REF_STORAGE_HELPER(Name, name) \
+  ALWAYS_LOADABLE_CHECKED_REF_STORAGE_HELPER(Name, name) \
+  REF_STORAGE_HELPER(Name)
+#define UNCHECKED_REF_STORAGE(Name, ...) \
+  REF_STORAGE_HELPER(Name)
+#include "swift/AST/ReferenceStorage.def"
+#undef REF_STORAGE_HELPER
+#undef NEVER_LOADABLE_CHECKED_REF_STORAGE_HELPER
+#undef ALWAYS_LOADABLE_CHECKED_REF_STORAGE_HELPER
 
   LoadedRef loadRefcountedPtr(IRGenFunction &IGF, SourceLoc loc,
                               Address addr) const override {
@@ -167,21 +239,9 @@ public:
     return LoadedRef(ptr, true);
   }
 
-  const WeakTypeInfo *createWeakStorageType(TypeConverter &TC) const override {
-    return TC.createWeakStorageType(this->getStorageType(),
-                                    asDerived().getReferenceCounting());
+  ReferenceCounting getReferenceCountingType() const override {
+    return asDerived().getReferenceCounting();
   }
-
-  const TypeInfo *
-  createUnownedStorageType(TypeConverter &TC) const override {
-    return TC.createUnownedStorageType(this->getStorageType(),
-                                       asDerived().getReferenceCounting());
-  }
-
-  const TypeInfo *createUnmanagedStorageType(TypeConverter &TC) const override {
-    return TC.createUnmanagedStorageType(this->getStorageType());
-  }
-
 
   // Extra inhabitants of heap object pointers.
 
@@ -200,13 +260,14 @@ public:
   }
 
   llvm::Value *getExtraInhabitantIndex(IRGenFunction &IGF, Address src,
-                                       SILType T)
+                                       SILType T, bool isOutlined)
   const override {
     return getHeapObjectExtraInhabitantIndex(IGF, src);
   }
 
   void storeExtraInhabitant(IRGenFunction &IGF, llvm::Value *index,
-                            Address dest, SILType T) const override {
+                            Address dest, SILType T, bool isOutlined)
+  const override {
     return storeHeapObjectExtraInhabitant(IGF, index, dest);
   }
 };
@@ -215,5 +276,3 @@ public:
 }
 
 #endif
-
-

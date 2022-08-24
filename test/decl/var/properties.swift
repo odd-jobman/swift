@@ -1,14 +1,14 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
-func markUsed<T>(t: T) {}
+func markUsed<T>(_ t: T) {}
 
 struct X { }
 var _x: X
 
 class SomeClass {}
 
-func takeTrailingClosure(fn: () -> ()) -> Int {}
-func takeIntTrailingClosure(fn: () -> Int) -> Int {}
+func takeTrailingClosure(_ fn: () -> ()) -> Int {}
+func takeIntTrailingClosure(_ fn: () -> Int) -> Int {}
 
 //===---
 // Stored properties
@@ -65,10 +65,10 @@ var a5: X {
 }
 
 // Reading/writing properties
-func accept_x(x: X) { }
-func accept_x_inout(x: inout X) { }
+func accept_x(_ x: X) { }
+func accept_x_inout(_ x: inout X) { }
 
-func test_global_properties(x: X) {
+func test_global_properties(_ x: X) {
   accept_x(a1)
   accept_x(a2)
   accept_x(a3)
@@ -96,14 +96,15 @@ var implicitGet1: X {
 
 var implicitGet2: Int {
   var zzz = 0
+  // expected-warning@-1 {{initialization of variable 'zzz' was never used; consider replacing with assignment to '_' or removing it}}
   // For the purpose of this test, any other function attribute work as well.
-  @noreturn
+  @inline(__always)
   func foo() {}
   return 0
 }
 
 var implicitGet3: Int {
-  @noreturn
+  @inline(__always)
   func foo() {}
   return 0
 }
@@ -114,31 +115,33 @@ var x15: Int {
   // applied to the getter.
   weak
   var foo: SomeClass? = SomeClass()  // expected-warning {{variable 'foo' was written to, but never read}}
+  // expected-warning@-1 {{instance will be immediately deallocated because variable 'foo' is 'weak'}}
+  // expected-note@-2 {{a strong reference is required to prevent the instance from being deallocated}}
+  // expected-note@-3 {{'foo' declared here}}
   return 0
 }
 
 
 // Disambiguated as stored property with a trailing closure in the initializer.
 //
-// FIXME: QoI could be much better here.
-var disambiguateGetSet1a: Int = 0 {
-  get {} // expected-error {{use of unresolved identifier 'get'}}
+var disambiguateGetSet1a: Int = 0 { // expected-error {{variable with getter/setter cannot have an initial value}}
+  get {}
 }
-var disambiguateGetSet1b: Int = 0 {
-  get { // expected-error {{use of unresolved identifier 'get'}}
+var disambiguateGetSet1b: Int = 0 { // expected-error {{variable with getter/setter cannot have an initial value}}
+  get {
     return 42
   }
 }
-var disambiguateGetSet1c: Int = 0 {
-  set {} // expected-error {{use of unresolved identifier 'set'}}
+var disambiguateGetSet1c: Int = 0 { // expected-error {{variable with getter/setter cannot have an initial value}}
+  set {} // expected-error {{variable with a setter must also have a getter}}
 }
-var disambiguateGetSet1d: Int = 0 {
-  set(newValue) {} // expected-error {{use of unresolved identifier 'set'}} expected-error {{use of unresolved identifier 'newValue'}}
+var disambiguateGetSet1d: Int = 0 { // expected-error {{variable with getter/setter cannot have an initial value}}
+  set(newValue) {} // expected-error {{variable with a setter must also have a getter}}
 }
 
 // Disambiguated as stored property with a trailing closure in the initializer.
 func disambiguateGetSet2() {
-  func get(fn: () -> ()) {}
+  func get(_ fn: () -> ()) {}
   var a: Int = takeTrailingClosure {
     get {}
   }
@@ -146,9 +149,9 @@ func disambiguateGetSet2() {
   a = a + 42
 }
 func disambiguateGetSet2Attr() {
-  func get(fn: () -> ()) {}
+  func get(_ fn: () -> ()) {}
   var a: Int = takeTrailingClosure {
-    @noreturn
+    @inline(__always)
     func foo() {}
     get {}
   }
@@ -158,7 +161,7 @@ func disambiguateGetSet2Attr() {
 
 // Disambiguated as stored property with a trailing closure in the initializer.
 func disambiguateGetSet3() {
-  func set(fn: () -> ()) {}
+  func set(_ fn: () -> ()) {}
   var a: Int = takeTrailingClosure {
     set {}
   }
@@ -166,9 +169,9 @@ func disambiguateGetSet3() {
   a = a + 42
 }
 func disambiguateGetSet3Attr() {
-  func set(fn: () -> ()) {}
+  func set(_ fn: () -> ()) {}
   var a: Int = takeTrailingClosure {
-    @noreturn
+    @inline(__always)
     func foo() {}
     set {}
   }
@@ -178,7 +181,7 @@ func disambiguateGetSet3Attr() {
 
 // Disambiguated as stored property with a trailing closure in the initializer.
 func disambiguateGetSet4() {
-  func set(x: Int, fn: () -> ()) {}
+  func set(_ x: Int, fn: () -> ()) {}
   let newValue: Int = 0
   var a: Int = takeTrailingClosure {
     set(newValue) {}
@@ -187,10 +190,11 @@ func disambiguateGetSet4() {
   a = a + 42
 }
 func disambiguateGetSet4Attr() {
-  func set(x: Int, fn: () -> ()) {}
+  func set(_ x: Int, fn: () -> ()) {}
   var newValue: Int = 0
+  // expected-warning@-1 {{variable 'newValue' was never mutated; consider changing to 'let' constant}}
   var a: Int = takeTrailingClosure {
-    @noreturn
+    @inline(__always)
     func foo() {}
     set(newValue) {}
   }
@@ -199,7 +203,7 @@ func disambiguateGetSet4Attr() {
 }
 
 // Disambiguated as stored property with a trailing closure in the initializer.
-var disambiguateImplicitGet1: Int = 0 { // expected-error {{cannot call value of non-function type 'Int'}}
+var disambiguateImplicitGet1: Int = 0 { // expected-error {{variable with getter/setter cannot have an initial value}}
   return 42
 }
 var disambiguateImplicitGet2: Int = takeIntTrailingClosure {
@@ -265,8 +269,7 @@ var computed_prop_with_init_1: X {
   get {}
 } = X()  // expected-error {{expected expression}} expected-error {{consecutive statements on a line must be separated by ';'}} {{2-2=;}}
 
-// FIXME: Redundant error below
-var x2 { // expected-error{{computed property must have an explicit type}} expected-error{{type annotation missing in pattern}}
+var x2 { // expected-error{{computed property must have an explicit type}} {{7-7=: <# Type #>}} expected-error{{type annotation missing in pattern}}
   get {
     return _x
   }
@@ -279,28 +282,28 @@ var (x3): X { // expected-error{{getter/setter can only be defined for a single 
 }
 
 var duplicateAccessors1: X {
-  get { // expected-note {{previous definition of getter is here}}
+  get { // expected-note {{previous definition of getter here}}
     return _x
   }
-  set { // expected-note {{previous definition of setter is here}}
-    _x = value
+  set { // expected-note {{previous definition of setter here}}
+    _x = newValue
   }
-  get { // expected-error {{duplicate definition of getter}}
+  get { // expected-error {{variable already has a getter}}
     return _x
   }
-  set(v) { // expected-error {{duplicate definition of setter}}
+  set(v) { // expected-error {{variable already has a setter}}
     _x = v
   }
 }
 
 var duplicateAccessors2: Int = 0 {
-  willSet { // expected-note {{previous definition of willSet is here}}
+  willSet { // expected-note {{previous definition of 'willSet' here}}
   }
-  didSet { // expected-note {{previous definition of didSet is here}}
+  didSet { // expected-note {{previous definition of 'didSet' here}}
   }
-  willSet { // expected-error {{duplicate definition of willSet}}
+  willSet { // expected-error {{variable already has 'willSet'}}
   }
-  didSet { // expected-error {{duplicate definition of didSet}}
+  didSet { // expected-error {{variable already has 'didSet'}}
   }
 }
 
@@ -326,17 +329,17 @@ var extraTokensInAccessorBlock4: X {
 var extraTokensInAccessorBlock5: X {
   set blah wibble // expected-error{{expected '{' to start setter definition}}
 }
-var extraTokensInAccessorBlock6: X {
-  willSet blah wibble // expected-error{{expected '{' to start willSet definition}}
+var extraTokensInAccessorBlock6: X { // expected-error{{non-member observing properties require an initializer}}
+  willSet blah wibble // expected-error{{expected '{' to start 'willSet' definition}}
 }
-var extraTokensInAccessorBlock7: X {
-  didSet blah wibble // expected-error{{expected '{' to start didSet definition}}
+var extraTokensInAccessorBlock7: X { // expected-error{{non-member observing properties require an initializer}}
+  didSet blah wibble // expected-error{{expected '{' to start 'didSet' definition}}
 }
 
 var extraTokensInAccessorBlock8: X {
-  foo // expected-error {{use of unresolved identifier 'foo'}}
-  get {} // expected-error{{use of unresolved identifier 'get'}}
-  set {} // expected-error{{use of unresolved identifier 'set'}}
+  foo // expected-error {{cannot find 'foo' in scope}}
+  get {} // expected-error{{cannot find 'get' in scope}}
+  set {} // expected-error{{cannot find 'set' in scope}}
 }
 
 var extraTokensInAccessorBlock9: Int {
@@ -375,7 +378,13 @@ var x12: X {
   }
 }
 
-var x13: X {} // expected-error {{computed property must have accessors specified}}
+var x13: X {} // expected-error {{missing return in accessor expected to return 'X'}}
+
+struct X14 {}
+extension X14 {
+  var x14: X {
+  } // expected-error {{missing return in accessor expected to return 'X'}}
+}
 
 // Type checking problems
 struct Y { }
@@ -404,7 +413,7 @@ var x23: Int, x24: Int { // expected-error{{'var' declarations with multiple var
 
 var x25: Int { // expected-error{{'var' declarations with multiple variables cannot have explicit getters/setters}}
   return 42
-}, x26: Int
+}, x26: Int // expected-warning{{variable 'x26' was never used; consider replacing with '_' or removing it}}
 
 // Properties of struct/enum/extensions
 struct S {
@@ -443,7 +452,7 @@ struct StructWithExtension1 {
   static var fooStatic = 4
 }
 extension StructWithExtension1 {
-  var fooExt: Int // expected-error {{extensions may not contain stored properties}}
+  var fooExt: Int // expected-error {{extensions must not contain stored properties}}
   static var fooExtStatic = 4
 }
 
@@ -452,16 +461,16 @@ class ClassWithExtension1 {
   class var fooStatic = 4 // expected-error {{class stored properties not supported in classes; did you mean 'static'?}}
 }
 extension ClassWithExtension1 {
-  var fooExt: Int // expected-error {{extensions may not contain stored properties}}
+  var fooExt: Int // expected-error {{extensions must not contain stored properties}}
   class var fooExtStatic = 4 // expected-error {{class stored properties not supported in classes; did you mean 'static'?}}
 }
 
 enum EnumWithExtension1 {
-  var foo: Int // expected-error {{enums may not contain stored properties}}
+  var foo: Int // expected-error {{enums must not contain stored properties}}
   static var fooStatic  = 4
 }
 extension EnumWithExtension1 {
-  var fooExt: Int // expected-error {{extensions may not contain stored properties}}
+  var fooExt: Int // expected-error {{extensions must not contain stored properties}}
   static var fooExtStatic = 4
 }
 
@@ -470,16 +479,28 @@ protocol ProtocolWithExtension1 {
   static var fooStatic : Int { get }
 }
 extension ProtocolWithExtension1 {
-  final var fooExt: Int // expected-error{{extensions may not contain stored properties}}
-  final static var fooExtStatic = 4 // expected-error{{static stored properties not supported in generic types}}
+  var fooExt: Int // expected-error{{extensions must not contain stored properties}}
+  static var fooExtStatic = 4 // expected-error{{static stored properties not supported in protocol extensions}}
 }
 
-func getS() -> S {
+protocol ProtocolWithExtension2 {
+  var bar: String { get }
+}
+
+struct StructureImplementingProtocolWithExtension2: ProtocolWithExtension2 {
+  let bar: String
+}
+
+extension ProtocolWithExtension2 {
+  static let baz: ProtocolWithExtension2 = StructureImplementingProtocolWithExtension2(bar: "baz") // expected-error{{static stored properties not supported in protocol extensions}}
+}
+
+func getS() -> S { // expected-note 2{{did you mean 'getS'?}}
   let s: S
   return s
 }
 
-func test_extension_properties(s: inout S, x: inout X) {
+func test_extension_properties(_ s: inout S, x: inout X) {
   accept_x(s.x)
   accept_x(s.x2)
   accept_x(s.x3)
@@ -532,14 +553,14 @@ struct Aleph {
   }
 }
 
-struct Beth {
+struct Beth { // expected-note 2{{did you mean 'Beth'?}}
   var c: Int
 }
 
-func accept_int_inout(c: inout Int) { }
-func accept_int(c: Int) { }
+func accept_int_inout(_ c: inout Int) { }
+func accept_int(_ c: Int) { }
 
-func test_settable_of_nonsettable(a: Aleph) {
+func test_settable_of_nonsettable(_ a: Aleph) {
   a.b.c = 1 // expected-error{{cannot assign}}
   let x:Int = a.b.c
   _ = x
@@ -600,7 +621,7 @@ func staticPropRefs() -> (Int, Int, String, UnicodeScalar, UInt8) {
           MonoStruct.zim)
 }
 
-func staticPropRefThroughInstance(foo: MonoStruct) -> Int {
+func staticPropRefThroughInstance(_ foo: MonoStruct) -> Int {
   return foo.foo //expected-error{{static member 'foo' cannot be used on instance of type 'MonoStruct'}}
 }
 
@@ -711,20 +732,20 @@ struct WillSetDidSetProperties {
   }
 
   var d: Int {
-    didSet {
+    didSet { // expected-error {{'didSet' cannot be provided together with a getter}}
       markUsed("woot")
     }
-    get { // expected-error {{didSet variable may not also have a get specifier}}
+    get {
       return 4
     }
   }
 
   var e: Int {
-    willSet {
+    willSet { // expected-error {{'willSet' cannot be provided together with a setter}}
       markUsed("woot")
     }
-    set { // expected-error {{willSet variable may not also have a set specifier}}
-      return 4
+    set { // expected-error {{variable with a setter must also have a getter}}
+      return 4 // expected-error {{unexpected non-void return value in void function}}
     }
   }
 
@@ -735,11 +756,11 @@ struct WillSetDidSetProperties {
 
   var g: Int {
     willSet(newValue 5) {} // expected-error {{expected ')' after willSet parameter name}} expected-note {{to match this opening '('}}
-    // expected-error@-1 {{expected '{' to start willSet definition}}
+    // expected-error@-1 {{expected '{' to start 'willSet' definition}}
   }
   var h: Int {
     didSet(oldValue ^) {} // expected-error {{expected ')' after didSet parameter name}} expected-note {{to match this opening '('}}
-    // expected-error@-1 {{expected '{' to start didSet definition}}
+    // expected-error@-1 {{expected '{' to start 'didSet' definition}}
   }
 
   // didSet/willSet with initializers.
@@ -771,7 +792,7 @@ struct WillSetDidSetProperties {
   }
 
   var disambiguate6: Int = takeTrailingClosure {
-    @noreturn
+    @inline(__always)
     func f() {}
     return ()
   }
@@ -804,13 +825,13 @@ struct WillSetDidSetProperties {
 struct WillSetDidSetDisambiguate1 {
   var willSet: Int
   var x: (() -> ()) -> Int = takeTrailingClosure {
-    willSet = 42 // expected-error {{expected '{' to start willSet definition}}
+    willSet = 42 // expected-error {{expected '{' to start 'willSet' definition}}
   }
 }
 struct WillSetDidSetDisambiguate1Attr {
   var willSet: Int
   var x: (() -> ()) -> Int = takeTrailingClosure {
-    willSet = 42 // expected-error {{expected '{' to start willSet definition}}
+    willSet = 42 // expected-error {{expected '{' to start 'willSet' definition}}
   }
 }
 
@@ -837,10 +858,10 @@ struct WillSetDidSetDisambiguate3 {
 }
 
 protocol ProtocolGetSet1 {
-  var a: Int // expected-error {{property in protocol must have explicit { get } or { get set } specifier}}
+  var a: Int // expected-error {{property in protocol must have explicit { get } or { get set } specifier}} {{13-13= { get <#set#> \}}}
 }
 protocol ProtocolGetSet2 {
-  var a: Int {} // expected-error {{property in protocol must have explicit { get } or { get set } specifier}}
+  var a: Int {} // expected-error {{property in protocol must have explicit { get } or { get set } specifier}} {{14-16={ get <#set#> \}}}
 }
 protocol ProtocolGetSet3 {
   var a: Int { get }
@@ -856,16 +877,20 @@ protocol ProtocolGetSet6 {
 }
 
 protocol ProtocolWillSetDidSet1 {
-  var a: Int { willSet } // expected-error {{property in protocol must have explicit { get } or { get set } specifier}} expected-error {{expected get or set in a protocol property}}
+  var a: Int { willSet } // expected-error {{property in protocol must have explicit { get } or { get set } specifier}} {{14-25={ get <#set#> \}}} expected-error {{expected get or set in a protocol property}}
 }
 protocol ProtocolWillSetDidSet2 {
-  var a: Int { didSet } // expected-error {{property in protocol must have explicit { get } or { get set } specifier}} expected-error {{expected get or set in a protocol property}}
+  var a: Int { didSet } // expected-error {{property in protocol must have explicit { get } or { get set } specifier}} {{14-24={ get <#set#> \}}} expected-error {{expected get or set in a protocol property}}
 }
 protocol ProtocolWillSetDidSet3 {
-  var a: Int { willSet didSet } // expected-error {{property in protocol must have explicit { get } or { get set } specifier}} expected-error {{expected get or set in a protocol property}}
+  var a: Int { willSet didSet } // expected-error {{property in protocol must have explicit { get } or { get set } specifier}} {{14-32={ get <#set#> \}}} expected-error 2 {{expected get or set in a protocol property}}
+
 }
 protocol ProtocolWillSetDidSet4 {
-  var a: Int { didSet willSet } // expected-error {{property in protocol must have explicit { get } or { get set } specifier}} expected-error {{expected get or set in a protocol property}}
+  var a: Int { didSet willSet } // expected-error {{property in protocol must have explicit { get } or { get set } specifier}} {{14-32={ get <#set#> \}}} expected-error 2 {{expected get or set in a protocol property}}
+}
+protocol ProtocolWillSetDidSet5 {
+  let a: Int { didSet willSet }  // expected-error {{protocols cannot require properties to be immutable; declare read-only properties by using 'var' with a '{ get }' specifier}} {{3-6=var}} {{13-13= { get \}}} {{none}} expected-error 2 {{expected get or set in a protocol property}} expected-error {{'let' declarations cannot be computed properties}} {{3-6=var}}
 }
 
 var globalDidsetWillSet: Int {  // expected-error {{non-member observing properties require an initializer}}
@@ -884,7 +909,7 @@ class Box {
   }
 }
 
-func double(val: inout Int) {
+func double(_ val: inout Int) {
   val *= 2
 }
 
@@ -911,7 +936,7 @@ class ObservingPropertiesNotMutableInWillSet {
   }
 
   func localCase() {
-    var localProperty: Int = 42 {
+    var localProperty: Int = 42 { // expected-warning {{variable 'localProperty' was written to, but never read}}
       willSet {
         localProperty = 19   // expected-warning {{attempting to store to property 'localProperty' within its own willSet}}
       }
@@ -919,7 +944,7 @@ class ObservingPropertiesNotMutableInWillSet {
   }
 }
 
-func doLater(fn : () -> ()) {}
+func doLater(_ fn : () -> ()) {}
 
 // rdar://<rdar://problem/16264989> property not mutable in closure inside of its willSet
 class MutableInWillSetInClosureClass {
@@ -1028,7 +1053,7 @@ struct PropertiesWithOwnershipTypes {
 
 // <rdar://problem/16608609> Assert (and incorrect error message) when defining a constant stored property with observers
 class Test16608609 {
-   let constantStored: Int = 0 {  // expected-error {{'let' declarations cannot be observing properties}}
+   let constantStored: Int = 0 {  // expected-error {{'let' declarations cannot be observing properties}} {{4-7=var}}
       willSet {
       }
       didSet {
@@ -1055,11 +1080,13 @@ class OwnershipBase {
   class var defaultObject: AnyObject { fatalError("") }
 
   var strongVar: AnyObject? // expected-note{{overridden declaration is here}}
-  weak var weakVar: AnyObject?
+  weak var weakVar: AnyObject? // expected-note{{overridden declaration is here}}
 
   // FIXME: These should be optional to properly test overriding.
   unowned var unownedVar: AnyObject = defaultObject
+  unowned var optUnownedVar: AnyObject? = defaultObject
   unowned(unsafe) var unownedUnsafeVar: AnyObject = defaultObject // expected-note{{overridden declaration is here}}
+  unowned(unsafe) var optUnownedUnsafeVar: AnyObject? = defaultObject
 }
 
 class OwnershipExplicitSub : OwnershipBase {
@@ -1072,7 +1099,13 @@ class OwnershipExplicitSub : OwnershipBase {
   override unowned var unownedVar: AnyObject {
     didSet {}
   }
+  override unowned var optUnownedVar: AnyObject? {
+    didSet {}
+  }
   override unowned(unsafe) var unownedUnsafeVar: AnyObject {
+    didSet {}
+  }
+  override unowned(unsafe) var optUnownedUnsafeVar: AnyObject? {
     didSet {}
   }
 }
@@ -1087,22 +1120,28 @@ class OwnershipImplicitSub : OwnershipBase {
   override unowned var unownedVar: AnyObject {
     didSet {}
   }
+  override unowned var optUnownedVar: AnyObject? {
+    didSet {}
+  }
   override unowned(unsafe) var unownedUnsafeVar: AnyObject {
+    didSet {}
+  }
+  override unowned(unsafe) var optUnownedUnsafeVar: AnyObject? {
     didSet {}
   }
 }
 
 class OwnershipBadSub : OwnershipBase {
-  override weak var strongVar: AnyObject? { // expected-error {{cannot override strong property with weak property}}
+  override weak var strongVar: AnyObject? { // expected-error {{cannot override 'strong' property with 'weak' property}}
     didSet {}
   }
-  override unowned var weakVar: AnyObject? { // expected-error {{'unowned' may only be applied to class and class-bound protocol types, not 'AnyObject?'}}
+  override unowned var weakVar: AnyObject? { // expected-error {{cannot override 'weak' property with 'unowned' property}}
     didSet {}
   }
   override weak var unownedVar: AnyObject { // expected-error {{'weak' variable should have optional type 'AnyObject?'}}
     didSet {}
   }
-  override unowned var unownedUnsafeVar: AnyObject { // expected-error {{cannot override unowned(unsafe) property with unowned property}}
+  override unowned var unownedUnsafeVar: AnyObject { // expected-error {{cannot override 'unowned(unsafe)' property with 'unowned' property}}
     didSet {}
   }
 }
@@ -1111,12 +1150,12 @@ class OwnershipBadSub : OwnershipBase {
 
 // <rdar://problem/17391625> Swift Compiler Crashes when Declaring a Variable and didSet in an Extension
 class rdar17391625 {
-  var prop = 42  // expected-note {{overridden declaration is here}}
+  var prop = 42  // expected-note {{overri}}
 }
 
 extension rdar17391625 {
-  var someStoredVar: Int       // expected-error {{extensions may not contain stored properties}}
-  var someObservedVar: Int {   // expected-error {{extensions may not contain stored properties}}
+  var someStoredVar: Int       // expected-error {{extensions must not contain stored properties}}
+  var someObservedVar: Int {   // expected-error {{extensions must not contain stored properties}}
   didSet {
   }
   }
@@ -1127,12 +1166,19 @@ class rdar17391625derived :  rdar17391625 {
 
 extension rdar17391625derived {
   // Not a stored property, computed because it is an override.
-  override var prop: Int { // expected-error {{declarations in extensions cannot override yet}}
+  override var prop: Int { // expected-error {{overri}}
   didSet {
   }
   }
 }
 
+// <rdar://problem/27671033> Crash when defining property inside an invalid extension
+// (This extension is no longer invalid.)
+public protocol rdar27671033P {}
+struct rdar27671033S<Key, Value> {}
+extension rdar27671033S : rdar27671033P where Key == String {
+  let d = rdar27671033S<Int, Int>() // expected-error {{extensions must not contain stored properties}}
+}
 
 // <rdar://problem/19874152> struct memberwise initializer violates new sanctity of previously set `let` property
 struct r19874152S1 {
@@ -1147,14 +1193,14 @@ struct r19874152S2 {
 _ = r19874152S2(number:64)  // Ok, property is a var.
 _ = r19874152S2()  // Ok
 
-struct r19874152S3 {
+struct r19874152S3 { // expected-note {{'init(flavor:)' declared here}}
   let number : Int = 42
-  let flavour : Int
+  let flavor : Int
 }
-_ = r19874152S3(number:64)  // expected-error {{incorrect argument label in call (have 'number:', expected 'flavour:')}} {{17-23=flavour}}
-_ = r19874152S3(number:64, flavour: 17)  // expected-error {{extra argument 'number' in call}}
-_ = r19874152S3(flavour: 17)  // ok
-_ = r19874152S3()  // expected-error {{missing argument for parameter 'flavour' in call}}
+_ = r19874152S3(number:64)  // expected-error {{incorrect argument label in call (have 'number:', expected 'flavor:')}} {{17-23=flavor}}
+_ = r19874152S3(number:64, flavor: 17)  // expected-error {{extra argument 'number' in call}}
+_ = r19874152S3(flavor: 17)  // ok
+_ = r19874152S3()  // expected-error {{missing argument for parameter 'flavor' in call}}
 
 struct r19874152S4 {
   let number : Int? = nil
@@ -1181,3 +1227,125 @@ class r24314506 {  // expected-error {{class 'r24314506' has no initializers}}
 }
 
 
+// https://bugs.swift.org/browse/SR-3893
+// Generic type is not inferenced from its initial value for properties with
+// will/didSet
+struct SR3893Box<Foo> {
+  let value: Foo
+}
+
+struct SR3893 {
+  // Each of these "bad" properties used to produce errors.
+  var bad: SR3893Box = SR3893Box(value: 0) {
+    willSet {
+      print(newValue.value)
+    }
+  }
+
+  var bad2: SR3893Box = SR3893Box(value: 0) {
+    willSet(new) {
+      print(new.value)
+    }
+  }
+
+  var bad3: SR3893Box = SR3893Box(value: 0) {
+    didSet {
+      print(oldValue.value)
+    }
+  }
+
+  var good: SR3893Box<Int> = SR3893Box(value: 0) {
+    didSet {
+      print(oldValue.value)
+    }
+  }
+
+  var plain: SR3893Box = SR3893Box(value: 0)
+}
+
+protocol WFI_P1 : class {}
+protocol WFI_P2 : class {}
+
+class WeakFixItTest {
+  init() {}
+
+  // expected-error @+1 {{'weak' variable should have optional type 'WeakFixItTest?'}} {{31-31=?}}
+  weak var foo : WeakFixItTest
+
+  // expected-error @+1 {{'weak' variable should have optional type '(any WFI_P1 & WFI_P2)?'}} {{18-18=(}} {{33-33=)?}}
+  weak var bar : WFI_P1 & WFI_P2
+}
+
+// SR-8811 (Warning)
+
+let sr8811a = fatalError() // expected-warning {{constant 'sr8811a' inferred to have type 'Never', which is an enum with no cases}} expected-note {{add an explicit type annotation to silence this warning}} {{12-12=: Never}}
+
+let sr8811b: Never = fatalError() // Ok
+
+let sr8811c = (16, fatalError()) // expected-warning {{constant 'sr8811c' inferred to have type '(Int, Never)', which contains an enum with no cases}} expected-note {{add an explicit type annotation to silence this warning}} {{12-12=: (Int, Never)}}
+
+let sr8811d: (Int, Never) = (16, fatalError()) // Ok
+
+// SR-10995
+
+class SR_10995 {
+  func makeDoubleOptionalNever() -> Never?? {
+    return nil
+  }
+
+  func makeSingleOptionalNever() -> Never? {
+    return nil
+  }
+
+  func sr_10995_foo() {
+    let doubleOptionalNever = makeDoubleOptionalNever() // expected-warning {{constant 'doubleOptionalNever' inferred to have type 'Never??', which may be unexpected}}
+    // expected-note@-1 {{add an explicit type annotation to silence this warning}} {{28-28=: Never??}}
+    // expected-warning@-2 {{initialization of immutable value 'doubleOptionalNever' was never used; consider replacing with assignment to '_' or removing it}}
+    let singleOptionalNever = makeSingleOptionalNever() // expected-warning {{constant 'singleOptionalNever' inferred to have type 'Never?', which may be unexpected}} 
+    // expected-note@-1 {{add an explicit type annotation to silence this warning}} {{28-28=: Never?}}
+    // expected-warning@-2 {{initialization of immutable value 'singleOptionalNever' was never used; consider replacing with assignment to '_' or removing it}}
+  }
+}
+
+// SR-9267
+
+class SR_9267 {}
+extension SR_9267 {
+  var foo: String = { // expected-error {{extensions must not contain stored properties}} // expected-error {{function produces expected type 'String'; did you mean to call it with '()'?}} // expected-note {{Remove '=' to make 'foo' a computed property}}{{19-21=}}
+    return "Hello"
+  }
+}
+
+enum SR_9267_E {
+  var SR_9267_prop: String = { // expected-error {{enums must not contain stored properties}} // expected-error {{function produces expected type 'String'; did you mean to call it with '()'?}} // expected-note {{Remove '=' to make 'SR_9267_prop' a computed property}}{{28-30=}}
+    return "Hello"
+  }
+}
+
+var SR_9267_prop_1: Int = { // expected-error {{function produces expected type 'Int'; did you mean to call it with '()'?}} // expected-note {{Remove '=' to make 'SR_9267_prop_1' a computed property}}{{25-27=}}
+  return 0
+}
+
+class SR_9267_C {
+  var SR_9267_prop_2: String = { // expected-error {{function produces expected type 'String'; did you mean to call it with '()'?}} // expected-note {{Remove '=' to make 'SR_9267_prop_2' a computed property}}{{30-32=}}
+    return "Hello"
+  }
+}
+
+class SR_9267_C2 {
+  let SR_9267_prop_3: Int = { return 0 } // expected-error {{function produces expected type 'Int'; did you mean to call it with '()'?}} // expected-note {{Remove '=' to make 'SR_9267_prop_3' a computed property}}{{3-6=var}}{{27-29=}}
+}
+
+class LazyPropInClass {
+  lazy var foo: Int = { return 0 } // expected-error {{function produces expected type 'Int'; did you mean to call it with '()'?}}
+  // expected-note@-1 {{Remove '=' to make 'foo' a computed property}}{{21-23=}}{{3-8=}}
+}
+
+// SR-15657
+enum SR15657 {
+  var foo: Int {} // expected-error{{missing return in accessor expected to return 'Int'}}
+}
+
+enum SR15657_G<T> {
+  var foo: T {} // expected-error{{missing return in accessor expected to return 'T'}}
+}

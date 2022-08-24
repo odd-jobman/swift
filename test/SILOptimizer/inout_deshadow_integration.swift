@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend %s -emit-sil | FileCheck %s
+// RUN: %target-swift-frontend %s -emit-sil | %FileCheck %s
 
 // This is an integration check for the inout-deshadow pass, verifying that it
 // deshadows the inout variables in certain cases.  These test should not be
@@ -74,7 +74,7 @@ func exploded_nontrivial_type_stored_returned(a: inout String) -> String {
 
 // Use an external function so inout deshadowing cannot see its body.
 @_silgen_name("takesNoEscapeClosure")
-func takesNoEscapeClosure(@noescape fn : () -> Int)
+func takesNoEscapeClosure(fn : () -> Int)
 
 struct StructWithMutatingMethod {
   var x = 42
@@ -92,13 +92,13 @@ struct StructWithMutatingMethod {
   }
 }
 
-// CHECK-LABEL: sil hidden @_TFV26inout_deshadow_integration24StructWithMutatingMethod14mutatingMethod{{.*}} : $@convention(method) (@inout StructWithMutatingMethod) -> () {
+// CHECK-LABEL: sil hidden @$s26inout_deshadow_integration24StructWithMutatingMethodV08mutatingG0{{[_0-9a-zA-Z]*}}F : $@convention(method) (@inout StructWithMutatingMethod) -> () {
 // CHECK-NOT: alloc_box
-// CHECK-NOT: alloc_stack
+// CHECK-NOT: alloc_stack $
 // CHECK: }
 
-// CHECK-LABEL: sil hidden @_TFV26inout_deshadow_integration24StructWithMutatingMethod28testStandardLibraryOperators{{.*}} : $@convention(method) (@inout StructWithMutatingMethod) -> () {
-// CHECK-NOT: alloc_box $StructWithMutatingMethod
+// CHECK-LABEL: sil hidden @$s26inout_deshadow_integration24StructWithMutatingMethodV28testStandardLibraryOperators{{[_0-9a-zA-Z]*}}F : $@convention(method) (@inout StructWithMutatingMethod) -> () {
+// CHECK-NOT: alloc_box $<τ_0_0> { var τ_0_0 } <StructWithMutatingMethod>
 // CHECK-NOT: alloc_stack $StructWithMutatingMethod
 // CHECK: }
 

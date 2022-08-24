@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend -parse -disable-objc-attr-requires-foundation-module %s %S/Inputs/objc_redeclaration_multi_2.swift -verify
+// RUN: %target-swift-frontend -typecheck -enable-objc-interop -disable-objc-attr-requires-foundation-module %s %S/Inputs/objc_redeclaration_multi_2.swift -verify
 
 @objc class Redecl1 {
   @objc init() { } // expected-note{{initializer 'init()' declared here}}
@@ -16,5 +16,5 @@ extension Redecl2 {
 }
 
 extension Redecl1 {
-  @objc(method2) func method2_alias() { } // expected-note{{method 'method2_alias()' declared here}}
+  @objc(method2) func method2_alias() { } // expected-error{{method 'method2_alias()' with Objective-C selector 'method2' conflicts with method 'method2()' with the same Objective-C selector}}
 }

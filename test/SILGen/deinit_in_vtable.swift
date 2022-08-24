@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend -Xllvm -sil-full-demangle -O -emit-sil %s | FileCheck %s
+// RUN: %target-swift-emit-sil -Xllvm -sil-full-demangle -O %s | %FileCheck %s
 
 // The second run tests is it can be compiled without crashes.
 // RUN: %target-swift-frontend -Xllvm -sil-full-demangle -O -S %s
@@ -8,17 +8,17 @@ private class A {
 }
 
 // CHECK-LABEL: deinit_in_vtable.(A in {{.*}}).__deallocating_deinit
-// CHECK: sil private @[[A:.*]] :
+// CHECK: sil private {{.*}}@[[A:.*]] :
 
 private class B : A {
 	override func foo() -> Int { return 1 }
 }
 
 // CHECK-LABEL: deinit_in_vtable.(B in {{.*}}).__deallocating_deinit
-// CHECK: sil private @[[B:.*]] :
+// CHECK: sil private {{.*}}@[[B:.*]] :
 
 @inline(never)
-private func testfunc(a: A) -> Int {
+private func testfunc(_ a: A) -> Int {
   return a.foo()
 }
 
@@ -31,9 +31,9 @@ public func testmain() {
 // function elimination
 
 // CHECK-LABEL: sil_vtable A
-// CHECK: A.deinit!deallocator: [[A]]
+// CHECK: A.deinit!deallocator: @[[A]]
 
 // CHECK-LABEL: sil_vtable B
 // CHECK-NOT: A.deinit
-// CHECK: B.deinit!deallocator: [[B]]
+// CHECK: B.deinit!deallocator: @[[B]]
 

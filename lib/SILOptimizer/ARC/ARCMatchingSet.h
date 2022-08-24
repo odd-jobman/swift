@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -43,20 +43,8 @@ struct ARCMatchingSet {
   /// The set of reference count increments that were paired.
   llvm::SetVector<SILInstruction *> Increments;
 
-  /// An insertion point for an increment means the earliest point in the
-  /// program after the increment has occurred that the increment can be moved
-  /// to
-  /// without moving the increment over an instruction that may decrement a
-  /// reference count.
-  llvm::SetVector<SILInstruction *> IncrementInsertPts;
-
   /// The set of reference count decrements that were paired.
   llvm::SetVector<SILInstruction *> Decrements;
-
-  /// An insertion point for a decrement means the latest point in the program
-  /// before the decrement that the optimizer conservatively assumes that a
-  /// reference counted value could be used.
-  llvm::SetVector<SILInstruction *> DecrementInsertPts;
 
   // This is a data structure that cannot be moved or copied.
   ARCMatchingSet() = default;
@@ -68,15 +56,13 @@ struct ARCMatchingSet {
   void clear() {
     Ptr = SILValue();
     Increments.clear();
-    IncrementInsertPts.clear();
     Decrements.clear();
-    DecrementInsertPts.clear();
   }
 };
 
 struct MatchingSetFlags {
   bool KnownSafe;
-  bool Partial;
+  bool CodeMotionSafe;
 };
 static_assert(std::is_pod<MatchingSetFlags>::value,
               "MatchingSetFlags should be a pod.");
@@ -108,11 +94,9 @@ public:
 
     // If we have a function argument that is guaranteed, set the guaranteed
     // flag so we know that it is always known safe.
-    if (auto *A = dyn_cast<SILArgument>(MatchSet.Ptr)) {
-      if (A->isFunctionArg()) {
-        auto C = A->getArgumentConvention();
-        PtrIsGuaranteedArg = C == SILArgumentConvention::Direct_Guaranteed;
-      }
+    if (auto *A = dyn_cast<SILFunctionArgument>(MatchSet.Ptr)) {
+      auto C = A->getArgumentConvention();
+      PtrIsGuaranteedArg = C == SILArgumentConvention::Direct_Guaranteed;
     }
     NewIncrements.push_back(Inst);
   }

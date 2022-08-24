@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,7 +17,6 @@
 #include "swift/SIL/LoopInfo.h"
 #include "swift/SIL/SILBasicBlock.h"
 #include "swift/SILOptimizer/Analysis/Analysis.h"
-#include "llvm/ADT/DenseMap.h"
 
 namespace swift {
   class DominanceInfo;
@@ -32,10 +31,10 @@ class SILLoopAnalysis : public FunctionAnalysisBase<SILLoopInfo> {
   DominanceAnalysis *DA;
 public:
   SILLoopAnalysis(SILModule *)
-      : FunctionAnalysisBase(AnalysisKind::Loop), DA(nullptr) {}
+      : FunctionAnalysisBase(SILAnalysisKind::Loop), DA(nullptr) {}
 
   static bool classof(const SILAnalysis *S) {
-    return S->getKind() == AnalysisKind::Loop;
+    return S->getKind() == SILAnalysisKind::Loop;
   }
 
   virtual bool shouldInvalidate(SILAnalysis::InvalidationKind K) override {
@@ -44,7 +43,8 @@ public:
 
   // Computes loop information for the given function using dominance
   // information.
-  virtual SILLoopInfo *newFunctionAnalysis(SILFunction *F) override;
+  virtual std::unique_ptr<SILLoopInfo>
+  newFunctionAnalysis(SILFunction *F) override;
 
   virtual void initialize(SILPassManager *PM) override;
 };

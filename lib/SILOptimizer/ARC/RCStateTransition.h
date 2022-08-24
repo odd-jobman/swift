@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,7 +33,7 @@ class ConsumedArgToEpilogueReleaseMatcher;
 
 namespace swift {
 
-/// The kind of a RCStateTransition.
+/// The kind of an RCStateTransition.
 enum class RCStateTransitionKind : uint8_t {
 #define KIND(K) K,
 #define ABSTRACT_VALUE(Name, StartKind, EndKind) \
@@ -41,18 +41,18 @@ enum class RCStateTransitionKind : uint8_t {
 #include "RCStateTransition.def"
 };
 
-/// \returns the RCStateTransitionKind corresponding to \p V.
-RCStateTransitionKind getRCStateTransitionKind(ValueBase *V);
+/// \returns the RCStateTransitionKind corresponding to \p N.
+RCStateTransitionKind getRCStateTransitionKind(SILNode *N);
 
 /// Define predicates to test for RCStateTransition abstract value kinds.
 #define ABSTRACT_VALUE(Name, Start, End)                              \
   bool isRCStateTransition ## Name(RCStateTransitionKind Kind);       \
-  static inline bool isRCStateTransition ## Name(ValueBase *V) {      \
-    return isRCStateTransition ## Name(getRCStateTransitionKind(V));  \
+  static inline bool isRCStateTransition ## Name(SILNode *N) {        \
+    return isRCStateTransition ## Name(getRCStateTransitionKind(N));  \
   }
 #define KIND(Name)                                                      \
-  static inline bool isRCStateTransition ## Name(ValueBase *V) {        \
-    return RCStateTransitionKind::Name == getRCStateTransitionKind(V);  \
+  static inline bool isRCStateTransition ## Name(SILNode *N) {          \
+    return RCStateTransitionKind::Name == getRCStateTransitionKind(N);  \
   }
 #include "RCStateTransition.def"
 
@@ -72,7 +72,7 @@ class RCStateTransition {
 
   /// An RCStateTransition can represent either an RC end point (i.e. an initial
   /// or terminal RC transition) or a ptr set of Mutators.
-  ValueBase *EndPoint;
+  SILNode *EndPoint;
   ImmutablePointerSet<SILInstruction> *Mutators =
       ImmutablePointerSetFactory<SILInstruction>::getEmptySet();
   RCStateTransitionKind Kind;
@@ -87,9 +87,9 @@ public:
   RCStateTransition(ImmutablePointerSet<SILInstruction> *I) {
     assert(I->size() == 1);
     SILInstruction *Inst = *I->begin();
-    Kind = getRCStateTransitionKind(Inst);
+    Kind = getRCStateTransitionKind(Inst->asSILNode());
     if (isRCStateTransitionEndPoint(Kind)) {
-      EndPoint = Inst;
+      EndPoint = Inst->asSILNode();
       return;
     }
 
@@ -101,7 +101,7 @@ public:
     // Unknown kind.
   }
 
-  RCStateTransition(SILArgument *A)
+  RCStateTransition(SILFunctionArgument *A)
       : EndPoint(A), Kind(RCStateTransitionKind::StrongEntrance) {
     assert(A->hasConvention(SILArgumentConvention::Direct_Owned) &&
            "Expected owned argument");
@@ -126,7 +126,6 @@ public:
   /// Returns a Range of Mutators. Asserts if this transition is not a mutator
   /// transition.
   mutator_range getMutators() const {
-    assert(isMutator() && "This should never be called given mutators");
     return {Mutators->begin(), Mutators->end()};
   }
 

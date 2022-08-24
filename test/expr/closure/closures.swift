@@ -1,9 +1,9 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
-var func6 : (fn : (Int,Int) -> Int) -> ()
+var func6 : (_ fn : (Int,Int) -> Int) -> ()
 var func6a : ((Int, Int) -> Int) -> ()
 var func6b : (Int, (Int, Int) -> Int) -> ()
-func func6c(f: (Int, Int) -> Int, _ n: Int = 0) {} // expected-warning{{prior to parameters}}
+func func6c(_ f: (Int, Int) -> Int, _ n: Int = 0) {}
 
 
 // Expressions can be auto-closurified, so that they can be evaluated separately
@@ -12,32 +12,39 @@ var closure1 : () -> Int = {4}  // Function producing 4 whenever it is called.
 var closure2 : (Int,Int) -> Int = { 4 } // expected-error{{contextual type for closure argument list expects 2 arguments, which cannot be implicitly ignored}} {{36-36= _,_ in}}
 var closure3a : () -> () -> (Int,Int) = {{ (4, 2) }} // multi-level closing.
 var closure3b : (Int,Int) -> (Int) -> (Int,Int) = {{ (4, 2) }} // expected-error{{contextual type for closure argument list expects 2 arguments, which cannot be implicitly ignored}}  {{52-52=_,_ in }}
+// expected-error@-1 {{contextual type for closure argument list expects 1 argument, which cannot be implicitly ignored}} {{53-53= _ in}}
 var closure4 : (Int,Int) -> Int = { $0 + $1 }
 var closure5 : (Double) -> Int = {
-       $0 + 1.0  // expected-error {{cannot convert value of type 'Double' to expected argument type 'Int'}}
+       $0 + 1.0
+       // expected-error@-1 {{cannot convert value of type 'Double' to closure result type 'Int'}}
 }
 
 var closure6 = $0  // expected-error {{anonymous closure argument not contained in a closure}}
 
-var closure7 : Int =
-   { 4 }  // expected-error {{function produces expected type 'Int'; did you mean to call it with '()'?}} {{9-9=()}}
+var closure7 : Int = { 4 }  // expected-error {{function produces expected type 'Int'; did you mean to call it with '()'?}} {{27-27=()}} // expected-note {{Remove '=' to make 'closure7' a computed property}}{{20-22=}}
 
-func funcdecl1(a: Int, _ y: Int) {}
+var capturedVariable = 1
+var closure8 = { [capturedVariable] in
+  capturedVariable += 1 // expected-error {{left side of mutating operator isn't mutable: 'capturedVariable' is an immutable capture}}
+}
+
+func funcdecl1(_ a: Int, _ y: Int) {}
 func funcdecl3() -> Int {}
-func funcdecl4(a: ((Int) -> Int), _ b: Int) {}
+func funcdecl4(_ a: ((Int) -> Int), _ b: Int) {}
 
-func funcdecl5(a: Int, _ y: Int) {
+func funcdecl5(_ a: Int, _ y: Int) {
   // Pass in a closure containing the call to funcdecl3.
   funcdecl4({ funcdecl3() }, 12)  // expected-error {{contextual type for closure argument list expects 1 argument, which cannot be implicitly ignored}} {{14-14= _ in}}
   
   
-  func6(fn: {$0 + $1})       // Closure with two named anonymous arguments
-  func6(fn: {($0) + $1})    // Closure with sequence expr inferred type
-  func6(fn: {($0) + $0})    // expected-error{{cannot convert value of type '(Int, Int)' to expected argument type 'Int'}}
+  func6({$0 + $1})       // Closure with two named anonymous arguments
+  func6({($0) + $1})    // Closure with sequence expr inferred type
+  func6({($0) + $0})    // // expected-error {{contextual closure type '(Int, Int) -> Int' expects 2 arguments, but 1 was used in closure body}}
 
 
-  var testfunc : ((), Int) -> Int
+  var testfunc : ((), Int) -> Int  // expected-note {{'testfunc' declared here}}
   testfunc({$0+1})  // expected-error {{missing argument for parameter #2 in call}}
+  // expected-error@-1 {{cannot convert value of type '(Int) -> Int' to expected argument type '()'}}
 
   funcdecl5(1, 2) // recursion.
 
@@ -46,26 +53,26 @@ func funcdecl5(a: Int, _ y: Int) {
   var b = a.1+a.f
 
   // Tuple expressions with named elements.
-  var i : (y : Int, x : Int) = (x : 42, y : 11)
+  var i : (y : Int, x : Int) = (x : 42, y : 11) // expected-warning {{expression shuffles the elements of this tuple; this behavior is deprecated}}
   funcdecl1(123, 444)
   
   // Calls.
-  4()  // expected-error {{cannot call value of non-function type 'Int'}}
+  4()  // expected-error {{cannot call value of non-function type 'Int'}}{{4-6=}}
   
   
   // rdar://12017658 - Infer some argument types from func6.
-  func6(fn: { a, b -> Int in a+b})
+  func6({ a, b -> Int in a+b})
   // Return type inference.
-  func6(fn: { a,b in a+b })
+  func6({ a,b in a+b })
   
   // Infer incompatible type.
-  func6(fn: {a,b -> Float in 4.0 })    // expected-error {{declared closure result 'Float' is incompatible with contextual type 'Int'}} {{21-26=Int}}  // Pattern doesn't need to name arguments.
-  func6(fn: { _,_ in 4 })
+  func6({a,b -> Float in 4.0 })    // expected-error {{declared closure result 'Float' is incompatible with contextual type 'Int'}} {{17-22=Int}}  // Pattern doesn't need to name arguments.
+  func6({ _,_ in 4 })
   
-  func6(fn: {a,b in 4.0 })  // expected-error {{cannot convert value of type 'Double' to closure result type 'Int'}}
+  func6({a,b in 4.0 })  // expected-error {{cannot convert value of type 'Double' to closure result type 'Int'}}
   
   // TODO: This diagnostic can be improved: rdar://22128205
-  func6(fn: {(a : Float, b) in 4 }) // expected-error {{cannot convert value of type '(Float, _) -> Int' to expected argument type '(Int, Int) -> Int'}}
+  func6({(a : Float, b) in 4 }) // expected-error {{cannot convert value of type '(Float, Int) -> Int' to expected argument type '(Int, Int) -> Int'}}
 
   
   
@@ -80,7 +87,7 @@ func funcdecl5(a: Int, _ y: Int) {
 
 func unlabeledClosureArgument() {
 
-  func add(x: Int, y: Int) -> Int { return x + y }
+  func add(_ x: Int, y: Int) -> Int { return x + y }
   func6a({$0 + $1}) // single closure argument
   func6a(add)
   func6b(1, {$0 + $1}) // second arg is closure
@@ -90,7 +97,7 @@ func unlabeledClosureArgument() {
 }
 
 // rdar://11935352 - closure with no body.
-func closure_no_body(p: () -> ()) {
+func closure_no_body(_ p: () -> ()) {
   return closure_no_body({})
 }
 
@@ -105,13 +112,17 @@ func t() {
 }
 
 // <rdar://problem/11927184>
-func f0(a: Any) -> Int { return 1 }
+func f0(_ a: Any) -> Int { return 1 }
 assert(f0(1) == 1)
 
+// TODO(diagnostics): Bad diagnostic - should be `circular reference`
+var selfRef = { selfRef() }
+// expected-error@-1 {{unable to infer closure type in the current context}}
 
-var selfRef = { selfRef() } // expected-error {{variable used within its own initial value}}
+// TODO: should be an error `circular reference` but it's diagnosed via overlapped requests
 var nestedSelfRef = {
-  var recursive = { nestedSelfRef() } // expected-error {{variable used within its own initial value}}
+  var recursive = { nestedSelfRef() }
+  // expected-warning@-1 {{variable 'recursive' was never mutated; consider changing to 'let' constant}}
   recursive()
 }
 
@@ -123,47 +134,179 @@ var shadowedShort = { (shadowedShort: Int) -> Int in shadowedShort+1 } // no-war
 
 
 func anonymousClosureArgsInClosureWithArgs() {
+  func f(_: String) {}
   var a1 = { () in $0 } // expected-error {{anonymous closure arguments cannot be used inside a closure that has explicit arguments}}
   var a2 = { () -> Int in $0 } // expected-error {{anonymous closure arguments cannot be used inside a closure that has explicit arguments}}
-  var a3 = { (z: Int) in $0 } // expected-error {{anonymous closure arguments cannot be used inside a closure that has explicit arguments}}
+  var a3 = { (z: Int) in $0 } // expected-error {{anonymous closure arguments cannot be used inside a closure that has explicit arguments; did you mean 'z'?}} {{26-28=z}}
+  var a4 = { (z: [Int], w: [Int]) in
+    f($0.count) // expected-error {{anonymous closure arguments cannot be used inside a closure that has explicit arguments; did you mean 'z'?}} {{7-9=z}} expected-error {{cannot convert value of type 'Int' to expected argument type 'String'}}
+    f($1.count) // expected-error {{anonymous closure arguments cannot be used inside a closure that has explicit arguments; did you mean 'w'?}} {{7-9=w}}
+  }
+  var a5 = { (_: [Int], w: [Int]) in
+    f($0.count) // expected-error {{anonymous closure arguments cannot be used inside a closure that has explicit arguments}}
+    f($1.count) // expected-error {{anonymous closure arguments cannot be used inside a closure that has explicit arguments; did you mean 'w'?}} {{7-9=w}}
+  }
 }
 
-func doStuff(fn : () -> Int) {}
-func doVoidStuff(fn : () -> ()) {}
+func doStuff(_ fn : @escaping () -> Int) {}
+func doVoidStuff(_ fn : @escaping () -> ()) {}
+func doVoidStuffNonEscaping(_ fn: () -> ()) {}
 
 // <rdar://problem/16193162> Require specifying self for locations in code where strong reference cycles are likely
 class ExplicitSelfRequiredTest {
   var x = 42
   func method() -> Int {
-    // explicit closure requires an explicit "self." base.
+    // explicit closure requires an explicit "self." base or an explicit capture.
     doVoidStuff({ self.x += 1 })
-    doStuff({ x+1 })    // expected-error {{reference to property 'x' in closure requires explicit 'self.' to make capture semantics explicit}} {{15-15=self.}}
-    doVoidStuff({ x += 1 })    // expected-error {{reference to property 'x' in closure requires explicit 'self.' to make capture semantics explicit}} {{19-19=self.}}
+    doVoidStuff({ [self] in x += 1 })
+    doVoidStuff({ [self = self] in x += 1 })
+    doVoidStuff({ [unowned self] in x += 1 })
+    doVoidStuff({ [unowned(unsafe) self] in x += 1 })
+    doVoidStuff({ [unowned self = self] in x += 1 })
 
-    // Methods follow the same rules as properties, uses of 'self' must be marked with "self."
-    doStuff { method() }  // expected-error {{call to method 'method' in closure requires explicit 'self.' to make capture semantics explicit}} {{15-15=self.}}
-    doVoidStuff { method() }  // expected-error {{call to method 'method' in closure requires explicit 'self.' to make capture semantics explicit}} {{19-19=self.}}
+    doStuff({ [self] in x+1 })
+    doStuff({ [self = self] in x+1 })
+    doStuff({ self.x+1 })
+    doStuff({ [unowned self] in x+1 })
+    doStuff({ [unowned(unsafe) self] in x+1 })
+    doStuff({ [unowned self = self] in x+1 })
+    doStuff({ x+1 })    // expected-error {{reference to property 'x' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{14-14= [self] in}} expected-note{{reference 'self.' explicitly}} {{15-15=self.}}
+    doVoidStuff({ doStuff({ x+1 })}) // expected-error {{reference to property 'x' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{28-28= [self] in}} expected-note{{reference 'self.' explicitly}} {{29-29=self.}}
+    doVoidStuff({ x += 1 })    // expected-error {{reference to property 'x' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{18-18= [self] in}} expected-note{{reference 'self.' explicitly}} {{19-19=self.}}
+    doVoidStuff({ _ = "\(x)"}) // expected-error {{reference to property 'x' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{18-18= [self] in}} expected-note{{reference 'self.' explicitly}} {{26-26=self.}}
+    doVoidStuff({ [y = self] in x += 1 }) // expected-warning {{capture 'y' was never used}} expected-error {{reference to property 'x' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{20-20=self, }} expected-note{{reference 'self.' explicitly}} {{33-33=self.}}
+    doStuff({ [y = self] in x+1 }) // expected-warning {{capture 'y' was never used}} expected-error {{reference to property 'x' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{16-16=self, }} expected-note{{reference 'self.' explicitly}} {{29-29=self.}}
+    doVoidStuff({ [weak self] in x += 1 }) // expected-note {{weak capture of 'self' here does not enable implicit 'self'}} expected-warning {{variable 'self' was written to, but never read}} expected-error {{reference to property 'x' in closure requires explicit use of 'self' to make capture semantics explicit}}
+    doStuff({ [weak self] in x+1 }) // expected-note {{weak capture of 'self' here does not enable implicit 'self'}} expected-warning {{variable 'self' was written to, but never read}} expected-error {{reference to property 'x' in closure requires explicit use of 'self' to make capture semantics explicit}}
+    doVoidStuff({ [self = self.x] in x += 1 }) // expected-note {{variable other than 'self' captured here under the name 'self' does not enable implicit 'self'}} expected-warning {{capture 'self' was never used}} expected-error {{reference to property 'x' in closure requires explicit use of 'self' to make capture semantics explicit}}
+    doStuff({ [self = self.x] in x+1 }) // expected-note {{variable other than 'self' captured here under the name 'self' does not enable implicit 'self'}} expected-warning {{capture 'self' was never used}} expected-error {{reference to property 'x' in closure requires explicit use of 'self' to make capture semantics explicit}}
+
+    // Methods follow the same rules as properties, uses of 'self' without capturing must be marked with "self."
+    doStuff { method() }  // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{14-14= [self] in}} expected-note{{reference 'self.' explicitly}} {{15-15=self.}}
+    doVoidStuff { _ = method() }  // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{18-18= [self] in}} expected-note{{reference 'self.' explicitly}} {{23-23=self.}}
+    doVoidStuff { _ = "\(method())" } // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{18-18= [self] in}} expected-note{{reference 'self.' explicitly}} {{26-26=self.}}
+    doVoidStuff { () -> () in _ = method() }  // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{18-18= [self]}} expected-note{{reference 'self.' explicitly}} {{35-35=self.}}
+    doVoidStuff { [y = self] in _ = method() } // expected-warning {{capture 'y' was never used}} expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{20-20=self, }} expected-note{{reference 'self.' explicitly}} {{37-37=self.}}
+    doStuff({ [y = self] in method() }) // expected-warning {{capture 'y' was never used}} expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{16-16=self, }} expected-note{{reference 'self.' explicitly}} {{29-29=self.}}
+    doVoidStuff({ [weak self] in _ = method() }) // expected-note {{weak capture of 'self' here does not enable implicit 'self'}} expected-warning {{variable 'self' was written to, but never read}} expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}}
+    doStuff({ [weak self] in method() }) // expected-note {{weak capture of 'self' here does not enable implicit 'self'}} expected-warning {{variable 'self' was written to, but never read}} expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}}
+    doVoidStuff({ [self = self.x] in _ = method() }) // expected-note {{variable other than 'self' captured here under the name 'self' does not enable implicit 'self'}} expected-warning {{capture 'self' was never used}} expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}}
+    doStuff({ [self = self.x] in method() }) // expected-note {{variable other than 'self' captured here under the name 'self' does not enable implicit 'self'}} expected-warning {{capture 'self' was never used}} expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}}
+    doVoidStuff { _ = self.method() }
+    doVoidStuff { [self] in _ = method() }
+    doVoidStuff { [self = self] in _ = method() }
+    doVoidStuff({ [unowned self] in _ = method() })
+    doVoidStuff({ [unowned(unsafe) self] in _ = method() })
+    doVoidStuff({ [unowned self = self] in _ = method() })
+
     doStuff { self.method() }
+    doStuff { [self] in method() }
+    doStuff({ [self = self] in method() })
+    doStuff({ [unowned self] in method() })
+    doStuff({ [unowned(unsafe) self] in method() })
+    doStuff({ [unowned self = self] in method() })
+    
+    // When there's no space between the opening brace and the first expression, insert it
+    doStuff {method() }  // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{14-14= [self] in }} expected-note{{reference 'self.' explicitly}} {{14-14=self.}}
+    doVoidStuff {_ = method() }  // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{18-18= [self] in }} expected-note{{reference 'self.' explicitly}} {{22-22=self.}}
+    doVoidStuff {() -> () in _ = method() }  // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{18-18= [self]}} expected-note{{reference 'self.' explicitly}} {{34-34=self.}}
+    // With an empty capture list, insertion should be suggested without a comma
+    doStuff { [] in method() } // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{16-16=self}} expected-note{{reference 'self.' explicitly}} {{21-21=self.}}
+    doStuff { [  ] in method() } // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{16-16=self}} expected-note{{reference 'self.' explicitly}} {{23-23=self.}}
+    doStuff { [ /* This space intentionally left blank. */ ] in method() } // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{16-16=self}} expected-note{{reference 'self.' explicitly}} {{65-65=self.}}
+    // expected-note@+1 {{capture 'self' explicitly to enable implicit 'self' in this closure}} {{16-16=self}}
+    doStuff { [ // Nothing in this capture list!
+        ]
+        in
+        method() // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{reference 'self.' explicitly}} {{9-9=self.}}
+    }
+    // An inserted capture list should be on the same line as the opening brace, immediately following it.
+    // expected-note@+1 {{capture 'self' explicitly to enable implicit 'self' in this closure}} {{14-14= [self] in}}
+    doStuff {
+      method() // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{reference 'self.' explicitly}} {{7-7=self.}}
+    }
+    // expected-note@+2 {{capture 'self' explicitly to enable implicit 'self' in this closure}} {{14-14= [self] in}}
+    // Note: Trailing whitespace on the following line is intentional and should not be removed!
+    doStuff {             
+      method() // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{reference 'self.' explicitly}} {{7-7=self.}}
+    }
+    // expected-note@+1 {{capture 'self' explicitly to enable implicit 'self' in this closure}} {{14-14= [self] in}}
+    doStuff {   // We have stuff to do.
+      method() // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{reference 'self.' explicitly}} {{7-7=self.}}
+    }
+    // expected-note@+1 {{capture 'self' explicitly to enable implicit 'self' in this closure}} {{14-14= [self] in}}
+    doStuff {// We have stuff to do.
+      method() // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{reference 'self.' explicitly}} {{7-7=self.}}
+    }
+
+    // String interpolation should offer the diagnosis and fix-its at the expected locations
+    doVoidStuff { _ = "\(method())" } // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{reference 'self.' explicitly}} {{26-26=self.}} expected-note {{capture 'self' explicitly to enable implicit 'self' in this closure}} {{18-18= [self] in}}
+    doVoidStuff { _ = "\(x+1)" } // expected-error {{reference to property 'x' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{reference 'self.' explicitly}} {{26-26=self.}} expected-note {{capture 'self' explicitly to enable implicit 'self' in this closure}} {{18-18= [self] in}}
+    
+    // If we already have a capture list, self should be added to the list
+    let y = 1
+    doStuff { [y] in method() } // expected-warning {{capture 'y' was never used}} expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{16-16=self, }} expected-note{{reference 'self.' explicitly}} {{22-22=self.}}
+    doStuff { [ // expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{16-16=self, }}
+        y // expected-warning {{capture 'y' was never used}}
+        ] in method() } // expected-error {{call to method 'method' in closure requires explicit use of 'self' to make capture semantics explicit}}  expected-note{{reference 'self.' explicitly}} {{14-14=self.}}
 
     // <rdar://problem/18877391> "self." shouldn't be required in the initializer expression in a capture list
     // This should not produce an error, "x" isn't being captured by the closure.
     doStuff({ [myX = x] in myX })
 
     // This should produce an error, since x is used within the inner closure.
-    doStuff({ [myX = {x}] in 4 })    // expected-error {{reference to property 'x' in closure requires explicit 'self.' to make capture semantics explicit}} {{23-23=self.}}
+    doStuff({ [myX = {x}] in 4 })    // expected-error {{reference to property 'x' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{23-23= [self] in }} expected-note{{reference 'self.' explicitly}} {{23-23=self.}}
     // expected-warning @-1 {{capture 'myX' was never used}}
 
     return 42
   }
 }
 
+// If the implicit self is of value type, no diagnostic should be produced.
+struct ImplicitSelfAllowedInStruct {
+    var x = 42
+    mutating func method() -> Int {
+        doStuff({ x+1 })
+        doVoidStuff({ x += 1 })
+        doStuff({ method() })
+        doVoidStuff({ _ = method() })
+    }
+    
+    func method2() -> Int {
+        doStuff({ x+1 })
+        doVoidStuff({ _ = x+1 })
+        doStuff({ method2() })
+        doVoidStuff({ _ = method2() })
+    }
+}
+
+enum ImplicitSelfAllowedInEnum {
+    case foo
+    var x: Int { 42 }
+    mutating func method() -> Int {
+        doStuff({ x+1 })
+        doVoidStuff({ _ = x+1 })
+        doStuff({ method() })
+        doVoidStuff({ _ = method() })
+    }
+    
+    func method2() -> Int {
+        doStuff({ x+1 })
+        doVoidStuff({ _ = x+1 })
+        doStuff({ method2() })
+        doVoidStuff({ _ = method2() })
+    }
+}
+
 
 class SomeClass {
   var field : SomeClass?
+  var `class` : SomeClass?
+  var `in`: Int = 0
   func foo() -> Int {}
 }
 
-func testCaptureBehavior(ptr : SomeClass) {
+func testCaptureBehavior(_ ptr : SomeClass) {
   // Test normal captures.
   weak var wv : SomeClass? = ptr
   unowned let uv : SomeClass = ptr
@@ -182,14 +325,14 @@ func testCaptureBehavior(ptr : SomeClass) {
   doStuff { [weak v1] in v1!.foo() }
   // expected-warning @+2 {{variable 'v1' was written to, but never read}}
   doStuff { [weak v1,                 // expected-note {{previous}}
-             weak v1] in v1!.foo() }  // expected-error {{definition conflicts with previous value}}
+             weak v1] in v1!.foo() }  // expected-error {{invalid redeclaration of 'v1'}}
   doStuff { [unowned v2] in v2.foo() }
   doStuff { [unowned(unsafe) v2] in v2.foo() }
   doStuff { [unowned(safe) v2] in v2.foo() }
   doStuff { [weak v1, weak v2] in v1!.foo() + v2!.foo() }
 
   let i = 42
-  // expected-warning @+1 {{variable 'i' was never mutated}} {{19-20=let}}
+  // expected-warning @+1 {{variable 'i' was never mutated}}
   doStuff { [weak i] in i! }   // expected-error {{'weak' may only be applied to class and class-bound protocol types, not 'Int'}}
 }
 
@@ -200,7 +343,30 @@ extension SomeClass {
     doStuff { [weak xyz = self.field] in xyz!.foo() }
 
     // rdar://16889886 - Assert when trying to weak capture a property of self in a lazy closure
-    doStuff { [weak self.field] in field!.foo() }   // expected-error {{fields may only be captured by assigning to a specific name}} expected-error {{reference to property 'field' in closure requires explicit 'self.' to make capture semantics explicit}} {{36-36=self.}}
+    doStuff { [weak self.field] in field!.foo() }
+    // expected-error@-1{{fields may only be captured by assigning to a specific name}}{{21-21=field = }}
+    // expected-error@-2{{reference to property 'field' in closure requires explicit use of 'self' to make capture semantics explicit}}
+    // expected-note@-3{{reference 'self.' explicitly}} {{36-36=self.}}
+    // expected-note@-4{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{16-16=self, }}
+
+    doStuff { [self.field] in field!.foo() }
+    // expected-error@-1{{fields may only be captured by assigning to a specific name}}{{16-16=field = }}
+    // expected-error@-2{{reference to property 'field' in closure requires explicit use of 'self' to make capture semantics explicit}}
+    // expected-note@-3{{reference 'self.' explicitly}} {{31-31=self.}}
+    // expected-note@-4{{capture 'self' explicitly to enable implicit 'self' in this closure}} {{16-16=self, }}
+
+    doStuff { [self.field!.foo()] in 32 }
+    //expected-error@-1{{fields may only be captured by assigning to a specific name}}
+
+    doStuff { [self.class] in self.class!.foo() }
+    //expected-error@-1{{fields may only be captured by assigning to a specific name}}{{16-16=`class` = }}
+
+    doStuff { [self.`in`] in `in` }
+    //expected-note@-1{{capture 'self' explicitly to enable implicit 'self' in this closure}}
+    //expected-error@-2{{fields may only be captured by assigning to a specific name}}{{16-16=`in` = }}
+    //expected-error@-3{{reference to property 'in' in closure requires explicit use of 'self' to make capture semantics explicit}}
+    //expected-note@-4{{reference 'self.' explicitly}}
+
     // expected-warning @+1 {{variable 'self' was written to, but never read}}
     doStuff { [weak self&field] in 42 }  // expected-error {{expected ']' at end of capture list}}
 
@@ -215,7 +381,7 @@ extension SomeClass {
 
 // <rdar://problem/16955318> Observed variable in a closure triggers an assertion
 var closureWithObservedProperty: () -> () = {
-  var a: Int = 42 {
+  var a: Int = 42 { // expected-warning {{variable 'a' was never used; consider replacing with '_' or removing it}}
   willSet {
     _ = "Will set a to \(newValue)"
   }
@@ -227,24 +393,27 @@ var closureWithObservedProperty: () -> () = {
 
 ;
 
-{}() // expected-error{{statement cannot begin with a closure expression}} expected-note{{explicitly discard the result of the closure by assigning to '_'}} {{1-1=_ = }}
+{}() // expected-error{{top-level statement cannot begin with a closure expression}}
 
 
 
 // rdar://19179412 - Crash on valid code.
-func rdar19179412() -> Int -> Int {
+func rdar19179412() -> (Int) -> Int {
   return { x in
     class A {
       let d : Int = 0
     }
+    return 0
   }
 }
 
 // Test coercion of single-expression closure return types to void.
-func takesVoidFunc(f: () -> ()) {}
+func takesVoidFunc(_ f: () -> ()) {}
 var i: Int = 1
 
+// expected-warning @+1 {{expression of type 'Int' is unused}}
 takesVoidFunc({i})
+// expected-warning @+1 {{expression of type 'Int' is unused}}
 var f1: () -> () = {i}
 var x = {return $0}(1)
 
@@ -257,39 +426,36 @@ Void(0) // expected-error{{argument passed to call that takes no arguments}}
 _ = {0}
 
 // <rdar://problem/22086634> "multi-statement closures require an explicit return type" should be an error not a note
-let samples = {   // expected-error {{type of expression is ambiguous without more context}}
-  // FIXME: This diagnostic should be improved, we can infer a type for the closure expr from
-  // its body (by trying really hard in diagnostic generation) and say that we need an explicit
-  // contextual result specified because we don't do cross-statement type inference or something.
+let samples = {
           if (i > 10) { return true }
           else { return false }
         }()
 
 // <rdar://problem/19756953> Swift error: cannot capture '$0' before it is declared
-func f(fp : (Bool, Bool) -> Bool) {}
+func f(_ fp : (Bool, Bool) -> Bool) {}
 f { $0 && !$1 }
 
 
 // <rdar://problem/18123596> unexpected error on self. capture inside class method
-func TakesIntReturnsVoid(fp : (Int -> ())) {}
+func TakesIntReturnsVoid(_ fp : ((Int) -> ())) {}
 
 struct TestStructWithStaticMethod {
-  static func myClassMethod(count: Int) {
+  static func myClassMethod(_ count: Int) {
     // Shouldn't require "self."
     TakesIntReturnsVoid { _ in myClassMethod(0) }
   }
 }
 
 class TestClassWithStaticMethod {
-  class func myClassMethod(count: Int) {
+  class func myClassMethod(_ count: Int) {
     // Shouldn't require "self."
     TakesIntReturnsVoid { _ in myClassMethod(0) }
   }
 }
 
 // Test that we can infer () as the result type of these closures.
-func genericOne<T>(a: () -> T) {}
-func genericTwo<T>(a: () -> T, _ b: () -> T) {}
+func genericOne<T>(_ a: () -> T) {}
+func genericTwo<T>(_ a: () -> T, _ b: () -> T) {}
 genericOne {}
 genericTwo({}, {})
 
@@ -305,13 +471,283 @@ class r22344208 {
   }
 }
 
-var f = { (s: Undeclared) -> Int in 0 } // expected-error {{use of undeclared type 'Undeclared'}}
+var f = { (s: Undeclared) -> Int in 0 } // expected-error {{cannot find type 'Undeclared' in scope}}
 
 // <rdar://problem/21375863> Swift compiler crashes when using closure, declared to return illegal type.
 func r21375863() {
   var width = 0
   var height = 0
-  var bufs: [[UInt8]] = (0..<4).map { _ -> [asdf] in  // expected-error {{use of undeclared type 'asdf'}}
+  var bufs: [[UInt8]] = (0..<4).map { _ -> [asdf] in  // expected-error {{cannot find type 'asdf' in scope}}
     [UInt8](repeating: 0, count: width*height)
   }
 }
+
+// <rdar://problem/25993258>
+//   Don't crash if we infer a closure argument to have a tuple type containing inouts.
+func r25993258_helper(_ fn: (inout Int, Int) -> ()) {}
+func r25993258a() {
+  r25993258_helper { x in () } // expected-error {{contextual closure type '(inout Int, Int) -> ()' expects 2 arguments, but 1 was used in closure body}}
+}
+func r25993258b() {
+  r25993258_helper { _ in () } // expected-error {{contextual closure type '(inout Int, Int) -> ()' expects 2 arguments, but 1 was used in closure body}}
+}
+
+// We have to map the captured var type into the right generic environment.
+class GenericClass<T> {}
+
+func lvalueCapture<T>(c: GenericClass<T>) {
+  var cc = c
+  weak var wc = c
+
+  func innerGeneric<U>(_: U) {
+    _ = cc
+    _ = wc
+
+    cc = wc!
+  }
+}
+
+// Don't expose @lvalue-ness in diagnostics.
+let closure = {
+  var helper = true // expected-warning {{variable 'helper' was never mutated; consider changing to 'let' constant}}
+  return helper
+}
+
+// SR-9839
+func SR9839(_ x: @escaping @convention(block) () -> Void) {}
+
+func id<T>(_ x: T) -> T {
+  return x
+}
+
+var qux: () -> Void = {}
+
+SR9839(qux)
+SR9839(id(qux)) // expected-error {{conflicting arguments to generic parameter 'T' ('() -> Void' vs. '@convention(block) () -> Void')}}
+
+func forceUnwrap<T>(_ x: T?) -> T {
+  return x!
+}
+
+var qux1: (() -> Void)? = {}
+
+SR9839(qux1!)
+SR9839(forceUnwrap(qux1))
+
+// rdar://problem/65155671 - crash referencing parameter of outer closure
+func rdar65155671(x: Int) {
+    { a in
+      _ = { [a] in a }
+    }(x)
+}
+
+func sr3186<T, U>(_ f: (@escaping (@escaping (T) -> U) -> ((T) -> U))) -> ((T) -> U) {
+    return { x in return f(sr3186(f))(x) }
+}
+
+class SR3186 {
+  init() {
+    // expected-warning@+1{{capture 'self' was never used}}
+    let v = sr3186 { f in { [unowned self, f] x in x != 1000 ? f(x + 1) : "success" } }(0)
+    print("\(v)")
+  }
+}
+
+// Apply the explicit 'self' rule even if it refers to a capture, if
+// we're inside a nested closure
+class SR14120 {
+  func operation() {}
+
+  func test1() {
+    doVoidStuff { [self] in
+      operation()
+    }
+  }
+
+  func test2() {
+    doVoidStuff { [self] in
+      doVoidStuff {
+        // expected-warning@+3 {{call to method 'operation' in closure requires explicit use of 'self'}}
+        // expected-note@-2 {{capture 'self' explicitly to enable implicit 'self' in this closure}}
+        // expected-note@+1 {{reference 'self.' explicitly}}
+        operation()
+      }
+    }
+  }
+
+  func test3() {
+    doVoidStuff { [self] in
+      doVoidStuff { [self] in
+        operation()
+      }
+    }
+  }
+
+  func test4() {
+    doVoidStuff { [self] in
+      doVoidStuff {
+        self.operation()
+      }
+    }
+  }
+
+  func test5() {
+    doVoidStuff { [self] in
+      doVoidStuffNonEscaping {
+        operation()
+      }
+    }
+  }
+
+  func test6() {
+    doVoidStuff { [self] in
+      doVoidStuff { [self] in
+        doVoidStuff {
+          // expected-warning@+3 {{call to method 'operation' in closure requires explicit use of 'self'}}
+          // expected-note@-2 {{capture 'self' explicitly to enable implicit 'self' in this closure}}
+          // expected-note@+1 {{reference 'self.' explicitly}}
+          operation()
+        }
+      }
+    }
+  }
+}
+
+// SR-14678
+func call<T>(_ : Int, _ f: () -> (T, Int)) -> (T, Int) {
+  f()
+}
+
+func testSR14678() -> (Int, Int) {
+  call(1) { // expected-error {{cannot convert return expression of type '((), Int)' to return type '(Int, Int)'}}
+     (print("hello"), 0)
+  }
+}
+
+func testSR14678_Optional() -> (Int, Int)? {
+  call(1) { // expected-error {{cannot convert return expression of type '((), Int)' to return type '(Int, Int)'}}
+     (print("hello"), 0)
+  }
+}
+
+// SR-13239
+func callit<T>(_ f: () -> T) -> T {
+  f()
+}
+
+func callitArgs<T>(_ : Int, _ f: () -> T) -> T {
+  f()
+}
+
+func callitArgsFn<T>(_ : Int, _ f: () -> () -> T) -> T {
+  f()()
+}
+
+func callitGenericArg<T>(_ a: T, _ f: () -> T) -> T { 
+  f()
+}
+
+func callitTuple<T>(_ : Int, _ f: () -> (T, Int)) -> T {
+  f().0
+}
+
+func callitVariadic<T>(_ fs: () -> T...) -> T {
+  fs.first!()
+}
+
+func testSR13239_Tuple() -> Int {
+  // expected-error@+2{{conflicting arguments to generic parameter 'T' ('()' vs. 'Int')}}
+  // expected-note@+1:3{{generic parameter 'T' inferred as 'Int' from context}}
+  callitTuple(1) { // expected-note@:18{{generic parameter 'T' inferred as '()' from closure return expression}}
+    (print("hello"), 0) 
+  }
+}
+
+func testSR13239() -> Int {
+  // expected-error@+2{{conflicting arguments to generic parameter 'T' ('()' vs. 'Int')}}
+  // expected-note@+1:3{{generic parameter 'T' inferred as 'Int' from context}}
+  callit { // expected-note@:10{{generic parameter 'T' inferred as '()' from closure return expression}}
+    print("hello")
+  }
+}
+
+func testSR13239_Args() -> Int {
+  // expected-error@+2{{conflicting arguments to generic parameter 'T' ('()' vs. 'Int')}}
+  // expected-note@+1:3{{generic parameter 'T' inferred as 'Int' from context}}
+  callitArgs(1) { // expected-note@:17{{generic parameter 'T' inferred as '()' from closure return expression}}
+    print("hello") 
+  }
+}
+
+func testSR13239_ArgsFn() -> Int {
+  // expected-error@+2{{conflicting arguments to generic parameter 'T' ('()' vs. 'Int')}}
+  // expected-note@+1:3{{generic parameter 'T' inferred as 'Int' from context}}
+  callitArgsFn(1) { // expected-note@:19{{generic parameter 'T' inferred as '()' from closure return expression}}
+    { print("hello") } 
+  }
+}
+
+func testSR13239MultiExpr() -> Int {
+  callit {
+    print("hello") 
+    return print("hello") // expected-error {{cannot convert return expression of type '()' to return type 'Int'}}
+  }
+}
+
+func testSR13239_GenericArg() -> Int {
+  // Generic argument is inferred as Int from first argument literal, so no conflict in this case.
+  callitGenericArg(1) {
+    print("hello") // expected-error {{cannot convert value of type '()' to closure result type 'Int'}}
+  }
+}
+
+func testSR13239_Variadic() -> Int {
+  // expected-error@+2{{conflicting arguments to generic parameter 'T' ('()' vs. 'Int')}}
+  // expected-note@+1:3{{generic parameter 'T' inferred as 'Int' from context}}
+  callitVariadic({ // expected-note@:18{{generic parameter 'T' inferred as '()' from closure return expression}}
+    print("hello")
+  })
+}
+
+func testSR13239_Variadic_Twos() -> Int {
+  // expected-error@+1{{cannot convert return expression of type '()' to return type 'Int'}}
+  callitVariadic({
+    print("hello")
+  }, {
+    print("hello")
+  })
+}
+
+// rdar://82545600: this should just be a warning until Swift 6
+public class TestImplicitCaptureOfExplicitCaptureOfSelfInEscapingClosure {
+    var property = false
+
+    private init() {
+        doVoidStuff { [unowned self] in
+            doVoidStuff {}
+            doVoidStuff { // expected-note {{capture 'self' explicitly to enable implicit 'self' in this closure}}
+                doVoidStuff {}
+                property = false // expected-warning {{reference to property 'property' in closure requires explicit use of 'self' to make capture semantics explicit}} expected-note {{reference 'self.' explicitly}}
+            }
+        }
+    }
+}
+
+// https://github.com/apple/swift/issues/59716
+// FIXME: Diagnostic should be tailored for closure result
+["foo"].map { s in
+    if s == "1" { return } // expected-error{{cannot convert return expression of type '()' to return type 'Bool'}}
+    return s.isEmpty
+}.filter { $0 }
+
+["foo"].map { s in
+    if s == "1" { return } // expected-error{{cannot convert return expression of type '()' to return type 'Bool'}}
+    if s == "2" { return }
+    if s == "3" { return }
+    return s.isEmpty
+}.filter { $0 }
+
+["foo"].map { s in
+    if s == "1" { return () } // expected-error{{cannot convert return expression of type '()' to return type 'Bool'}}
+    return s.isEmpty
+}.filter { $0 }

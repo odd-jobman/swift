@@ -1,49 +1,79 @@
-add_swift_library(swiftIRGen
+
+add_swift_host_library(swiftIRGen STATIC
+  AllocStackHoisting.cpp
+  ClassLayout.cpp
   DebugTypeInfo.cpp
   EnumPayload.cpp
   ExtraInhabitants.cpp
   Fulfillment.cpp
   GenArchetype.cpp
+  GenBuiltin.cpp
+  GenCall.cpp
   GenCast.cpp
   GenClangDecl.cpp
   GenClangType.cpp
   GenClass.cpp
+  GenConstant.cpp
   GenControl.cpp
   GenCoverage.cpp
+  GenConcurrency.cpp
+  GenDistributed.cpp
   GenDecl.cpp
+  GenDiffFunc.cpp
+  GenDiffWitness.cpp
   GenEnum.cpp
   GenExistential.cpp
   GenFunc.cpp
   GenHeap.cpp
   GenInit.cpp
+  GenIntegerLiteral.cpp
+  GenKeyPath.cpp
   GenMeta.cpp
   GenObjC.cpp
   GenOpaque.cpp
+  GenPointerAuth.cpp
   GenPoly.cpp
   GenProto.cpp
   GenReflection.cpp
   GenStruct.cpp
+  GenThunk.cpp
   GenTuple.cpp
   GenType.cpp
   GenValueWitness.cpp
+  IRABIDetailsProvider.cpp
   IRGen.cpp
   IRGenDebugInfo.cpp
   IRGenFunction.cpp
+  IRGenMangler.cpp
   IRGenModule.cpp
+  IRGenSILPasses.cpp
+  IRGenRequests.cpp
   IRGenSIL.cpp
   Linking.cpp
+  LoadableByAddress.cpp
   LocalTypeData.cpp
+  MetadataLayout.cpp
+  MetadataRequest.cpp
+  Outlining.cpp
   StructLayout.cpp
   SwiftTargetInfo.cpp
+  TypeLayout.cpp
+  TypeLayoutDumper.cpp
   TypeLayoutVerifier.cpp
-  LINK_LIBRARIES
-    swiftAST
-    swiftLLVMPasses
-    swiftSIL
-    swiftSILGen
 
-    # Clang dependencies.
-    # FIXME: Clang should really export these in some reasonable manner.
-    clangCodeGen
-    clangAST
+  LLVM_LINK_COMPONENTS
+    target
+    transformutils
 )
+target_link_libraries(swiftIRGen INTERFACE
+  clangCodeGen
+  clangAST)
+target_link_libraries(swiftIRGen PRIVATE
+  swiftAST
+  swiftLLVMPasses
+  swiftSIL
+  swiftSILGen
+  swiftSILOptimizer
+  swiftTBDGen)
+
+set_swift_llvm_is_available(swiftIRGen)

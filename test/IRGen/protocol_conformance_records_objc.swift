@@ -1,43 +1,46 @@
-// RUN: rm -rf %t && mkdir %t
+// RUN: %empty-directory(%t)
 // RUN: %build-irgen-test-overlays
 // RUN: %target-swift-frontend(mock-sdk: -sdk %S/Inputs -I %t) -emit-module -o %t %S/Inputs/objc_protocols_Bas.swift
-// RUN: %target-swift-frontend(mock-sdk: -sdk %S/Inputs -I %t) -primary-file %s -emit-ir | FileCheck %s
-// RUN: %target-swift-frontend(mock-sdk: -sdk %S/Inputs -I %t) %s -emit-ir -num-threads 8 | FileCheck %s
+// RUN: %target-swift-frontend(mock-sdk: -sdk %S/Inputs -I %t) -primary-file %s -emit-ir | %FileCheck %s
+// RUN: %target-swift-frontend(mock-sdk: -sdk %S/Inputs -I %t) %s -emit-ir -num-threads 8 | %FileCheck %s
 
 // REQUIRES: objc_interop
 
 import gizmo
 
-protocol Runcible {
+public protocol Runcible {
   func runce()
 }
 
-// CHECK-LABEL: @"\01l_protocol_conformances" = private constant [
-
-// CHECK:         %swift.protocol_conformance {
+// CHECK-LABEL: @"$sSo6NSRectV33protocol_conformance_records_objc8RuncibleACMc" = constant %swift.protocol_conformance_descriptor {
 // -- protocol descriptor
-// CHECK:           [[RUNCIBLE:%swift.protocol\* @_TMp33protocol_conformance_records_objc8Runcible]]
-// -- type metadata
-// CHECK:           @_TMVSC6NSRect
+// CHECK-SAME:           [[RUNCIBLE:@"\$s33protocol_conformance_records_objc8RuncibleMp"]]
+// -- nominal type descriptor
+// CHECK-SAME:           @"$sSo6NSRectVMn"
 // -- witness table
-// CHECK:           @_TWPVSC6NSRect33protocol_conformance_records_objc8Runcible
-// -- flags 0x02: nonunique direct metadata
-// CHECK:           i32 2 },
+// CHECK-SAME:           @"$sSo6NSRectV33protocol_conformance_records_objc8RuncibleACWP"
+// -- flags
+// CHECK-SAME:           i32 0
+// CHECK-SAME:         },
 extension NSRect: Runcible {
-  func runce() {}
+  public func runce() {}
 }
 
-// -- TODO class refs should be indirected through their ref variable
-// CHECK:         %swift.protocol_conformance {
+// CHECK-LABEL:         @"$sSo5GizmoC33protocol_conformance_records_objc8RuncibleACMc" = constant %swift.protocol_conformance_descriptor {
 // -- protocol descriptor
-// CHECK:           [[RUNCIBLE]]
-// -- class object (TODO should be class ref variable)
-// CHECK:           @"got.OBJC_CLASS_$_Gizmo"
+// CHECK-SAME:           [[RUNCIBLE]]
+// -- class name reference
+// CHECK-SAME:           @.str
 // -- witness table
-// CHECK:           @_TWPCSo5Gizmo33protocol_conformance_records_objc8Runcible
-// -- flags 0x01: unique direct metadata (TODO should be 0x03 indirect class)
-// CHECK:           i32 1
-// CHECK:         }
+// CHECK-SAME:           @"$sSo5GizmoC33protocol_conformance_records_objc8RuncibleACWP"
+// -- flags
+// CHECK-SAME:           i32 16
+// CHECK-SAME:         }
 extension Gizmo: Runcible {
-  func runce() {}
+  public func runce() {}
 }
+
+// CHECK: @.str = private constant [6 x i8] c"Gizmo\00"
+
+// CHECK-LABEL: @"$sSo6NSRectV33protocol_conformance_records_objc8RuncibleACHc" = private constant
+// CHECK-LABEL: @"$sSo5GizmoC33protocol_conformance_records_objc8RuncibleACHc" = private constant

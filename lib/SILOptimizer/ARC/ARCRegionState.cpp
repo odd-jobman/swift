@@ -2,24 +2,30 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "arc-sequence-opts"
 #include "ARCRegionState.h"
+#include "ARCSequenceOptUtils.h"
 #include "RCStateTransitionVisitors.h"
 #include "swift/Basic/Range.h"
 #include "swift/SILOptimizer/Analysis/LoopRegionAnalysis.h"
 #include "swift/SILOptimizer/Analysis/AliasAnalysis.h"
 #include "swift/SILOptimizer/Analysis/RCIdentityAnalysis.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 
 using namespace swift;
+
+llvm::cl::opt<bool> verifyARCLoopSummary(
+    "verify-arc-loop-summary", llvm::cl::init(false),
+    llvm::cl::desc("Verify if loop summary is correct in ARCLoopsOpts"));
 
 //===----------------------------------------------------------------------===//
 //                               ARCRegionState
@@ -66,7 +72,7 @@ void ARCRegionState::mergeSuccBottomUp(ARCRegionState &SuccRegionState) {
     // effect of an intersection.
     auto Other = SuccRegionState.PtrToBottomUpState.find(RefCountedValue);
     if (Other == SuccRegionState.PtrToBottomUpState.end()) {
-      PtrToBottomUpState.blot(RefCountedValue);
+      PtrToBottomUpState.erase(RefCountedValue);
       continue;
     }
 
@@ -76,7 +82,7 @@ void ARCRegionState::mergeSuccBottomUp(ARCRegionState &SuccRegionState) {
     // This has the effect of an intersection since we already checked earlier
     // that RefCountedValue was not blotted.
     if (!OtherRefCountedValue) {
-      PtrToBottomUpState.blot(RefCountedValue);
+      PtrToBottomUpState.erase(RefCountedValue);
       continue;
     }
 
@@ -87,7 +93,7 @@ void ARCRegionState::mergeSuccBottomUp(ARCRegionState &SuccRegionState) {
     // of instructions which together semantically act as one ref count
     // increment. Merge the two states together.
     if (!RefCountState.merge(OtherRefCountState)) {
-      PtrToBottomUpState.blot(RefCountedValue);
+      PtrToBottomUpState.erase(RefCountedValue);
     }
   }
 }
@@ -123,7 +129,7 @@ void ARCRegionState::mergePredTopDown(ARCRegionState &PredRegionState) {
     // effect of an intersection.
     auto Other = PredRegionState.PtrToTopDownState.find(RefCountedValue);
     if (Other == PredRegionState.PtrToTopDownState.end()) {
-      PtrToTopDownState.blot(RefCountedValue);
+      PtrToTopDownState.erase(RefCountedValue);
       continue;
     }
 
@@ -132,7 +138,7 @@ void ARCRegionState::mergePredTopDown(ARCRegionState &PredRegionState) {
     // If the other ref count value was blotted, blot our value and continue.
     // This has the effect of an intersection.
     if (!OtherRefCountedValue) {
-      PtrToTopDownState.blot(RefCountedValue);
+      PtrToTopDownState.erase(RefCountedValue);
       continue;
     }
 
@@ -144,13 +150,10 @@ void ARCRegionState::mergePredTopDown(ARCRegionState &PredRegionState) {
     // Attempt to merge Other into this ref count state. If we fail, blot this
     // ref counted value and continue.
     if (!RefCountState.merge(OtherRefCountState)) {
-      DEBUG(llvm::dbgs() << "Failed to merge!\n");
-      PtrToTopDownState.blot(RefCountedValue);
+      LLVM_DEBUG(llvm::dbgs() << "Failed to merge!\n");
+      PtrToTopDownState.erase(RefCountedValue);
       continue;
     }
-
-    DEBUG(llvm::dbgs() << "            Partial: "
-                       << (RefCountState.isPartial() ? "yes" : "no") << "\n");
   }
 }
 
@@ -158,90 +161,30 @@ void ARCRegionState::mergePredTopDown(ARCRegionState &PredRegionState) {
 // Bottom Up Dataflow
 //
 
-static bool isARCSignificantTerminator(TermInst *TI) {
-  switch (TI->getTermKind()) {
-  case TermKind::UnreachableInst:
-  // br is a forwarding use for its arguments. It cannot in of itself extend
-  // the lifetime of an object (just like a phi-node) cannot.
-  case TermKind::BranchInst:
-  // A cond_br is a forwarding use for its non-operand arguments in a similar
-  // way to br. Its operand must be an i1 that has a different lifetime from any
-  // ref counted object.
-  case TermKind::CondBranchInst:
-    return false;
-  // Be conservative for now. These actually perform some sort of operation
-  // against the operand or can use the value in some way.
-  case TermKind::ThrowInst:
-  case TermKind::ReturnInst:
-  case TermKind::TryApplyInst:
-  case TermKind::SwitchValueInst:
-  case TermKind::SwitchEnumInst:
-  case TermKind::SwitchEnumAddrInst:
-  case TermKind::DynamicMethodBranchInst:
-  case TermKind::CheckedCastBranchInst:
-  case TermKind::CheckedCastAddrBranchInst:
-    return true;
-  }
-}
-
-// Visit each one of our predecessor regions and see if any are blocks that can
-// use reference counted values. If any of them do, we advance the sequence for
-// the pointer and create an insertion point here. This state will be propagated
-// into all of our predecessors, allowing us to be conservatively correct in all
-// cases.
-//
-// The key thing to notice is that in general this cannot happen due to
-// critical edge splitting. To trigger this, one would need a terminator that
-// uses a reference counted value and only has one successor due to critical
-// edge splitting. This is just to be conservative when faced with the unknown
-// of future changes.
-//
-// We do not need to worry about loops here, since a loop exit block can only
-// have predecessors in the loop itself implying that loop exit blocks at the
-// loop region level always have only one predecessor, the loop itself.
-void ARCRegionState::processBlockBottomUpPredTerminators(
-    const LoopRegion *R, AliasAnalysis *AA, LoopRegionFunctionInfo *LRFI,
+bool ARCRegionState::processBlockBottomUp(
+    const LoopRegion *R, AliasAnalysis *AA, RCIdentityFunctionInfo *RCIA,
+    EpilogueARCFunctionInfo *EAFI, LoopRegionFunctionInfo *LRFI,
+    bool FreezeOwnedArgEpilogueReleases,
+    BlotMapVector<SILInstruction *, BottomUpRefCountState> &IncToDecStateMap,
     ImmutablePointerSetFactory<SILInstruction> &SetFactory) {
-  auto &BB = *R->getBlock();
-  llvm::TinyPtrVector<SILInstruction *> PredTerminators;
-  for (unsigned PredID : R->getPreds()) {
-    auto *PredRegion = LRFI->getRegion(PredID);
-    if (!PredRegion->isBlock())
-      continue;
+  LLVM_DEBUG(llvm::dbgs() << ">>>> Bottom Up!\n");
 
-    auto *TermInst = PredRegion->getBlock()->getTerminator();
-    if (!isARCSignificantTerminator(TermInst))
-      continue;
-    PredTerminators.push_back(TermInst);
-  }
+  SILBasicBlock &BB = *R->getBlock();
+  BottomUpDataflowRCStateVisitor<ARCRegionState> DataflowVisitor(
+      RCIA, EAFI, *this, FreezeOwnedArgEpilogueReleases, IncToDecStateMap,
+      SetFactory);
 
-  auto *InsertPt = &*BB.begin();
-  for (auto &OtherState : getBottomupStates()) {
-    // If the other state's value is blotted, skip it.
-    if (!OtherState.hasValue())
-      continue;
-
-    OtherState->second.updateForPredTerminators(PredTerminators, InsertPt,
-                                                SetFactory, AA);
-  }
-}
-
-static bool processBlockBottomUpInsts(
-    ARCRegionState &State, SILBasicBlock &BB,
-    BottomUpDataflowRCStateVisitor<ARCRegionState> &DataflowVisitor,
-    AliasAnalysis *AA, ImmutablePointerSetFactory<SILInstruction> &SetFactory) {
-
-  auto II = State.summarizedinterestinginsts_rbegin();
-  auto IE = State.summarizedinterestinginsts_rend();
+  auto II = summarizedinterestinginsts_rbegin();
+  auto IE = summarizedinterestinginsts_rend();
 
   // If we do not have any interesting instructions, bail and return false since
   // we can not have any nested instructions.
   if (II == IE)
     return false;
 
-  // If II is the terminator, skip it since our terminator was already processed
-  // in our successors.
-  if (*II == BB.getTerminator())
+  // If II is not an arc significant terminator, skip it.
+  if (*II == BB.getTerminator() &&
+      !isARCSignificantTerminator(cast<TermInst>(*II)))
     ++II;
 
   bool NestingDetected = false;
@@ -249,9 +192,9 @@ static bool processBlockBottomUpInsts(
     SILInstruction *I = *II;
     ++II;
 
-    DEBUG(llvm::dbgs() << "VISITING:\n    " << *I);
+    LLVM_DEBUG(llvm::dbgs() << "VISITING:\n    " << *I);
 
-    auto Result = DataflowVisitor.visit(I);
+    auto Result = DataflowVisitor.visit(I->asSILNode());
 
     // If this instruction can have no further effects on another instructions,
     // continue. This happens for instance if we have cleared all of the state
@@ -266,11 +209,15 @@ static bool processBlockBottomUpInsts(
     // that the instruction "visits".
     SILValue Op = Result.RCIdentity;
 
-    auto *InsertPt = &*std::next(I->getIterator());
+    std::function<bool(SILInstruction *)> checkIfRefCountInstIsMatched =
+        [&IncToDecStateMap](SILInstruction *Inst) {
+          assert(isa<StrongRetainInst>(Inst) || isa<RetainValueInst>(Inst));
+          return IncToDecStateMap.find(Inst) != IncToDecStateMap.end();
+        };
 
     // For all other (reference counted value, ref count state) we are
     // tracking...
-    for (auto &OtherState : State.getBottomupStates()) {
+    for (auto &OtherState : getBottomupStates()) {
       // If the other state's value is blotted, skip it.
       if (!OtherState.hasValue())
         continue;
@@ -280,49 +227,21 @@ static bool processBlockBottomUpInsts(
       if (Op && OtherState->first == Op)
         continue;
 
-      OtherState->second.updateForSameLoopInst(I, InsertPt, SetFactory, AA);
+      OtherState->second.updateForSameLoopInst(I, AA);
+      OtherState->second.checkAndResetKnownSafety(
+          I, OtherState->first, checkIfRefCountInstIsMatched, RCIA, AA);
     }
   }
 
   return NestingDetected;
 }
 
-bool ARCRegionState::processBlockBottomUp(
-    const LoopRegion *R, AliasAnalysis *AA, RCIdentityFunctionInfo *RCIA,
-    LoopRegionFunctionInfo *LRFI, bool FreezeOwnedArgEpilogueReleases,
-    ConsumedArgToEpilogueReleaseMatcher &ConsumedArgToReleaseMap,
-    BlotMapVector<SILInstruction *, BottomUpRefCountState> &IncToDecStateMap,
-    ImmutablePointerSetFactory<SILInstruction> &SetFactory) {
-  DEBUG(llvm::dbgs() << ">>>> Bottom Up!\n");
-
-  SILBasicBlock &BB = *R->getBlock();
-  BottomUpDataflowRCStateVisitor<ARCRegionState> DataflowVisitor(
-      RCIA, *this, FreezeOwnedArgEpilogueReleases, ConsumedArgToReleaseMap,
-      IncToDecStateMap, SetFactory);
-
-  // Visit each non-terminator arc relevant instruction I in BB visited in
-  // reverse...
-  bool NestingDetected =
-      processBlockBottomUpInsts(*this, BB, DataflowVisitor, AA, SetFactory);
-
-  // Now visit each one of our predecessor regions and see if any are blocks
-  // that can use reference counted values. If any of them do, we advance the
-  // sequence for the pointer and create an insertion point here. This state
-  // will be propagated into all of our predecessors, allowing us to be
-  // conservatively correct in all cases.
-  processBlockBottomUpPredTerminators(R, AA, LRFI, SetFactory);
-
-  return NestingDetected;
-}
-
-// Find the relevant insertion points for the loop region R in its
-// successors. Returns true if we succeeded. Returns false if any of the
-// non-local successors of the region are not leaking blocks. We currently do
-// not handle early exits, but do handle trapping blocks.
-static bool getInsertionPtsForLoopRegionExits(
+// Returns true if any of the non-local successors of the region are leaking
+// blocks. We currently do not handle early exits, but do handle trapping
+// blocks. Returns false if otherwise
+static bool hasEarlyExits(
     const LoopRegion *R, LoopRegionFunctionInfo *LRFI,
-    llvm::DenseMap<const LoopRegion *, ARCRegionState *> &RegionStateInfo,
-    llvm::SmallVectorImpl<SILInstruction *> &InsertPts) {
+    llvm::DenseMap<const LoopRegion *, ARCRegionState *> &RegionStateInfo) {
   assert(R->isLoop() && "Expected a loop region that is representing a loop");
 
   // Go through all of our non local successors. If any of them cannot be
@@ -331,39 +250,31 @@ static bool getInsertionPtsForLoopRegionExits(
   if (any_of(R->getNonLocalSuccs(), [&](unsigned SuccID) -> bool {
         return !RegionStateInfo[LRFI->getRegion(SuccID)]->allowsLeaks();
       })) {
-    return false;
+    return true;
   }
 
-  // We assume that all of our loops have been canonicalized so that /all/ loop
-  // exit blocks only have exiting blocks as predecessors. This means that all
-  // successor regions of any region /cannot/ be a region representing a loop.
-  for (unsigned SuccID : R->getLocalSuccs()) {
-    auto *SuccRegion = LRFI->getRegion(SuccID);
-    assert(SuccRegion->isBlock() && "Loop canonicalization failed?!");
-    InsertPts.push_back(&*SuccRegion->getBlock()->begin());
-  }
-
-  // Sort and unique the insert points so we can put them into
-  // ImmutablePointerSets.
-  sortUnique(InsertPts);
-
-  return true;
+  return false;
 }
 
 bool ARCRegionState::processLoopBottomUp(
     const LoopRegion *R, AliasAnalysis *AA, LoopRegionFunctionInfo *LRFI,
+    RCIdentityFunctionInfo *RCIA,
     llvm::DenseMap<const LoopRegion *, ARCRegionState *> &RegionStateInfo,
-    ImmutablePointerSetFactory<SILInstruction> &SetFactory) {
+    llvm::DenseSet<SILInstruction *> &UnmatchedRefCountInsts) {
   ARCRegionState *State = RegionStateInfo[R];
 
-  llvm::SmallVector<SILInstruction *, 2> InsertPts;
-  // Try to lookup insertion points for this region. If when checking for
-  // insertion points, we find that we have non-leaking early exits, clear state
+  // If we find that we have non-leaking early exits, clear state
   // and bail. We do not handle these for now.
-  if (!getInsertionPtsForLoopRegionExits(R, LRFI, RegionStateInfo, InsertPts)) {
+  if (hasEarlyExits(R, LRFI, RegionStateInfo)) {
     clearBottomUpState();
     return false;
   }
+
+  std::function<bool(SILInstruction *)> checkIfRefCountInstIsMatched =
+      [&UnmatchedRefCountInsts](SILInstruction *Inst) {
+        assert(isa<StrongRetainInst>(Inst) || isa<RetainValueInst>(Inst));
+        return UnmatchedRefCountInsts.find(Inst) == UnmatchedRefCountInsts.end();
+      };
 
   // For each state that we are currently tracking, apply our summarized
   // instructions to it.
@@ -371,9 +282,23 @@ bool ARCRegionState::processLoopBottomUp(
     if (!OtherState.hasValue())
       continue;
 
-    for (auto *I : State->getSummarizedInterestingInsts())
-      OtherState->second.updateForDifferentLoopInst(I, InsertPts, SetFactory,
-                                                    AA);
+    for (auto *I : State->getSummarizedInterestingInsts()) {
+      OtherState->second.updateForDifferentLoopInst(I, AA);
+      OtherState->second.checkAndResetKnownSafety(
+          I, OtherState->first, checkIfRefCountInstIsMatched, RCIA, AA);
+    }
+#ifndef NDEBUG
+    // Verify updateForDifferentLoopInst is conservative enough that the flow
+    // sensitive native of the loop summarized instructions does not matter.
+    if (verifyARCLoopSummary) {
+      auto NewRefCountState = OtherState->second;
+      for (auto *I : State->getSummarizedInterestingInsts()) {
+        NewRefCountState.updateForDifferentLoopInst(I, AA);
+      }
+      assert(NewRefCountState.getLatticeState() ==
+             OtherState->second.getLatticeState());
+    }
+#endif
   }
 
   return false;
@@ -381,8 +306,9 @@ bool ARCRegionState::processLoopBottomUp(
 
 bool ARCRegionState::processBottomUp(
     AliasAnalysis *AA, RCIdentityFunctionInfo *RCIA,
-    LoopRegionFunctionInfo *LRFI, bool FreezeOwnedArgEpilogueReleases,
-    ConsumedArgToEpilogueReleaseMatcher &ConsumedArgToReleaseMap,
+    EpilogueARCFunctionInfo *EAFI, LoopRegionFunctionInfo *LRFI,
+    bool FreezeOwnedArgEpilogueReleases,
+    llvm::DenseSet<SILInstruction *> &UnmatchedRefCountInsts,
     BlotMapVector<SILInstruction *, BottomUpRefCountState> &IncToDecStateMap,
     llvm::DenseMap<const LoopRegion *, ARCRegionState *> &RegionStateInfo,
     ImmutablePointerSetFactory<SILInstruction> &SetFactory) {
@@ -391,11 +317,11 @@ bool ARCRegionState::processBottomUp(
   // We only process basic blocks for now. This ensures that we always propagate
   // the empty set from loops.
   if (!R->isBlock())
-    return processLoopBottomUp(R, AA, LRFI, RegionStateInfo, SetFactory);
+    return processLoopBottomUp(R, AA, LRFI, RCIA, RegionStateInfo,
+                               UnmatchedRefCountInsts);
 
-  return processBlockBottomUp(R, AA, RCIA, LRFI, FreezeOwnedArgEpilogueReleases,
-                              ConsumedArgToReleaseMap, IncToDecStateMap,
-                              SetFactory);
+  return processBlockBottomUp(R, AA, RCIA, EAFI, LRFI, FreezeOwnedArgEpilogueReleases,
+                              IncToDecStateMap, SetFactory);
 }
 
 //===---
@@ -406,7 +332,7 @@ bool ARCRegionState::processBlockTopDown(
     SILBasicBlock &BB, AliasAnalysis *AA, RCIdentityFunctionInfo *RCIA,
     BlotMapVector<SILInstruction *, TopDownRefCountState> &DecToIncStateMap,
     ImmutablePointerSetFactory<SILInstruction> &SetFactory) {
-  DEBUG(llvm::dbgs() << ">>>> Top Down!\n");
+  LLVM_DEBUG(llvm::dbgs() << ">>>> Top Down!\n");
 
   bool NestingDetected = false;
 
@@ -422,7 +348,7 @@ bool ARCRegionState::processBlockTopDown(
   // anything, we will still pair the retain, releases and then the guaranteed
   // parameter will ensure it is known safe to remove them.
   if (BB.isEntry()) {
-    auto Args = BB.getBBArgs();
+    auto Args = BB.getArguments();
     for (unsigned i = 0, e = Args.size(); i != e; ++i) {
       DataflowVisitor.visit(Args[i]);
     }
@@ -431,9 +357,9 @@ bool ARCRegionState::processBlockTopDown(
   // For each instruction I in BB...
   for (auto *I : SummarizedInterestingInsts) {
 
-    DEBUG(llvm::dbgs() << "VISITING:\n    " << *I);
+    LLVM_DEBUG(llvm::dbgs() << "VISITING:\n    " << *I);
 
-    auto Result = DataflowVisitor.visit(I);
+    auto Result = DataflowVisitor.visit(I->asSILNode());
 
     // If this instruction can have no further effects on another instructions,
     // continue. This happens for instance if we have cleared all of the state
@@ -448,6 +374,12 @@ bool ARCRegionState::processBlockTopDown(
     // that the instruction "visits".
     SILValue Op = Result.RCIdentity;
 
+    std::function<bool(SILInstruction *)> checkIfRefCountInstIsMatched =
+        [&DecToIncStateMap](SILInstruction *Inst) {
+          assert(isa<StrongReleaseInst>(Inst) || isa<ReleaseValueInst>(Inst));
+          return DecToIncStateMap.find(Inst) != DecToIncStateMap.end();
+        };
+
     // For all other [(SILValue, TopDownState)] we are tracking...
     for (auto &OtherState : getTopDownStates()) {
       // If the other state's value is blotted, skip it.
@@ -460,7 +392,9 @@ bool ARCRegionState::processBlockTopDown(
       if (Op && OtherState->first == Op)
         continue;
 
-      OtherState->second.updateForSameLoopInst(I, I, SetFactory, AA);
+      OtherState->second.updateForSameLoopInst(I, AA);
+      OtherState->second.checkAndResetKnownSafety(
+          I, OtherState->first, checkIfRefCountInstIsMatched, RCIA, AA);
     }
   }
 
@@ -469,8 +403,8 @@ bool ARCRegionState::processBlockTopDown(
 
 bool ARCRegionState::processLoopTopDown(
     const LoopRegion *R, ARCRegionState *State, AliasAnalysis *AA,
-    LoopRegionFunctionInfo *LRFI,
-    ImmutablePointerSetFactory<SILInstruction> &SetFactory) {
+    LoopRegionFunctionInfo *LRFI, RCIdentityFunctionInfo *RCIA,
+    llvm::DenseSet<SILInstruction *> &UnmatchedRefCountInsts) {
 
   assert(R->isLoop() && "We assume we are processing a loop");
 
@@ -482,11 +416,15 @@ bool ARCRegionState::processLoopTopDown(
   }
 
   auto *PredRegion = LRFI->getRegion(*R->pred_begin());
+  (void) PredRegion;
   assert(PredRegion->isBlock() && "Expected the predecessor region to be a "
                                   "block");
 
-  // Our insert point is going to be the terminator inst.
-  SILInstruction *InsertPt = PredRegion->getBlock()->getTerminator();
+  std::function<bool(SILInstruction *)> checkIfRefCountInstIsMatched =
+      [&UnmatchedRefCountInsts](SILInstruction *Inst) {
+        assert(isa<StrongReleaseInst>(Inst) || isa<ReleaseValueInst>(Inst));
+        return UnmatchedRefCountInsts.find(Inst) == UnmatchedRefCountInsts.end();
+      };
 
   // For each state that we are currently tracking, apply our summarized
   // instructions to it.
@@ -494,9 +432,23 @@ bool ARCRegionState::processLoopTopDown(
     if (!OtherState.hasValue())
       continue;
 
-    for (auto *I : State->getSummarizedInterestingInsts())
-      OtherState->second.updateForDifferentLoopInst(I, InsertPt, SetFactory,
-                                                    AA);
+    for (auto *I : State->getSummarizedInterestingInsts()) {
+      OtherState->second.updateForDifferentLoopInst(I, AA);
+      OtherState->second.checkAndResetKnownSafety(
+          I, OtherState->first, checkIfRefCountInstIsMatched, RCIA, AA);
+    }
+#ifndef NDEBUG
+    // Verify updateForDifferentLoopInst is conservative enough that the flow
+    // sensitive native of the loop summarized instructions does not matter.
+    if (verifyARCLoopSummary) {
+      auto NewRefCountState = OtherState->second;
+      for (auto *I : State->getSummarizedInterestingInsts()) {
+        NewRefCountState.updateForDifferentLoopInst(I, AA);
+      }
+      assert(NewRefCountState.getLatticeState() ==
+             OtherState->second.getLatticeState());
+    }
+#endif
   }
 
   return false;
@@ -505,6 +457,7 @@ bool ARCRegionState::processLoopTopDown(
 bool ARCRegionState::processTopDown(
     AliasAnalysis *AA, RCIdentityFunctionInfo *RCIA,
     LoopRegionFunctionInfo *LRFI,
+    llvm::DenseSet<SILInstruction *> &UnmatchedRefCountInsts,
     BlotMapVector<SILInstruction *, TopDownRefCountState> &DecToIncStateMap,
     llvm::DenseMap<const LoopRegion *, ARCRegionState *> &RegionStateInfo,
     ImmutablePointerSetFactory<SILInstruction> &SetFactory) {
@@ -513,7 +466,8 @@ bool ARCRegionState::processTopDown(
   // We only process basic blocks for now. This ensures that we always propagate
   // the empty set from loops.
   if (!R->isBlock())
-    return processLoopTopDown(R, RegionStateInfo[R], AA, LRFI, SetFactory);
+    return processLoopTopDown(R, RegionStateInfo[R], AA, LRFI, RCIA,
+                              UnmatchedRefCountInsts);
 
   return processBlockTopDown(*R->getBlock(), AA, RCIA, DecToIncStateMap,
                              SetFactory);
@@ -525,9 +479,9 @@ bool ARCRegionState::processTopDown(
 
 static bool isStrongEntranceInstruction(const SILInstruction &I) {
   switch (I.getKind()) {
-  case ValueKind::AllocRefInst:
-  case ValueKind::AllocRefDynamicInst:
-  case ValueKind::AllocBoxInst:
+  case SILInstructionKind::AllocRefInst:
+  case SILInstructionKind::AllocRefDynamicInst:
+  case SILInstructionKind::AllocBoxInst:
     return true;
   default:
     return false;
@@ -538,7 +492,9 @@ void ARCRegionState::summarizeBlock(SILBasicBlock *BB) {
   SummarizedInterestingInsts.clear();
 
   for (auto &I : *BB)
-    if (!canNeverUseValues(&I) || I.mayReleaseOrReadRefCount() ||
+    // FIXME: mayReleaseOrReadRefCount should be a strict subset of
+    // canUseObject. If not, there is a bug in canUseObject.
+    if (canUseObject(&I) || I.mayReleaseOrReadRefCount() ||
         isStrongEntranceInstruction(I))
       SummarizedInterestingInsts.push_back(&I);
 }

@@ -1,14 +1,14 @@
 // RUN: sed -n -e '1,/NO_ERRORS_UP_TO_HERE$/ p' %s > %t_no_errors.swift
-// RUN: %target-swift-frontend -parse -verify %t_no_errors.swift
+// RUN: %target-swift-frontend -typecheck -verify %t_no_errors.swift
 
 // RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=OVER_BASE_1 > %t.over.txt
-// RUN: FileCheck %s -check-prefix=OVER_BASE_1 < %t.over.txt
+// RUN: %FileCheck %s -check-prefix=OVER_BASE_1 < %t.over.txt
 
 // RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=OVER_DERIVED_1 > %t.over.txt
-// RUN: FileCheck %s -check-prefix=OVER_DERIVED_1 < %t.over.txt
+// RUN: %FileCheck %s -check-prefix=OVER_DERIVED_1 < %t.over.txt
 
 // RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=OVER_MORE_DERIVED_1 > %t.over.txt
-// RUN: FileCheck %s -check-prefix=OVER_MORE_DERIVED_1 < %t.over.txt
+// RUN: %FileCheck %s -check-prefix=OVER_MORE_DERIVED_1 < %t.over.txt
 
 //===---
 //===--- Check that we don't show overridden decls (only show the overriding decl).
@@ -24,7 +24,7 @@ class TestABase {
   var baseOverInstanceVar: FooBase { return FooBase() }
 
   func baseOverFunc() {}
-  func baseOverContravariant(a: FooMoreDerived) {}
+  func baseOverContravariant(_ a: FooMoreDerived) {}
   func baseOverCovariant() -> FooBase {}
 }
 class TestADerived : TestABase {
@@ -34,7 +34,7 @@ class TestADerived : TestABase {
   var derivedOverInstanceVar: FooBase { return FooBase() }
 
   override func baseOverFunc() {}
-  override func baseOverContravariant(a: FooDerived) {}
+  override func baseOverContravariant(_ a: FooDerived) {}
   override func baseOverCovariant() -> FooDerived {}
 }
 class TestAMoreDerived : TestADerived {
@@ -44,16 +44,17 @@ class TestAMoreDerived : TestADerived {
   override var derivedOverInstanceVar: FooDerived { return FooDerived() }
 
   override func baseOverFunc() {}
-  override func baseOverContravariant(a: FooBase) {}
+  override func baseOverContravariant(_ a: FooBase) {}
   override func baseOverCovariant() -> FooMoreDerived {}
 }
 
 // NO_ERRORS_UP_TO_HERE
 
-func test1(b: TestABase) {
+func test1(_ b: TestABase) {
   b.#^OVER_BASE_1^#
 }
 // OVER_BASE_1: Begin completions
+// OVER_BASE_1-NEXT: Keyword[self]/CurrNominal: self[#TestABase#]; name=self
 // OVER_BASE_1-NEXT: Decl[InstanceVar]/CurrNominal:    baseInstanceVar[#FooBase#]{{; name=.+$}}
 // OVER_BASE_1-NEXT: Decl[InstanceVar]/CurrNominal:    baseOverInstanceVar[#FooBase#]{{; name=.+$}}
 // OVER_BASE_1-NEXT: Decl[InstanceMethod]/CurrNominal: baseOverFunc()[#Void#]{{; name=.+$}}
@@ -61,10 +62,11 @@ func test1(b: TestABase) {
 // OVER_BASE_1-NEXT: Decl[InstanceMethod]/CurrNominal: baseOverCovariant()[#FooBase#]{{; name=.+$}}
 // OVER_BASE_1-NEXT: End completions
 
-func test2(d: TestADerived) {
+func test2(_ d: TestADerived) {
   d.#^OVER_DERIVED_1^#
 }
 // OVER_DERIVED_1: Begin completions
+// OVER_DERIVED_1-NEXT: Keyword[self]/CurrNominal: self[#TestADerived#]; name=self
 // OVER_DERIVED_1-NEXT: Decl[InstanceVar]/CurrNominal:    derivedInstanceVar[#FooBase#]{{; name=.+$}}
 // OVER_DERIVED_1-NEXT: Decl[InstanceVar]/CurrNominal:    baseOverInstanceVar[#FooDerived#]{{; name=.+$}}
 // OVER_DERIVED_1-NEXT: Decl[InstanceVar]/CurrNominal:    derivedOverInstanceVar[#FooBase#]{{; name=.+$}}
@@ -74,10 +76,11 @@ func test2(d: TestADerived) {
 // OVER_DERIVED_1-NEXT: Decl[InstanceVar]/Super:          baseInstanceVar[#FooBase#]{{; name=.+$}}
 // OVER_DERIVED_1-NEXT: End completions
 
-func test3(md: TestAMoreDerived) {
+func test3(_ md: TestAMoreDerived) {
   md.#^OVER_MORE_DERIVED_1^#
 }
 // OVER_MORE_DERIVED_1: Begin completions
+// OVER_MORE_DERIVED_1-NEXT: Keyword[self]/CurrNominal: self[#TestAMoreDerived#]; name=self
 // OVER_MORE_DERIVED_1-NEXT: Decl[InstanceVar]/CurrNominal:    moreDerivedInstanceVar[#FooBase#]{{; name=.+$}}
 // OVER_MORE_DERIVED_1-NEXT: Decl[InstanceVar]/CurrNominal:    baseOverInstanceVar[#FooMoreDerived#]{{; name=.+$}}
 // OVER_MORE_DERIVED_1-NEXT: Decl[InstanceVar]/CurrNominal:    derivedOverInstanceVar[#FooDerived#]{{; name=.+$}}

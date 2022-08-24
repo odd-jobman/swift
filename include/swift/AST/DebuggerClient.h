@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -27,7 +27,7 @@ class DebuggerClient {
 protected:
   ASTContext &Ctx;
 public:
-  typedef SmallVectorImpl<UnqualifiedLookupResult> ResultVector;
+  typedef SmallVectorImpl<LookupResultEntry> ResultVector;
 
   DebuggerClient(ASTContext &C) : Ctx(C) { }
   virtual ~DebuggerClient() = default;
@@ -48,18 +48,37 @@ public:
   /// be consulted first.  Return true if results have been added
   /// to RV.
   /// FIXME: I don't think this ever does anything useful.
-  virtual bool lookupOverrides(Identifier Name, DeclContext *DC,
+  virtual bool lookupOverrides(DeclBaseName Name, DeclContext *DC,
                                SourceLoc Loc, bool IsTypeLookup,
                                ResultVector &RV) = 0;
- 
+
   /// This is the second time DebuggerClient is consulted:
   /// after all names in external Modules are checked, the client
   /// gets a chance to add names to the list of candidates that
-  /// have been found in the external module lookup.  
+  /// have been found in the external module lookup.
 
-  virtual bool lookupAdditions(Identifier Name, DeclContext *DC,
+  virtual bool lookupAdditions(DeclBaseName Name, DeclContext *DC,
                                SourceLoc Loc, bool IsTypeLookup,
                                ResultVector &RV) = 0;
+
+  /// The following functions allow the debugger to modify the results of a
+  /// qualified lookup as needed. These methods may add, remove or modify the
+  /// entries in `decls`. See the corresponding DeclContext::lookupInXYZ
+  /// functions defined in NameLookup.cpp for more context.
+  ///
+
+  virtual void finishLookupInNominals(const DeclContext *dc,
+                                      ArrayRef<NominalTypeDecl *> types,
+                                      DeclName member, NLOptions options,
+                                      SmallVectorImpl<ValueDecl *> &decls) {}
+
+  virtual void finishLookupInModule(const DeclContext *dc, ModuleDecl *module,
+                                    DeclName member, NLOptions options,
+                                    SmallVectorImpl<ValueDecl *> &decls) {}
+
+  virtual void finishLookupInAnyObject(const DeclContext *dc, DeclName member,
+                                       NLOptions options,
+                                       SmallVectorImpl<ValueDecl *> &decls) {}
 
   /// When evaluating an expression in the context of an existing source file,
   /// we may want to prefer declarations from that source file.

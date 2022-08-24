@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend -sil-verify-all -O %s -emit-sil | FileCheck %s
+// RUN: %target-swift-frontend -sil-verify-all -Xllvm -sil-inline-generics -O %s -emit-sil | %FileCheck %s
 
 // This file consists of tests for making sure that protocol conformances and
 // inherited conformances work well together when applied to each other. The
@@ -10,15 +10,9 @@
 // *NOTE* If something like templated protocols is ever implemented this file
 // needs to be updated.
 
-// CHECK-LABEL: sil @_TF38devirt_specialized_inherited_interplay6driverFT_T_ : $@convention(thin) () -> () {
+// CHECK-LABEL: sil @$s38devirt_specialized_inherited_interplay6driveryyF : $@convention(thin) () -> () {
 // CHECK: bb0:
-// CHECK: [[A3:%[0-9]+]] = alloc_ref [stack] $A3<S>
-// CHECK: [[A4:%[0-9]+]] = alloc_ref [stack] $A4<S>
-// CHECK: [[A5:%[0-9]+]] = alloc_ref [stack] $A5<S>
-// CHECK: [[B1:%[0-9]+]] = alloc_ref [stack] $B1<S>
-// CHECK: [[B2:%[0-9]+]] = alloc_ref [stack] $B2<S>
-// CHECK: [[B3:%[0-9]+]] = alloc_ref [stack] $B3<S>
-// CHECK: [[B4:%[0-9]+]] = alloc_ref [stack] $B4<S>
+// CHECK-NOT: alloc_ref
 // CHECK: [[F0:%[0-9]+]] = function_ref @unknown0 : $@convention(thin) () -> ()
 // CHECK: apply [[F0]]
 // CHECK: apply [[F0]]
@@ -45,13 +39,7 @@
 // CHECK: [[F8:%[0-9]+]] = function_ref @unknown8 :
 // CHECK: apply [[F8]]
 // CHECK: apply [[F8]]
-// CHECK: dealloc_ref [stack] [[B4]]
-// CHECK: dealloc_ref [stack] [[B3]]
-// CHECK: dealloc_ref [stack] [[B2]]
-// CHECK: dealloc_ref [stack] [[B1]]
-// CHECK: dealloc_ref [stack] [[A5]]
-// CHECK: dealloc_ref [stack] [[A4]]
-// CHECK: dealloc_ref [stack] [[A3]]
+// CHECK-NOT: dealloc_ref
 // CHECK: return
 
 @_silgen_name("unknown0")
@@ -147,14 +135,14 @@ class B4<F>: B3<Array<Array<Int>>> {
   }
 }
 
-func WhatShouldIDo<T : P>(t : T) {
+func WhatShouldIDo<T : P>(_ t : T) {
   t.doSomething()
 }
-func WhatShouldIDo2(p : P) {
+func WhatShouldIDo2(_ p : P) {
   p.doSomething()
 }
 
-public func driver1<X>(x:X) {
+public func driver1<X>(_ x:X) {
   let b = B3<X>()
   WhatShouldIDo(b)
   WhatShouldIDo2(b)

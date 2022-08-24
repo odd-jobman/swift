@@ -2,93 +2,166 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
-/// Writes the textual representations of `items`, separated by
-/// `separator` and terminated by `terminator`, into the standard
+#if !SWIFT_STDLIB_STATIC_PRINT
+
+/// Writes the textual representations of the given items into the standard
 /// output.
 ///
-/// The textual representations are obtained for each `item` via
-/// the expression `String(item)`.
+/// You can pass zero or more items to the `print(_:separator:terminator:)`
+/// function. The textual representation for each item is the same as that
+/// obtained by calling `String(item)`. The following example prints a string,
+/// a closed range of integers, and a group of floating-point values to
+/// standard output:
 ///
-/// - Note: To print without a trailing newline, pass `terminator: ""`
+///     print("One two three four five")
+///     // Prints "One two three four five"
 ///
-/// - SeeAlso: `debugPrint`, `Streamable`, `CustomStringConvertible`,
-///   `CustomDebugStringConvertible`
-@inline(never)
-@_semantics("stdlib_binary_only")
+///     print(1...5)
+///     // Prints "1...5"
+///
+///     print(1.0, 2.0, 3.0, 4.0, 5.0)
+///     // Prints "1.0 2.0 3.0 4.0 5.0"
+///
+/// To print the items separated by something other than a space, pass a string
+/// as `separator`.
+///
+///     print(1.0, 2.0, 3.0, 4.0, 5.0, separator: " ... ")
+///     // Prints "1.0 ... 2.0 ... 3.0 ... 4.0 ... 5.0"
+///
+/// The output from each call to `print(_:separator:terminator:)` includes a
+/// newline by default. To print the items without a trailing newline, pass an
+/// empty string as `terminator`.
+///
+///     for n in 1...5 {
+///         print(n, terminator: "")
+///     }
+///     // Prints "12345"
+///
+/// - Parameters:
+///   - items: Zero or more items to print.
+///   - separator: A string to print between each item. The default is a single
+///     space (`" "`).
+///   - terminator: The string to print after all items have been printed. The
+///     default is a newline (`"\n"`).
 public func print(
-  items: Any...,
+  _ items: Any...,
   separator: String = " ",
   terminator: String = "\n"
 ) {
-#if os(Windows)
-  // FIXME: This fix is for 'crash at hook(output.left)' in cygwin.
-  //        Proper fix is needed. see: https://bugs.swift.org/browse/SR-612
-  let _playgroundPrintHook: ((String)->Void)? = nil
-#endif
   if let hook = _playgroundPrintHook {
     var output = _TeeStream(left: "", right: _Stdout())
-    _print(
-      items, separator: separator, terminator: terminator, to: &output)
+    _print(items, separator: separator, terminator: terminator, to: &output)
     hook(output.left)
   }
   else {
     var output = _Stdout()
-    _print(
-      items, separator: separator, terminator: terminator, to: &output)
+    _print(items, separator: separator, terminator: terminator, to: &output)
   }
 }
 
-/// Writes the textual representations of `items` most suitable for
-/// debugging, separated by `separator` and terminated by
-/// `terminator`, into the standard output.
+/// Writes the textual representations of the given items most suitable for
+/// debugging into the standard output.
 ///
-/// The textual representations are obtained for each `item` via
-/// the expression `String(reflecting: item)`.
+/// You can pass zero or more items to the
+/// `debugPrint(_:separator:terminator:)` function. The textual representation
+/// for each item is the same as that obtained by calling
+/// `String(reflecting: item)`. The following example prints the debugging
+/// representation of a string, a closed range of integers, and a group of
+/// floating-point values to standard output:
 ///
-/// - Note: To print without a trailing newline, pass `terminator: ""`
+///     debugPrint("One two three four five")
+///     // Prints "One two three four five"
 ///
-/// - SeeAlso: `print`, `Streamable`, `CustomStringConvertible`,
-///   `CustomDebugStringConvertible`
-@inline(never)
-@_semantics("stdlib_binary_only")
+///     debugPrint(1...5)
+///     // Prints "ClosedRange(1...5)"
+///
+///     debugPrint(1.0, 2.0, 3.0, 4.0, 5.0)
+///     // Prints "1.0 2.0 3.0 4.0 5.0"
+///
+/// To print the items separated by something other than a space, pass a string
+/// as `separator`.
+///
+///     debugPrint(1.0, 2.0, 3.0, 4.0, 5.0, separator: " ... ")
+///     // Prints "1.0 ... 2.0 ... 3.0 ... 4.0 ... 5.0"
+///
+/// The output from each call to `debugPrint(_:separator:terminator:)` includes
+/// a newline by default. To print the items without a trailing newline, pass
+/// an empty string as `terminator`.
+///
+///     for n in 1...5 {
+///         debugPrint(n, terminator: "")
+///     }
+///     // Prints "12345"
+///
+/// - Parameters:
+///   - items: Zero or more items to print.
+///   - separator: A string to print between each item. The default is a single
+///     space (`" "`).
+///   - terminator: The string to print after all items have been printed. The
+///     default is a newline (`"\n"`).
 public func debugPrint(
-  items: Any...,
+  _ items: Any...,
   separator: String = " ",
-  terminator: String = "\n") {
+  terminator: String = "\n"
+) {
   if let hook = _playgroundPrintHook {
     var output = _TeeStream(left: "", right: _Stdout())
-    _debugPrint(
-      items, separator: separator, terminator: terminator, to: &output)
+    _debugPrint(items, separator: separator, terminator: terminator, to: &output)
     hook(output.left)
   }
   else {
     var output = _Stdout()
-    _debugPrint(
-      items, separator: separator, terminator: terminator, to: &output)
+    _debugPrint(items, separator: separator, terminator: terminator, to: &output)
   }
 }
 
-/// Writes the textual representations of `items`, separated by
-/// `separator` and terminated by `terminator`, into `output`.
+/// Writes the textual representations of the given items into the given output
+/// stream.
 ///
-/// The textual representations are obtained for each `item` via
-/// the expression `String(item)`.
+/// You can pass zero or more items to the `print(_:separator:terminator:to:)`
+/// function. The textual representation for each item is the same as that
+/// obtained by calling `String(item)`. The following example prints a closed
+/// range of integers to a string:
 ///
-/// - Note: To print without a trailing newline, pass `terminator: ""`
+///     var range = "My range: "
+///     print(1...5, to: &range)
+///     // range == "My range: 1...5\n"
 ///
-/// - SeeAlso: `debugPrint`, `Streamable`, `CustomStringConvertible`,
-///   `CustomDebugStringConvertible`
-@inline(__always)
-public func print<Target : OutputStream>(
-  items: Any...,
+/// To print the items separated by something other than a space, pass a string
+/// as `separator`.
+///
+///     var separated = ""
+///     print(1.0, 2.0, 3.0, 4.0, 5.0, separator: " ... ", to: &separated)
+///     // separated == "1.0 ... 2.0 ... 3.0 ... 4.0 ... 5.0\n"
+///
+/// The output from each call to `print(_:separator:terminator:to:)` includes a
+/// newline by default. To print the items without a trailing newline, pass an
+/// empty string as `terminator`.
+///
+///     var numbers = ""
+///     for n in 1...5 {
+///         print(n, terminator: "", to: &numbers)
+///     }
+///     // numbers == "12345"
+///
+/// - Parameters:
+///   - items: Zero or more items to print.
+///   - separator: A string to print between each item. The default is a single
+///     space (`" "`).
+///   - terminator: The string to print after all items have been printed. The
+///     default is a newline (`"\n"`).
+///   - output: An output stream to receive the text representation of each
+///     item.
+public func print<Target: TextOutputStream>(
+  _ items: Any...,
   separator: String = " ",
   terminator: String = "\n",
   to output: inout Target
@@ -96,32 +169,55 @@ public func print<Target : OutputStream>(
   _print(items, separator: separator, terminator: terminator, to: &output)
 }
 
-/// Writes the textual representations of `items` most suitable for
-/// debugging, separated by `separator` and terminated by
-/// `terminator`, into `output`.
+/// Writes the textual representations of the given items most suitable for
+/// debugging into the given output stream.
 ///
-/// The textual representations are obtained for each `item` via
-/// the expression `String(reflecting: item)`.
+/// You can pass zero or more items to the
+/// `debugPrint(_:separator:terminator:to:)` function. The textual
+/// representation for each item is the same as that obtained by calling
+/// `String(reflecting: item)`. The following example prints a closed range of
+/// integers to a string:
 ///
-/// - Note: To print without a trailing newline, pass `terminator: ""`
+///     var range = "My range: "
+///     debugPrint(1...5, to: &range)
+///     // range == "My range: ClosedRange(1...5)\n"
 ///
-/// - SeeAlso: `print`, `Streamable`, `CustomStringConvertible`,
-///   `CustomDebugStringConvertible`
-@inline(__always)
-public func debugPrint<Target : OutputStream>(
-  items: Any...,
+/// To print the items separated by something other than a space, pass a string
+/// as `separator`.
+///
+///     var separated = ""
+///     debugPrint(1.0, 2.0, 3.0, 4.0, 5.0, separator: " ... ", to: &separated)
+///     // separated == "1.0 ... 2.0 ... 3.0 ... 4.0 ... 5.0\n"
+///
+/// The output from each call to `debugPrint(_:separator:terminator:to:)`
+/// includes a newline by default. To print the items without a trailing
+/// newline, pass an empty string as `terminator`.
+///
+///     var numbers = ""
+///     for n in 1...5 {
+///         debugPrint(n, terminator: "", to: &numbers)
+///     }
+///     // numbers == "12345"
+///
+/// - Parameters:
+///   - items: Zero or more items to print.
+///   - separator: A string to print between each item. The default is a single
+///     space (`" "`).
+///   - terminator: The string to print after all items have been printed. The
+///     default is a newline (`"\n"`).
+///   - output: An output stream to receive the text representation of each
+///     item.
+public func debugPrint<Target: TextOutputStream>(
+  _ items: Any...,
   separator: String = " ",
   terminator: String = "\n",
   to output: inout Target
 ) {
-  _debugPrint(
-    items, separator: separator, terminator: terminator, to: &output)
+  _debugPrint(items, separator: separator, terminator: terminator, to: &output)
 }
 
-@inline(never)
-@_semantics("stdlib_binary_only")
-internal func _print<Target : OutputStream>(
-  items: [Any],
+internal func _print<Target: TextOutputStream>(
+  _ items: [Any],
   separator: String = " ",
   terminator: String = "\n",
   to output: inout Target
@@ -137,10 +233,8 @@ internal func _print<Target : OutputStream>(
   output.write(terminator)
 }
 
-@inline(never)
-@_semantics("stdlib_binary_only")
-internal func _debugPrint<Target : OutputStream>(
-  items: [Any],
+internal func _debugPrint<Target: TextOutputStream>(
+  _ items: [Any],
   separator: String = " ",
   terminator: String = "\n",
   to output: inout Target
@@ -156,26 +250,4 @@ internal func _debugPrint<Target : OutputStream>(
   output.write(terminator)
 }
 
-//===----------------------------------------------------------------------===//
-//===--- Migration Aids ---------------------------------------------------===//
-
-@available(*, unavailable, message: "Please use 'terminator: \"\"' instead of 'appendNewline: false': 'print((...), terminator: \"\")'")
-public func print<T>(_: T, appendNewline: Bool = true) {}
-@available(*, unavailable, message: "Please use 'terminator: \"\"' instead of 'appendNewline: false': 'debugPrint((...), terminator: \"\")'")
-public func debugPrint<T>(_: T, appendNewline: Bool = true) {}
-
-
-//===--- FIXME: Not working due to <rdar://22101775> ----------------------===//
-@available(*, unavailable, message: "Please use the 'to' label for the target stream: 'print((...), to: &...)'")
-public func print<T>(_: T, _: inout OutputStream) {}
-@available(*, unavailable, message: "Please use the 'to' label for the target stream: 'debugPrint((...), to: &...))'")
-public func debugPrint<T>(_: T, _: inout OutputStream) {}
-
-@available(*, unavailable, message: "Please use 'terminator: \"\"' instead of 'appendNewline: false' and use the 'toStream' label for the target stream: 'print((...), terminator: \"\", toStream: &...)'")
-public func print<T>(_: T, _: inout OutputStream, appendNewline: Bool = true) {}
-@available(*, unavailable, message: "Please use 'terminator: \"\"' instead of 'appendNewline: false' and use the 'toStream' label for the target stream: 'debugPrint((...), terminator: \"\", toStream: &...)'")
-public func debugPrint<T>(
-  _: T, _: inout OutputStream, appendNewline: Bool = true
-) {}
-//===----------------------------------------------------------------------===//
-//===----------------------------------------------------------------------===//
+#endif

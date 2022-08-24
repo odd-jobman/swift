@@ -1,34 +1,34 @@
-// RUN: %target-swift-frontend -parse-as-library -emit-silgen %s | FileCheck %s
+// RUN: %target-swift-emit-silgen -parse-as-library %s | %FileCheck %s
 
-// CHECK:       sil private [[INIT_A_B:@globalinit_.*]] :
-// CHECK:         alloc_global @_Tv26lazy_globals_multiple_vars1aSi
-// CHECK:         global_addr @_Tv26lazy_globals_multiple_vars1aSi
-// CHECK:         alloc_global @_Tv26lazy_globals_multiple_vars1bSi
-// CHECK:         global_addr @_Tv26lazy_globals_multiple_vars1bSi
-// CHECK:       sil hidden [global_init] @_TF26lazy_globals_multiple_varsau1aSi
-// CHECK:         global_addr [[TOKEN_A_B:@globalinit_.*]] :
+// CHECK:       sil private [global_init_once_fn] [ossa] [[INIT_A_B:@.*1a.*1b.*WZ]] :
+// CHECK:         alloc_global @$s26lazy_globals_multiple_vars1aSiv
+// CHECK:         global_addr @$s26lazy_globals_multiple_vars1aSiv
+// CHECK:         alloc_global @$s26lazy_globals_multiple_vars1bSiv
+// CHECK:         global_addr @$s26lazy_globals_multiple_vars1bSiv
+// CHECK:       sil hidden [global_init] [ossa] @$s26lazy_globals_multiple_vars1aSivau
+// CHECK:         global_addr [[TOKEN_A_B:@.*1a.*1b.*Wz]] :
 // CHECK:         function_ref [[INIT_A_B]]
-// CHECK:       sil hidden [global_init] @_TF26lazy_globals_multiple_varsau1bSi
+// CHECK:       sil hidden [global_init] [ossa] @$s26lazy_globals_multiple_vars1bSivau
 // CHECK:         global_addr [[TOKEN_A_B]]
 // CHECK:         function_ref [[INIT_A_B]]
 var (a, b) = (1, 2)
 
-// CHECK:       sil private [[INIT_C:@globalinit_.*]] :
-// CHECK-NOT:     global_addr @_Tv26lazy_globals_multiple_vars1dSi
-// CHECK:         alloc_global @_Tv26lazy_globals_multiple_vars1cSi
-// CHECK:         global_addr @_Tv26lazy_globals_multiple_vars1cSi
-// CHECK-NOT:     global_addr @_Tv26lazy_globals_multiple_vars1dSi
-// CHECK:       sil hidden [global_init] @_TF26lazy_globals_multiple_varsau1cSi
-// CHECK:         global_addr [[TOKEN_C:@globalinit_.*]] :
+// CHECK:       sil private [global_init_once_fn] [ossa] [[INIT_C:@.*1c.*WZ]] :
+// CHECK-NOT:     global_addr @$s26lazy_globals_multiple_vars1dSiv
+// CHECK:         alloc_global @$s26lazy_globals_multiple_vars1cSiv
+// CHECK:         global_addr @$s26lazy_globals_multiple_vars1cSiv
+// CHECK-NOT:     global_addr @$s26lazy_globals_multiple_vars1dSiv
+// CHECK:       sil hidden [global_init] [ossa] @$s26lazy_globals_multiple_vars1cSivau
+// CHECK:         global_addr [[TOKEN_C:@.*1c.*Wz]] :
 // CHECK:         function_ref [[INIT_C]]
-// CHECK:       sil private [[INIT_D:@globalinit_.*]] :
-// CHECK-NOT:     global_addr @_Tv26lazy_globals_multiple_vars1cSi
-// CHECK:         alloc_global @_Tv26lazy_globals_multiple_vars1dSi
-// CHECK:         global_addr @_Tv26lazy_globals_multiple_vars1dSi
-// CHECK-NOT:     global_addr @_Tv26lazy_globals_multiple_vars1cSi
-// CHECK:       sil hidden [global_init] @_TF26lazy_globals_multiple_varsau1dSi
+// CHECK:       sil private [global_init_once_fn] [ossa] [[INIT_D:@.*1d.*WZ]] :
+// CHECK-NOT:     global_addr @$s26lazy_globals_multiple_vars1cSiv
+// CHECK:         alloc_global @$s26lazy_globals_multiple_vars1dSiv
+// CHECK:         global_addr @$s26lazy_globals_multiple_vars1dSiv
+// CHECK-NOT:     global_addr @$s26lazy_globals_multiple_vars1cSiv
+// CHECK:       sil hidden [global_init] [ossa] @$s26lazy_globals_multiple_vars1dSivau
 // CHECK-NOT:     global_addr [[TOKEN_C]]
-// CHECK:         global_addr [[TOKEN_D:@globalinit_.*]] :
+// CHECK:         global_addr [[TOKEN_D:@.*1d.*Wz]] :
 // CHECK-NOT:     global_addr [[TOKEN_C]]
 // CHECK:         function_ref [[INIT_D]]
 var c = 1, d = 2

@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -19,6 +19,7 @@
 #define SWIFT_PARSE_LOCALCONTEXT_H
 
 #include "llvm/ADT/DenseMap.h"
+#include "swift/AST/Identifier.h"
 #include <cassert>
 
 namespace swift {
@@ -61,12 +62,7 @@ public:
 };
 
 /// Information associated with parsing the top-level context.
-class TopLevelContext : public LocalContext {
-public:
-  /// The next auto-closure discriminator.  This needs to be preserved
-  /// across invocations of both the parser and the type-checker.
-  unsigned NextAutoClosureDiscriminator = 0;
-};
+class TopLevelContext : public LocalContext {};
 
 } // end namespace swift
 

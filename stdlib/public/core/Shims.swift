@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2020 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -14,10 +14,10 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#if _runtime(_ObjC)
 import SwiftShims
 
-@warn_unused_result
+#if _runtime(_ObjC)
+@inlinable
 internal func _makeSwiftNSFastEnumerationState()
    -> _SwiftNSFastEnumerationState {
   return _SwiftNSFastEnumerationState(
@@ -27,13 +27,17 @@ internal func _makeSwiftNSFastEnumerationState()
 
 /// A dummy value to be used as the target for `mutationsPtr` in fast
 /// enumeration implementations.
-var _fastEnumerationStorageMutationsTarget: CUnsignedLong = 0
+@usableFromInline
+internal var _fastEnumerationStorageMutationsTarget: CUnsignedLong = 0
 
 /// A dummy pointer to be used as `mutationsPtr` in fast enumeration
 /// implementations.
-public // SPI(Foundation)
-var _fastEnumerationStorageMutationsPtr: UnsafeMutablePointer<CUnsignedLong> {
-  return UnsafeMutablePointer(
-      Builtin.addressof(&_fastEnumerationStorageMutationsTarget))
-}
+@usableFromInline
+internal let _fastEnumerationStorageMutationsPtr =
+  UnsafeMutablePointer<CUnsignedLong>(Builtin.addressof(&_fastEnumerationStorageMutationsTarget))
 #endif
+
+@usableFromInline @_alwaysEmitIntoClient
+internal func _mallocSize(ofAllocation ptr: UnsafeRawPointer) -> Int? {
+  return _swift_stdlib_has_malloc_size() ? _swift_stdlib_malloc_size(ptr) : nil
+}

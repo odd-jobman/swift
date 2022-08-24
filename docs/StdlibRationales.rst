@@ -1,7 +1,5 @@
 :orphan:
 
-.. @raise litre.TestsAreMissing
-
 =================================================
 Rationales for the Swift standard library designs
 =================================================
@@ -89,7 +87,7 @@ For example::
 
   // Public API that uses CVaListPointer, so CVarArgType has to be public, too.
   public func withVaList<R>(
-    args: [CVarArgType],
+    _ args: [CVarArgType],
     @noescape invoke body: (CVaListPointer) -> R
   ) -> R
 
@@ -101,7 +99,7 @@ We can't make ``map()``, ``filter()``, etc. all return ``Self``:
 - ``map()`` takes a function ``(T) -> U`` and therefore can't return Self
   literally.  The required language feature for making ``map()`` return
   something like ``Self`` in generic code (higher-kinded types) doesn't exist
-  in Swift.  You can't write a method like ``func map(f: (T) -> U) -> Self<U>``
+  in Swift.  You can't write a method like ``func map(_ f: (T) -> U) -> Self<U>``
   today.
 
 - There are lots of sequences that don't have an appropriate form for the
@@ -118,7 +116,7 @@ We can't make ``map()``, ``filter()``, etc. all return ``Self``:
 
     func countFlattenedElements<
       S : SequenceType where S.Generator.Element == Set<Double>
-    >(sequence: S) -> Int {
+    >(_ sequence: S) -> Int {
       return sequence.map { $0.count }.reduce(0) { $0 + $1 }
     }
 
@@ -175,21 +173,6 @@ strict functions by making these methods strict, but then client code needs to
 call an API with a different name, say ``lazyEnumerate()`` to opt into
 laziness.  The problem is that the eager API, which would have a shorter and
 less obscure name, would be less efficient for the common case.
-
-Use of ``BooleanType`` in library APIs
---------------------------------------
-
-Use ``Bool`` instead of a generic function over a ``BooleanType``, unless there
-are special circumstances (for example, ``func &&`` is designed to work on all
-boolean values so that ``&&`` feels like a part of the language).
-
-``BooleanType`` is a protocol to which only ``Bool`` and ``ObjCBool`` conform.
-Users don't usually interact ``ObjCBool`` instances, except when using certain
-specific APIs (for example, APIs that operate on pointers to ``BOOL``).  If
-someone already has an ``ObjCBool`` instance for whatever strange reason, they
-can just convert it to ``Bool``.  We think this is the right tradeoff:
-simplifying function signatures is more important than making a marginal
-usecase a bit more convenient.
 
 Possible future directions
 ==========================

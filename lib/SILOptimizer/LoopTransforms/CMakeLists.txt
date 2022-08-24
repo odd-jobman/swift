@@ -1,7 +1,8 @@
-set(LOOPTRANSFORMS_SOURCES
-  LoopTransforms/ArrayBoundsCheckOpts.cpp
-  LoopTransforms/COWArrayOpt.cpp
-  LoopTransforms/LoopRotate.cpp
-  LoopTransforms/LoopUnroll.cpp
-  LoopTransforms/LICM.cpp
-  PARENT_SCOPE)
+target_sources(swiftSILOptimizer PRIVATE
+  ArrayBoundsCheckOpts.cpp
+  ArrayPropertyOpt.cpp
+  COWArrayOpt.cpp
+  LoopRotate.cpp
+  LoopUnroll.cpp
+  LICM.cpp
+  ForEachLoopUnroll.cpp)

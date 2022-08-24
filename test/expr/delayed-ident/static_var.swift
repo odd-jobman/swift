@@ -1,4 +1,4 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 // Simple struct types
 struct X1 {
@@ -6,7 +6,7 @@ struct X1 {
   static var NotAnX1 = 42
 }
 
-func acceptInOutX1(x1: inout X1) { }
+func acceptInOutX1(_ x1: inout X1) { }
 
 var x1: X1 = .AnX1
 x1 = .AnX1
@@ -35,3 +35,33 @@ struct Foo {
 func & (x: Foo, y: Foo) -> Foo { }
 
 var fooValue: Foo = .Bar & .Wibble
+
+// Static closure variables.
+struct HasClosure {
+  static var factoryNormal: (Int) -> HasClosure = { _ in .init() }
+  static var factoryReturnOpt: (Int) -> HasClosure? = { _ in .init() }
+  static var factoryIUO: ((Int) -> HasClosure)! = { _ in .init() }
+  static var factoryOpt: ((Int) -> HasClosure)? = { _ in .init() }
+}
+var _: HasClosure = .factoryNormal(0)
+var _: HasClosure = .factoryReturnOpt(1)!
+var _: HasClosure = .factoryIUO(2)
+var _: HasClosure = .factoryOpt(3)
+// expected-error@-1 {{value of optional type '((Int) -> HasClosure)?' must be unwrapped to a value of type '(Int) -> HasClosure'}}
+// expected-note@-2 {{coalesce}}
+// expected-note@-3 {{force-unwrap}}
+var _: HasClosure = .factoryOpt!(4)
+
+infix operator =%: ComparisonPrecedence
+
+extension Optional {
+    static func =%(lhs: Self, rhs: Self) -> Bool { return true }
+}
+
+struct ImplicitMembers {
+    static var optional: ImplicitMembers? = ImplicitMembers()
+}
+
+func implicit(_ i: inout ImplicitMembers) {
+    if i =% .optional {}
+}

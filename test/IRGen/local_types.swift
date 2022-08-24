@@ -1,24 +1,18 @@
-// RUN: rm -rf %t && mkdir -p %t
+// RUN: %empty-directory(%t)
 // RUN: %target-swift-frontend -emit-module %S/Inputs/local_types_helper.swift -o %t
-// RUN: %target-swift-frontend -emit-ir -parse-as-library %s -I %t > %t.ll
-// RUN: FileCheck %s < %t.ll
-// RUN: FileCheck -check-prefix=NEGATIVE %s < %t.ll
-
-// XFAIL: linux
+// RUN: %target-swift-frontend -enable-objc-interop -emit-ir -parse-as-library %s -I %t | %FileCheck -check-prefix CHECK -check-prefix NEGATIVE %s
 
 import local_types_helper
 
-// CHECK-DAG: @_TMVF18local_types_helper4testFT_T_L_1S = external hidden global %swift.type
-
 public func singleFunc() {
-  // CHECK-DAG: @_TWVVF11local_types10singleFuncFT_T_L_16SingleFuncStruct = hidden constant
+  // CHECK-DAG: @"$s11local_types10singleFuncyyF06SingleD6StructL_VMf" = internal constant
   struct SingleFuncStruct {
     let i: Int
   }
 }
 
 public let singleClosure: () -> () = {
-  // CHECK-DAG: @_TWVVFIv11local_types13singleClosureFT_T_iU_FT_T_L_19SingleClosureStruct = hidden constant
+  // CHECK-DAG: @"$s11local_types13singleClosureyycvpfiyycfU_06SingleD6StructL_VMf" = internal constant
   struct SingleClosureStruct {
     let i: Int
   }
@@ -26,7 +20,7 @@ public let singleClosure: () -> () = {
 
 public struct PatternStruct {
   public var singlePattern: Int = ({
-    // CHECK-DAG: @_TWVVFIvV11local_types13PatternStruct13singlePatternSiiU_FT_SiL_19SinglePatternStruct = hidden constant
+    // CHECK-DAG: @"$s11local_types13PatternStructV06singleC0SivpfiSiyXEfU_06SinglecD0L_VMf" = internal constant
     struct SinglePatternStruct {
       let i: Int
     }
@@ -34,25 +28,13 @@ public struct PatternStruct {
   })()
 }
 
-public func singleDefaultArgument(i i: Int = {
-  // CHECK-DAG: @_TWVVFIF11local_types21singleDefaultArgumentFT1iSi_T_A_U_FT_SiL_27SingleDefaultArgumentStruct = hidden constant
-  struct SingleDefaultArgumentStruct {
-    let i: Int
-  }
-  return 2
-
-  }()){
-    print(i)
-}
-
-
 #if COMPILED_OUT
 public func topLevelIfConfig() {
   class LocalClassDisabled {}
 }
 #else
 public func topLevelIfConfig() {
-  // CHECK-DAG: @_TMmCF11local_types16topLevelIfConfigFT_T_L_17LocalClassEnabled = hidden global %objc_class
+  // CHECK-DAG: @"$s11local_types16topLevelIfConfigyyF17LocalClassEnabledL_CMm" = internal global %objc_class
   class LocalClassEnabled {}
 }
 #endif
@@ -64,7 +46,7 @@ public struct NominalIfConfig {
   }
   #else
   public func method() {
-    // CHECK-DAG: @_TMmCFV11local_types15NominalIfConfig6methodFT_T_L_17LocalClassEnabled = hidden global %objc_class
+    // CHECK-DAG: @"$s11local_types15NominalIfConfigV6methodyyF17LocalClassEnabledL_CMm" = internal global %objc_class
     class LocalClassEnabled {}
   }
   #endif
@@ -77,19 +59,18 @@ public func innerIfConfig() {
     class LocalClassDisabled {}
   }
   #else
-  // CHECK-DAG: @_TMmCF11local_types13innerIfConfigFT_T_L_17LocalClassEnabled = hidden global %objc_class
+  // CHECK-DAG: @"$s11local_types13innerIfConfigyyF17LocalClassEnabledL_CMm" = internal global %objc_class
   class LocalClassEnabled {}
   func inner() {
-    // CHECK-DAG: @_TMmCFF11local_types13innerIfConfigFT_T_L0_5innerFT_T_L_17LocalClassEnabled = hidden global %objc_class
+    // CHECK-DAG: @"$s11local_types13innerIfConfigyyF0C0L0_yyF17LocalClassEnabledL_CMm" = internal global %objc_class
     class LocalClassEnabled {}
   }
   #endif
 }
 
 
-// CHECK-LABEL: define{{( protected)?}} void @_TF11local_types8callTestFT_T_() {{.*}} {
+// CHECK-LABEL: define{{( dllexport)?}}{{( protected)?}} swiftcc void @"$s11local_types8callTestyyF"() {{.*}} {
 public func callTest() {
-  // CHECK: call %swift.type* @_TMaMVF18local_types_helper4testFT_T_L_1S()
   test()
 } // CHECK: {{^[}]$}}
 

@@ -1,4 +1,4 @@
-// RUN: %target-run-simple-swift foo | FileCheck %s
+// RUN: %target-run-simple-swift foo | %FileCheck %s
 // REQUIRES: executable_test
 
 // REQUIRES: objc_interop
@@ -17,6 +17,9 @@ class SuperString : NSString {
 
   required init?(coder aDecoder: NSCoder) {
     super.init(coder: aDecoder)
+  }
+  required init(itemProviderData data: Data, typeIdentifier: String) throws {
+    fatalError("don't call this initializer")
   }
 
   override var length: Int {
@@ -106,7 +109,7 @@ testB()
 // Propagating nil init out of a superclass initialization.
 class MyNSData : NSData {
   init?(base64EncodedString str: String) {
-    super.init(base64EncodedString:str, 
+    super.init(base64Encoded:str, 
                options:[])
     print("MyNSData code should not be executed")
   }
@@ -127,7 +130,7 @@ if let myNSData = MyNSData(base64EncodedString:"\n\n\n") {
 // Propagating nil out of delegating initialization.
 extension NSData {
   convenience init?(myString str: String) {
-    self.init(base64EncodedString:str, 
+    self.init(base64Encoded:str, 
               options:[])
     print("NSData code should not be executed")
   }

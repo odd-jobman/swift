@@ -1,23 +1,23 @@
 // Please keep this file in alphabetical order!
 
-// RUN: rm -rf %t
-// RUN: mkdir %t
+// RUN: %empty-directory(%t)
 
 // FIXME: BEGIN -enable-source-import hackaround
-// RUN:  %target-swift-frontend(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -emit-module -o %t  %S/../Inputs/clang-importer-sdk/swift-modules/ObjectiveC.swift
+// RUN:  %target-swift-frontend(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -emit-module -o %t  %S/../Inputs/clang-importer-sdk/swift-modules/ObjectiveC.swift -disable-objc-attr-requires-foundation-module
 // RUN:  %target-swift-frontend(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -emit-module -o %t  %S/../Inputs/clang-importer-sdk/swift-modules/CoreGraphics.swift
 // RUN:  %target-swift-frontend(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -emit-module -o %t  %S/../Inputs/clang-importer-sdk/swift-modules/Foundation.swift
 // FIXME: END -enable-source-import hackaround
 
 // RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk-nosource) -I %t -emit-module -o %t %s -disable-objc-attr-requires-foundation-module
-// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk-nosource) -I %t -parse-as-library %t/protocols.swiftmodule -parse -emit-objc-header-path %t/protocols.h -import-objc-header %S/../Inputs/empty.h -disable-objc-attr-requires-foundation-module
-// RUN: FileCheck %s < %t/protocols.h
-// RUN: FileCheck --check-prefix=NEGATIVE %s < %t/protocols.h
+// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk-nosource) -I %t -parse-as-library %t/protocols.swiftmodule -typecheck -emit-objc-header-path %t/protocols.h -import-objc-header %S/../Inputs/empty.h -disable-objc-attr-requires-foundation-module
+// RUN: %FileCheck %s < %t/protocols.h
+// RUN: %FileCheck --check-prefix=NEGATIVE %s < %t/protocols.h
 // RUN: %check-in-clang %t/protocols.h
 
 // REQUIRES: objc_interop
 
 import Foundation
+import objc_generics
 
 // CHECK-LABEL: @protocol A{{$}}
 // CHECK-NEXT: @end
@@ -25,7 +25,21 @@ import Foundation
 
 // CHECK-LABEL: @protocol B <A>
 // CHECK-NEXT: @end
-@objc protocol B : A {}
+@objc protocol B : A, Sendable {}
+
+// CHECK-LABEL: @protocol CompletionAndAsync
+// CHECK-NEXT: - (void)helloWithCompletion:(void (^ _Nonnull)(BOOL))completion;
+// CHECK-NEXT: @end
+@objc protocol CompletionAndAsync {
+  // We don't want this one printed because it has more limited availability.
+  @available(SwiftStdlib 5.7, *)
+  @objc(helloWithCompletion:)
+  func hello() async -> Bool
+
+  @available(*, renamed: "hello()")
+  @objc(helloWithCompletion:)
+  func hello(completion: @escaping (Bool) -> Void)
+}
 
 // CHECK: @protocol CustomName2;
 // CHECK-LABEL: SWIFT_PROTOCOL_NAMED("CustomName")
@@ -52,6 +66,18 @@ protocol CustomNameType2 {}
   init(object any: AnyObject)
 }
 
+// CHECK-LABEL: @interface MyObject : NSObject <NSCoding, Fungible>
+// CHECK-NEXT: initWithCoder
+// CHECK-NEXT: init SWIFT_UNAVAILABLE
+// CHECK-NEXT: new SWIFT_DEPRECATED
+// CHECK-NEXT: @end
+// NEGATIVE-NOT: @protocol NSCoding
+class MyObject : NSObject, NSCoding, Fungible {
+  required init(coder aCoder: NSCoder) {
+    super.init()
+  }
+}
+
 // CHECK-LABEL: @protocol Methods{{$}}
 // CHECK-NEXT: - (void)test;
 // CHECK-NEXT: + (void)test2;
@@ -59,36 +85,29 @@ protocol CustomNameType2 {}
 // CHECK-NEXT: - (void)testSingleProtocolTypes:(id <A> _Nonnull)a aAgain:(id <A> _Nonnull)a2 b:(id <B> _Nonnull)b bAgain:(id <B> _Nonnull)b2 both:(id <B> _Nonnull)both;
 // CHECK-NEXT: - (void)testSingleProtocolClassTypes:(Class <A> _Nonnull)a aAgain:(Class <A> _Nonnull)a2 b:(Class <B> _Nonnull)b bAgain:(Class <B> _Nonnull)b2 both:(Class <B> _Nonnull)both;
 // CHECK-NEXT: - (void)testComposition:(id <A, ZZZ> _Nonnull)x meta:(Class <A, ZZZ> _Nonnull)xClass;
+// CHECK-NEXT: - (void)testSubclassComposition:(MyObject <ZZZ> * _Nonnull)x meta:(SWIFT_METATYPE(MyObject) <ZZZ> _Nonnull)xClass;
+// CHECK-NEXT: - (void)testGenericSubclassComposition:(FungibleContainer<MyObject *> <ZZZ> * _Nonnull)x meta:(SWIFT_METATYPE(FungibleContainer) <ZZZ> _Nonnull)xClass;
 // CHECK-NEXT: - (void)testOptional:(id <A> _Nullable)opt meta:(Class <A> _Nullable)m;
 // CHECK-NEXT: @end
 @objc protocol Methods {
   func test()
   static func test2()
 
-  func testRawAnyTypes(any: AnyObject, other: AnyObject.Type)
+  func testRawAnyTypes(_ any: AnyObject, other: AnyObject.Type)
 
-  func testSingleProtocolTypes(a : A, aAgain a2: protocol<A>, b: B, bAgain b2: protocol<B>, both: protocol<A, B>)
-  func testSingleProtocolClassTypes(a : A.Type, aAgain a2: protocol<A>.Type, b: B.Type, bAgain b2: protocol<B>.Type, both: protocol<A, B>.Type)
-  func testComposition(x: protocol<A, ZZZ>, meta xClass: protocol<A, ZZZ>.Type)
+  func testSingleProtocolTypes(_ a : A, aAgain a2: A, b: B, bAgain b2: B, both: A & B)
+  func testSingleProtocolClassTypes(_ a : A.Type, aAgain a2: A.Type, b: B.Type, bAgain b2: B.Type, both: (A & B).Type)
+  func testComposition(_ x: A & ZZZ, meta xClass: (A & ZZZ).Type)
+  func testSubclassComposition(_ x: MyObject & ZZZ, meta xClass: (MyObject & ZZZ).Type)
+  func testGenericSubclassComposition(_ x: FungibleContainer<MyObject> & ZZZ, meta xClass: (FungibleContainer<MyObject> & ZZZ).Type)
 
-  func testOptional(opt: A?, meta m: A.Type?)
-}
-
-// CHECK-LABEL: @interface MyObject : NSObject <NSCoding>
-// CHECK-NEXT: init
-// CHECK-NEXT: @end
-// NEGATIVE-NOT: @protocol NSCoding
-class MyObject : NSObject, NSCoding {
-  required init(coder aCoder: NSCoder) {
-    super.init()
-  }
+  func testOptional(_ opt: A?, meta m: A.Type?)
 }
 
 // NEGATIVE-NOT: NotObjC
 protocol NotObjC : class {}
 
-
-// CHECK-LABEL: @interface NSString (SWIFT_EXTENSION(protocols)){{$}}
+// NEGATIVE-NOT: @interface NSString (SWIFT_EXTENSION(protocols)){{$}}
 extension NSString : NotObjC {}
 
 // CHECK-LABEL: @protocol ZZZ{{$}}
@@ -110,12 +129,12 @@ extension NSString : A, ZZZ {}
   func a()
   func b()
 
-  optional func c()
-  optional func d()
+  @objc optional func c()
+  @objc optional func d()
 
   func e()
 
-  optional func f()
+  @objc optional func f()
 }
 
 // NEGATIVE-NOT: @protocol PrivateProto
@@ -124,12 +143,12 @@ extension NSString : A, ZZZ {}
 // CHECK-LABEL: @interface PrivateProtoAdopter{{$}}
 // CHECK-NEXT: init
 // CHECK-NEXT: @end
-@objc class PrivateProtoAdopter : PrivateProto {}
+@objc @objcMembers class PrivateProtoAdopter : PrivateProto {}
 
 // CHECK-LABEL: @interface PrivateProtoAdopter2 <A>
 // CHECK-NEXT: init
 // CHECK-NEXT: @end
-@objc class PrivateProtoAdopter2 : PrivateProto, A {}
+@objc @objcMembers class PrivateProtoAdopter2 : PrivateProto, A {}
 
 // CHECK-LABEL: @protocol Properties
 // CHECK-NEXT: @property (nonatomic, readonly) NSInteger a;
@@ -140,8 +159,27 @@ extension NSString : A, ZZZ {}
 @objc protocol Properties {
   var a: Int { get }
   var b: Properties? { get set }
-  optional var c: String { get }
+  @objc optional var c: String { get }
 }
+
+
+// Forward declaration of class referenced from subclass existential.
+
+// CHECK-LABEL: @class ReferencesSomeClass2;
+
+// CHECK-LABEL: @protocol ReferencesSomeClass1
+// CHECK-NEXT: - (void)referencesWithSomeClassAndZZZ:(ReferencesSomeClass2 <ZZZ> * _Nonnull)someClassAndZZZ;
+// CHECK-NEXT: @end
+
+// CHECK-LABEL: @interface ReferencesSomeClass2
+// CHECK-NEXT: - (nonnull instancetype)init OBJC_DESIGNATED_INITIALIZER;
+// CHECK-NEXT: @end
+
+@objc protocol ReferencesSomeClass1 {
+  @objc func references(someClassAndZZZ: ReferencesSomeClass2 & ZZZ)
+}
+
+@objc @objcMembers class ReferencesSomeClass2 {}
 
 
 // CHECK-LABEL: @protocol ReversedOrder2{{$}}
@@ -155,8 +193,7 @@ extension NSString : A, ZZZ {}
 
 // CHECK-LABEL: @interface RootClass1{{$}}
 // CHECK: @interface RootClass2 <A>{{$}}
-// FIXME: Would prefer not to print A below.
-// CHECK: @interface RootClass3 <B, A>{{$}}
+// CHECK: @interface RootClass3 <B>{{$}}
 @objc class RootClass1 : NotObjC {}
 @objc class RootClass2 : A, NotObjC {}
 @objc class RootClass3 : NotObjC, B {}
@@ -166,6 +203,18 @@ extension NSString : A, ZZZ {}
 
 // CHECK-LABEL: @interface Subclass : RootClass1 <ZZZ>{{$}}
 @objc class Subclass : RootClass1, ZZZ {}
+
+// CHECK-LABEL: @protocol UnownedProperty
+// CHECK-NEXT: @property (nonatomic, unsafe_unretained) id _Nonnull unownedProp;
+@objc protocol UnownedProperty {
+  unowned var unownedProp: AnyObject { get set }
+}
+
+// CHECK-LABEL: @protocol WeakProperty
+// CHECK-NEXT: @property (nonatomic, weak) id _Nullable weakProp;
+@objc protocol WeakProperty {
+  weak var weakProp: AnyObject? { get set }
+}
 
 // Deliberately at the end of the file.
 @objc protocol ZZZ {}

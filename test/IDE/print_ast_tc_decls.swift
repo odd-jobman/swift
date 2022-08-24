@@ -1,64 +1,64 @@
-// RUN: rm -rf %t && mkdir %t
+// RUN: %empty-directory(%t)
 //
 // Build swift modules this test depends on.
-// RUN: %target-swift-frontend -emit-module -o %t %S/Inputs/foo_swift_module.swift
+// RUN: %target-swift-frontend -emit-module -o %t %S/Inputs/foo_swift_module.swift -enable-objc-interop -disable-objc-attr-requires-foundation-module
 //
 // FIXME: BEGIN -enable-source-import hackaround
-// RUN:  %target-swift-frontend(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -emit-module -o %t  %S/../Inputs/clang-importer-sdk/swift-modules/ObjectiveC.swift
+// RUN:  %target-swift-frontend(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -emit-module -o %t  %S/../Inputs/clang-importer-sdk/swift-modules/ObjectiveC.swift -enable-objc-interop -disable-objc-attr-requires-foundation-module
 // FIXME: END -enable-source-import hackaround
 //
 // This file should not have any syntax or type checker errors.
-// RUN: %target-swift-frontend(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -parse -verify %s -F %S/Inputs/mock-sdk -disable-objc-attr-requires-foundation-module
+// RUN: %target-swift-frontend(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -swift-version 4 -typecheck -verify %s -F %S/Inputs/mock-sdk -enable-objc-interop -disable-objc-attr-requires-foundation-module
 //
-// RUN: %target-swift-ide-test(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -skip-deinit=false -print-ast-typechecked -source-filename %s -F %S/Inputs/mock-sdk -function-definitions=false -prefer-type-repr=false -print-implicit-attrs=true -disable-objc-attr-requires-foundation-module > %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_COMMON -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_PRINT_AST -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_RW_PROP_GET_SET -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_2200 -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_2500 -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_ONE_LINE -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_ONE_LINE_TYPE -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PREFER_TYPE_PRINTING -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_QUAL_UNQUAL -strict-whitespace < %t.printed.txt
+// RUN: %target-swift-ide-test(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -swift-version 4 -skip-deinit=false -print-ast-typechecked -source-filename %s -F %S/Inputs/mock-sdk -function-definitions=false -prefer-type-repr=false -print-implicit-attrs=true -enable-objc-interop -disable-objc-attr-requires-foundation-module > %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_COMMON -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefixes=PASS_PRINT_AST,PASS_PRINT_AST_TYPE -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_RW_PROP_GET_SET -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_2200 -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_2500 -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_ONE_LINE -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_ONE_LINE_TYPE -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PREFER_TYPE_PRINTING -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_QUAL_UNQUAL -strict-whitespace < %t.printed.txt
 //
-// RUN: %target-swift-ide-test(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -skip-deinit=false -print-ast-typechecked -source-filename %s -F %S/Inputs/mock-sdk -function-definitions=false -prefer-type-repr=true -print-implicit-attrs=true -disable-objc-attr-requires-foundation-module > %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_COMMON -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_PRINT_AST -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_RW_PROP_GET_SET -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_2200 -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_2500 -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_ONE_LINE -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_ONE_LINE_TYPEREPR -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PREFER_TYPE_REPR_PRINTING -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_QUAL_UNQUAL -strict-whitespace < %t.printed.txt
+// RUN: %target-swift-ide-test(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -swift-version 4 -skip-deinit=false -print-ast-typechecked -source-filename %s -F %S/Inputs/mock-sdk -function-definitions=false -prefer-type-repr=true -print-implicit-attrs=true -enable-objc-interop -disable-objc-attr-requires-foundation-module > %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_COMMON -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefixes=PASS_PRINT_AST,PASS_PRINT_AST_TYPEREPR -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_RW_PROP_GET_SET -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_2200 -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_2500 -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_ONE_LINE -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_ONE_LINE_TYPEREPR -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PREFER_TYPE_REPR_PRINTING -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_QUAL_UNQUAL -strict-whitespace < %t.printed.txt
 //
-// RUN: %target-swift-frontend(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -emit-module -o %t -F %S/Inputs/mock-sdk -disable-objc-attr-requires-foundation-module %s
-// RUN: %target-swift-ide-test(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -skip-deinit=false -print-module -source-filename %s -F %S/Inputs/mock-sdk -module-to-print=print_ast_tc_decls -print-implicit-attrs=true -disable-objc-attr-requires-foundation-module > %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_COMMON -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_PRINT_MODULE_INTERFACE -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_RW_PROP_NO_GET_SET -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_2200_DESERIALIZED -strict-whitespace < %t.printed.txt
+// RUN: %target-swift-frontend(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -swift-version 4 -emit-module -o %t -F %S/Inputs/mock-sdk -enable-objc-interop -disable-objc-attr-requires-foundation-module %s
+// RUN: %target-swift-ide-test(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -swift-version 4 -skip-deinit=false -print-module -source-filename %s -F %S/Inputs/mock-sdk -module-to-print=print_ast_tc_decls -print-implicit-attrs=true -enable-objc-interop -disable-objc-attr-requires-foundation-module > %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_COMMON -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_PRINT_MODULE_INTERFACE -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_RW_PROP_NO_GET_SET -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_2200_DESERIALIZED -strict-whitespace < %t.printed.txt
 // FIXME: rdar://15167697
-// FIXME: FileCheck %s -check-prefix=PASS_2500 -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_ONE_LINE -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PREFER_TYPE_REPR_PRINTING -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_QUAL_UNQUAL -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_EXPLODE_PATTERN -strict-whitespace < %t.printed.txt
+// FIXME: %FileCheck %s -check-prefix=PASS_2500 -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_ONE_LINE -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PREFER_TYPE_REPR_PRINTING -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_QUAL_UNQUAL -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_EXPLODE_PATTERN -strict-whitespace < %t.printed.txt
 //
-// RUN: %target-swift-ide-test(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -skip-deinit=false -print-module -source-filename %s -F %S/Inputs/mock-sdk -I %t -module-to-print=print_ast_tc_decls -synthesize-sugar-on-types=true -print-implicit-attrs=true -disable-objc-attr-requires-foundation-module > %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_PRINT_MODULE_INTERFACE -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_QUAL_UNQUAL -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=SYNTHESIZE_SUGAR_ON_TYPES -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_EXPLODE_PATTERN -strict-whitespace < %t.printed.txt
+// RUN: %target-swift-ide-test(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -skip-deinit=false -print-module -source-filename %s -F %S/Inputs/mock-sdk -I %t -module-to-print=print_ast_tc_decls -synthesize-sugar-on-types=true -print-implicit-attrs=true -enable-objc-interop -disable-objc-attr-requires-foundation-module > %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_PRINT_MODULE_INTERFACE -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_QUAL_UNQUAL -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=SYNTHESIZE_SUGAR_ON_TYPES -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_EXPLODE_PATTERN -strict-whitespace < %t.printed.txt
 
-// RUN: %target-swift-ide-test(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -skip-deinit=false -print-module -source-filename %s -F %S/Inputs/mock-sdk -I %t -module-to-print=print_ast_tc_decls -synthesize-sugar-on-types=true -fully-qualified-types-if-ambiguous=true -print-implicit-attrs=true -disable-objc-attr-requires-foundation-module > %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_PRINT_MODULE_INTERFACE -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=PASS_QUAL_IF_AMBIGUOUS -strict-whitespace < %t.printed.txt
-// RUN: FileCheck %s -check-prefix=SYNTHESIZE_SUGAR_ON_TYPES -strict-whitespace < %t.printed.txt
-// FIXME: FileCheck %s -check-prefix=PASS_EXPLODE_PATTERN -strict-whitespace < %t.printed.txt
+// RUN: %target-swift-ide-test(mock-sdk: -sdk %S/../Inputs/clang-importer-sdk -I %t) -skip-deinit=false -print-module -source-filename %s -F %S/Inputs/mock-sdk -I %t -module-to-print=print_ast_tc_decls -synthesize-sugar-on-types=true -fully-qualified-types-if-ambiguous=true -print-implicit-attrs=true -enable-objc-interop -disable-objc-attr-requires-foundation-module > %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_PRINT_MODULE_INTERFACE -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=PASS_QUAL_IF_AMBIGUOUS -strict-whitespace < %t.printed.txt
+// RUN: %FileCheck %s -check-prefix=SYNTHESIZE_SUGAR_ON_TYPES -strict-whitespace < %t.printed.txt
+// FIXME: %FileCheck %s -check-prefix=PASS_EXPLODE_PATTERN -strict-whitespace < %t.printed.txt
 
 // FIXME: rdar://problem/19648117 Needs splitting objc parts out
-// XFAIL: linux
+// REQUIRES: objc_interop
 
 import Bar
 import ObjectiveC
@@ -108,7 +108,7 @@ struct d0100_FooStruct {
 // PASS_COMMON-LABEL: {{^}}struct d0100_FooStruct {{{$}}
 
   var instanceVar1: Int = 0
-// PASS_COMMON-NEXT: {{^}}  var instanceVar1: Int{{$}}
+// PASS_COMMON-NEXT: {{^}}  @_hasInitialValue var instanceVar1: Int{{$}}
 
   var computedProp1: Int {
     get {
@@ -126,14 +126,14 @@ struct d0100_FooStruct {
   func instanceFunc2(a: Int, b: inout Double) {}
 // PASS_COMMON-NEXT: {{^}}  func instanceFunc2(a: Int, b: inout Double){{$}}
 
-  func instanceFunc3(a: Int, let b: Double) { var a = a; a = 1; _ = a }
+  func instanceFunc3(a: Int, b: Double) { var a = a; a = 1; _ = a }
 // PASS_COMMON-NEXT: {{^}}  func instanceFunc3(a: Int, b: Double){{$}}
 
   func instanceFuncWithDefaultArg1(a: Int = 0) {}
-// PASS_COMMON-NEXT: {{^}}  func instanceFuncWithDefaultArg1(a: Int = default){{$}}
+// PASS_COMMON-NEXT: {{^}}  func instanceFuncWithDefaultArg1(a: Int = 0){{$}}
 
   func instanceFuncWithDefaultArg2(a: Int = 0, b: Double = 0) {}
-// PASS_COMMON-NEXT: {{^}}  func instanceFuncWithDefaultArg2(a: Int = default, b: Double = default){{$}}
+// PASS_COMMON-NEXT: {{^}}  func instanceFuncWithDefaultArg2(a: Int = 0, b: Double = 0){{$}}
 
   func varargInstanceFunc0(v: Int...) {}
 // PASS_COMMON-NEXT: {{^}}  func varargInstanceFunc0(v: Int...){{$}}
@@ -172,6 +172,13 @@ struct d0100_FooStruct {
     }
   }
 // PASS_COMMON-NEXT: {{^}}  subscript(i: Int, j: Int) -> Double { get }{{$}}
+  
+  static subscript(i: Int) -> Double {
+    get {
+      return Double(i)
+    }
+  }
+// PASS_COMMON-NEXT: {{^}}  static subscript(i: Int) -> Double { get }{{$}}
 
   func bodyNameVoidFunc1(a: Int, b x: Float) {}
 // PASS_COMMON-NEXT: {{^}}  func bodyNameVoidFunc1(a: Int, b x: Float){{$}}
@@ -207,7 +214,7 @@ struct d0100_FooStruct {
 // PASS_COMMON-NEXT: {{^}}  typealias NestedTypealias = Int{{$}}
 
   static var staticVar1: Int = 42
-// PASS_COMMON-NEXT: {{^}}  static var staticVar1: Int{{$}}
+// PASS_COMMON-NEXT: {{^}}  @_hasInitialValue static var staticVar1: Int{{$}}
 
   static var computedStaticProp1: Int {
     get {
@@ -234,8 +241,8 @@ struct d0100_FooStruct {
   static func overloadedStaticFunc2(x: Double) -> Int { return 0 }
 // PASS_COMMON-NEXT: {{^}}  static func overloadedStaticFunc2(x: Double) -> Int{{$}}
 }
-// PASS_COMMON-NEXT: {{^}}  init(instanceVar1: Int){{$}}
 // PASS_COMMON-NEXT: {{^}}  init(){{$}}
+// PASS_COMMON-NEXT: {{^}}  init(instanceVar1: Int = 0){{$}}
 // PASS_COMMON-NEXT: {{^}}}{{$}}
 
 extension d0100_FooStruct {
@@ -303,7 +310,7 @@ extension d0100_FooStruct.ExtNestedStruct {
 // PASS_COMMON-NEXT: {{^}}}{{$}}
 
 var fooObject: d0100_FooStruct = d0100_FooStruct()
-// PASS_ONE_LINE-DAG: {{^}}var fooObject: d0100_FooStruct{{$}}
+// PASS_ONE_LINE-DAG: {{^}}@_hasInitialValue var fooObject: d0100_FooStruct{{$}}
 
 struct d0110_ReadWriteProperties {
 // PASS_RW_PROP_GET_SET-LABEL:    {{^}}struct d0110_ReadWriteProperties {{{$}}
@@ -432,7 +439,7 @@ class d0120_TestClassBase {
   final class var baseClassVar3: Int { return 0 }
 // PASS_COMMON-NEXT: {{^}}  final class var baseClassVar3: Int { get }{{$}}
   static var baseClassVar4: Int = 0
-// PASS_COMMON-NEXT: {{^}}  static var baseClassVar4: Int{{$}}
+// PASS_COMMON-NEXT: {{^}}  @_hasInitialValue static var baseClassVar4: Int{{$}}
   static var baseClassVar5: Int { return 0 }
 // PASS_COMMON-NEXT: {{^}}  static var baseClassVar5: Int { get }{{$}}
 
@@ -445,7 +452,7 @@ class d0120_TestClassBase {
 }
 
 class d0121_TestClassDerived : d0120_TestClassBase {
-// PASS_COMMON-LABEL: {{^}}class d0121_TestClassDerived : d0120_TestClassBase {{{$}}
+// PASS_COMMON-LABEL: {{^}}@_inheritsConvenienceInitializers {{()?}}class d0121_TestClassDerived : d0120_TestClassBase {{{$}}
 
   required init() { super.init() }
 // PASS_COMMON-NEXT: {{^}}  required init(){{$}}
@@ -478,36 +485,18 @@ protocol d0130_TestProtocol {
 @objc protocol d0140_TestObjCProtocol {
 // PASS_COMMON-LABEL: {{^}}@objc protocol d0140_TestObjCProtocol {{{$}}
 
-  optional var property1: Int { get }
+  @objc optional var property1: Int { get }
 // PASS_COMMON-NEXT: {{^}}  @objc optional var property1: Int { get }{{$}}
 
-  optional func protocolFunc1()
+  @objc optional func protocolFunc1()
 // PASS_COMMON-NEXT: {{^}}  @objc optional func protocolFunc1(){{$}}
 }
 
 protocol d0150_TestClassProtocol : class {}
-// PASS_COMMON-LABEL: {{^}}protocol d0150_TestClassProtocol : class {{{$}}
+// PASS_COMMON-LABEL: {{^}}protocol d0150_TestClassProtocol : AnyObject {{{$}}
 
 @objc protocol d0151_TestClassProtocol {}
 // PASS_COMMON-LABEL: {{^}}@objc protocol d0151_TestClassProtocol {{{$}}
-
-
-@noreturn @_silgen_name("exit") func d0160_testNoReturn()
-// PASS_COMMON-LABEL: {{^}}@_silgen_name("exit"){{$}}
-// PASS_COMMON-NEXT: {{^}}@noreturn func d0160_testNoReturn(){{$}}
-
-@noreturn func d0161_testNoReturn() { d0160_testNoReturn() }
-// PASS_COMMON-LABEL: {{^}}@noreturn func d0161_testNoReturn(){{$}}
-
-class d0162_TestNoReturn {
-// PASS_COMMON-LABEL: {{^}}class d0162_TestNoReturn {{{$}}
-
-  @noreturn func instanceFunc() { d0160_testNoReturn() }
-// PASS_COMMON-NEXT: {{^}}  @noreturn func instanceFunc(){{$}}
-
-  @noreturn func classFunc() {d0160_testNoReturn() }
-// PASS_COMMON-NEXT: {{^}}  @noreturn func classFunc(){{$}}
-}
 
 
 class d0170_TestAvailability {
@@ -527,19 +516,19 @@ class d0170_TestAvailability {
   @available(OSX, unavailable)
   func f3() {}
 // PASS_COMMON-NEXT: {{^}}  @available(iOS, unavailable){{$}}
-// PASS_COMMON-NEXT: {{^}}  @available(OSX, unavailable){{$}}
+// PASS_COMMON-NEXT: {{^}}  @available(macOS, unavailable){{$}}
 // PASS_COMMON-NEXT: {{^}}  func f3(){{$}}
 
   @available(iOS 8.0, OSX 10.10, *)
   func f4() {}
-// PASS_COMMON-NEXT: {{^}}  @available(iOS 8.0, OSX 10.10, *){{$}}
+// PASS_COMMON-NEXT: {{^}}  @available(iOS 8.0, macOS 10.10, *){{$}}
 // PASS_COMMON-NEXT: {{^}}  func f4(){{$}}
 
 // Convert long-form @available() to short form when possible.
   @available(iOS, introduced: 8.0)
   @available(OSX, introduced: 10.10)
   func f5() {}
-// PASS_COMMON-NEXT: {{^}}  @available(iOS 8.0, OSX 10.10, *){{$}}
+// PASS_COMMON-NEXT: {{^}}  @available(iOS 8.0, macOS 10.10, *){{$}}
 // PASS_COMMON-NEXT: {{^}}  func f5(){{$}}
 }
 
@@ -547,7 +536,10 @@ class d0170_TestAvailability {
 // PASS_COMMON-LABEL: {{^}}@objc class d0180_TestIBAttrs {{{$}}
 
   @IBAction func anAction(_: AnyObject) {}
-// PASS_COMMON-NEXT: {{^}}  @IBAction @objc func anAction(_: AnyObject){{$}}
+// PASS_COMMON-NEXT: {{^}}  @objc @IBAction @MainActor func anAction(_: AnyObject){{$}}
+
+  @IBSegueAction func aSegueAction(_ coder: AnyObject, sender: AnyObject, identifier: AnyObject?) -> Any? { fatalError() }
+// PASS_COMMON-NEXT: {{^}}  @objc @IBSegueAction func aSegueAction(_ coder: AnyObject, sender: AnyObject, identifier: AnyObject?) -> Any?{{$}}
 
   @IBDesignable
   class ADesignableClass {}
@@ -559,10 +551,13 @@ class d0170_TestAvailability {
 // PASS_EXPLODE_PATTERN-LABEL: {{^}}@objc class d0181_TestIBAttrs {{{$}}
 
   @IBOutlet weak var anOutlet: d0181_TestIBAttrs!
-// PASS_EXPLODE_PATTERN-NEXT: {{^}}  @IBOutlet @objc weak var anOutlet: @sil_weak d0181_TestIBAttrs!{{$}}
+// PASS_EXPLODE_PATTERN-NEXT: {{^}}  @objc @IBOutlet @_hasInitialValue weak var anOutlet: @sil_weak d0181_TestIBAttrs!{{$}}
 
   @IBInspectable var inspectableProp: Int = 0
-// PASS_EXPLODE_PATTERN-NEXT: {{^}}  @IBInspectable @objc var inspectableProp: Int{{$}}
+// PASS_EXPLODE_PATTERN-NEXT: {{^}}  @objc @IBInspectable @_hasInitialValue var inspectableProp: Int{{$}}
+
+  @GKInspectable var inspectableProp2: Int = 0
+// PASS_EXPLODE_PATTERN-NEXT: {{^}}  @objc @GKInspectable @_hasInitialValue var inspectableProp2: Int{{$}}
 }
 
 struct d0190_LetVarDecls {
@@ -570,21 +565,21 @@ struct d0190_LetVarDecls {
 // PASS_PRINT_MODULE_INTERFACE-LABEL: {{^}}struct d0190_LetVarDecls {{{$}}
 
   let instanceVar1: Int = 0
-// PASS_PRINT_AST-NEXT: {{^}}  let instanceVar1: Int{{$}}
-// PASS_PRINT_MODULE_INTERFACE-NEXT: {{^}}  let instanceVar1: Int{{$}}
+// PASS_PRINT_AST-NEXT: {{^}}  @_hasInitialValue let instanceVar1: Int{{$}}
+// PASS_PRINT_MODULE_INTERFACE-NEXT: {{^}}  @_hasInitialValue let instanceVar1: Int{{$}}
 
   let instanceVar2 = 0
-// PASS_PRINT_AST-NEXT: {{^}}  let instanceVar2: Int{{$}}
-// PASS_PRINT_MODULE_INTERFACE-NEXT: {{^}}  let instanceVar2: Int{{$}}
+// PASS_PRINT_AST-NEXT: {{^}}  @_hasInitialValue let instanceVar2: Int{{$}}
+// PASS_PRINT_MODULE_INTERFACE-NEXT: {{^}}  @_hasInitialValue let instanceVar2: Int{{$}}
 
   static let staticVar1: Int = 42
-// PASS_PRINT_AST-NEXT: {{^}}  static let staticVar1: Int{{$}}
-// PASS_PRINT_MODULE_INTERFACE-NEXT: {{^}}  static let staticVar1: Int{{$}}
+// PASS_PRINT_AST-NEXT: {{^}}  @_hasInitialValue static let staticVar1: Int{{$}}
+// PASS_PRINT_MODULE_INTERFACE-NEXT: {{^}}  @_hasInitialValue static let staticVar1: Int{{$}}
 
   static let staticVar2 = 42
   // FIXME: PRINTED_WITHOUT_TYPE
-// PASS_PRINT_AST-NEXT: {{^}}  static let staticVar2: Int{{$}}
-// PASS_PRINT_MODULE_INTERFACE-NEXT: {{^}}  static let staticVar2: Int{{$}}
+// PASS_PRINT_AST-NEXT: {{^}}  @_hasInitialValue static let staticVar2: Int{{$}}
+// PASS_PRINT_MODULE_INTERFACE-NEXT: {{^}}  @_hasInitialValue static let staticVar2: Int{{$}}
 }
 
 struct d0200_EscapedIdentifiers {
@@ -600,6 +595,8 @@ struct d0200_EscapedIdentifiers {
   }
 // PASS_COMMON-NEXT: {{^}}  enum `enum` {{{$}}
 // PASS_COMMON-NEXT: {{^}}    case `case`{{$}}
+// PASS_COMMON-NEXT: {{^}}    {{.*}}static func __derived_enum_equals(_ a: d0200_EscapedIdentifiers.`enum`, _ b: d0200_EscapedIdentifiers.`enum`) -> Bool
+// PASS_COMMON-NEXT: {{^}}    func hash(into hasher: inout Hasher)
 // PASS_COMMON-NEXT: {{^}}    var hashValue: Int { get }{{$}}
 // PASS_COMMON-NEXT: {{^}}  }{{$}}
 
@@ -614,21 +611,21 @@ struct d0200_EscapedIdentifiers {
 // PASS_ONE_LINE_TYPEREPR-DAG: {{^}}  typealias `protocol` = `class`{{$}}
 
   class `extension` : `class` {}
-// PASS_ONE_LINE_TYPE-DAG: {{^}}  class `extension` : d0200_EscapedIdentifiers.`class` {{{$}}
-// PASS_ONE_LINE_TYPEREPR-DAG: {{^}}  class `extension` : `class` {{{$}}
-// PASS_COMMON: {{^}}    @objc deinit{{$}}
-// PASS_COMMON-NEXT: {{^}}    {{(override )?}}init(){{$}}
+// PASS_ONE_LINE_TYPE-DAG: {{^}}  @_inheritsConvenienceInitializers class `extension` : d0200_EscapedIdentifiers.`class` {{{$}}
+// PASS_ONE_LINE_TYPEREPR-DAG: {{^}}  @_inheritsConvenienceInitializers class `extension` : `class` {{{$}}
+// PASS_COMMON:      {{^}}    {{(override )?}}init(){{$}}
+// PASS_COMMON-NEXT: {{^}}    @objc deinit{{$}}
 // PASS_COMMON-NEXT: {{^}}  }{{$}}
 
-  func `func`<`let`: `protocol`, `where` where `where` : `protocol`>(
-      class: Int, struct: `protocol`, foo: `let`, bar: `where`) {}
-// PASS_COMMON-NEXT: {{^}}  func `func`<`let` : `protocol`, `where` where `where` : `protocol`>(class: Int, struct: `protocol`, foo: `let`, bar: `where`){{$}}
+  func `func`<`let`: `protocol`, `where`>(
+      class: Int, struct: `protocol`, foo: `let`, bar: `where`) where `where` : `protocol` {}
+// PASS_COMMON-NEXT: {{^}}  func `func`<`let`, `where`>(class: Int, struct: {{(d0200_EscapedIdentifiers.)?}}`protocol`, foo: `let`, bar: `where`) where `let` : {{(d0200_EscapedIdentifiers.)?}}`class`, `where` : {{(d0200_EscapedIdentifiers.)?}}`class`{{$}}
 
   var `var`: `struct` = `struct`()
-// PASS_COMMON-NEXT: {{^}}  var `var`: {{(d0200_EscapedIdentifiers.)?}}`struct`{{$}}
+// PASS_COMMON-NEXT: {{^}}  @_hasInitialValue var `var`: {{(d0200_EscapedIdentifiers.)?}}`struct`{{$}}
 
   var tupleType: (`var`: Int, `let`: `struct`)
-// PASS_COMMON-NEXT: {{^}}  var tupleType: (`var`: Int, `let`: {{(d0200_EscapedIdentifiers.)?}}`struct`){{$}}
+// PASS_COMMON-NEXT: {{^}}  var tupleType: (var: Int, let: {{(d0200_EscapedIdentifiers.)?}}`struct`){{$}}
 
   var accessors1: Int {
     get { return 0 }
@@ -639,7 +636,7 @@ struct d0200_EscapedIdentifiers {
   static func `static`(protocol: Int) {}
 // PASS_COMMON-NEXT: {{^}}  static func `static`(protocol: Int){{$}}
 
-// PASS_COMMON-NEXT: {{^}}  init(`var`: {{(d0200_EscapedIdentifiers.)?}}`struct`, tupleType: (`var`: Int, `let`: {{(d0200_EscapedIdentifiers.)?}}`struct`)){{$}}
+// PASS_COMMON-NEXT: {{^}}  init(var: {{(d0200_EscapedIdentifiers.)?}}`struct` = {{(d0200_EscapedIdentifiers.)?}}`struct`(), tupleType: (var: Int, let: {{(d0200_EscapedIdentifiers.)?}}`struct`)){{$}}
 // PASS_COMMON-NEXT: {{^}}}{{$}}
 }
 
@@ -648,16 +645,16 @@ struct d0210_Qualifications {
 // PASS_QUAL_IF_AMBIGUOUS: {{^}}struct d0210_Qualifications {{{$}}
 
   var propFromStdlib1: Int = 0
-// PASS_QUAL_UNQUAL-NEXT:       {{^}}  var propFromStdlib1: Int{{$}}
-// PASS_QUAL_IF_AMBIGUOUS-NEXT: {{^}}  var propFromStdlib1: Int{{$}}
+// PASS_QUAL_UNQUAL-NEXT:       {{^}}  @_hasInitialValue var propFromStdlib1: Int{{$}}
+// PASS_QUAL_IF_AMBIGUOUS-NEXT: {{^}}  @_hasInitialValue var propFromStdlib1: Int{{$}}
 
   var propFromSwift1: FooSwiftStruct = FooSwiftStruct()
-// PASS_QUAL_UNQUAL-NEXT:       {{^}}  var propFromSwift1: FooSwiftStruct{{$}}
-// PASS_QUAL_IF_AMBIGUOUS-NEXT: {{^}}  var propFromSwift1: foo_swift_module.FooSwiftStruct{{$}}
+// PASS_QUAL_UNQUAL-NEXT:       {{^}}  @_hasInitialValue var propFromSwift1: FooSwiftStruct{{$}}
+// PASS_QUAL_IF_AMBIGUOUS-NEXT: {{^}}  @_hasInitialValue var propFromSwift1: foo_swift_module.FooSwiftStruct{{$}}
 
   var propFromClang1: FooStruct1 = FooStruct1(x: 0, y: 0.0)
-// PASS_QUAL_UNQUAL-NEXT:       {{^}}  var propFromClang1: FooStruct1{{$}}
-// PASS_QUAL_IF_AMBIGUOUS-NEXT: {{^}}  var propFromClang1: FooStruct1{{$}}
+// PASS_QUAL_UNQUAL-NEXT:       {{^}}  @_hasInitialValue var propFromClang1: FooStruct1{{$}}
+// PASS_QUAL_IF_AMBIGUOUS-NEXT: {{^}}  @_hasInitialValue var propFromClang1: FooStruct1{{$}}
 
 
   func instanceFuncFromStdlib1(a: Int) -> Float {
@@ -691,43 +688,43 @@ class d0250_ExplodePattern {
   var instanceVar1 = 0
   var instanceVar2 = 0.0
   var instanceVar3 = ""
-// PASS_EXPLODE_PATTERN: {{^}}  var instanceVar1: Int{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  var instanceVar2: Double{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  var instanceVar3: String{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue var instanceVar1: Int{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue var instanceVar2: Double{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue var instanceVar3: String{{$}}
 
   var instanceVar4 = FooStruct()
   var (instanceVar5, instanceVar6) = (FooStruct(), FooStruct())
   var (instanceVar7, instanceVar8) = (FooStruct(), FooStruct())
   var (instanceVar9, instanceVar10) : (FooStruct, FooStruct) = (FooStruct(), FooStruct())
   final var (instanceVar11, instanceVar12) = (FooStruct(), FooStruct())
-// PASS_EXPLODE_PATTERN: {{^}}  var instanceVar4: FooStruct{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  var instanceVar5: FooStruct{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  var instanceVar6: FooStruct{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  var instanceVar7: FooStruct{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  var instanceVar8: FooStruct{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  var instanceVar9: FooStruct{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  var instanceVar10: FooStruct{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  final var instanceVar11: FooStruct{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  final var instanceVar12: FooStruct{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue var instanceVar4: FooStruct{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue var instanceVar5: FooStruct{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue var instanceVar6: FooStruct{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue var instanceVar7: FooStruct{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue var instanceVar8: FooStruct{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue var instanceVar9: FooStruct{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue var instanceVar10: FooStruct{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue final var instanceVar11: FooStruct{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue final var instanceVar12: FooStruct{{$}}
 
   let instanceLet1 = 0
   let instanceLet2 = 0.0
   let instanceLet3 = ""
-// PASS_EXPLODE_PATTERN: {{^}}  final let instanceLet1: Int{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  final let instanceLet2: Double{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  final let instanceLet3: String{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue final let instanceLet1: Int{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue final let instanceLet2: Double{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue final let instanceLet3: String{{$}}
 
   let instanceLet4 = FooStruct()
   let (instanceLet5, instanceLet6) = (FooStruct(), FooStruct())
   let (instanceLet7, instanceLet8) = (FooStruct(), FooStruct())
   let (instanceLet9, instanceLet10) : (FooStruct, FooStruct) = (FooStruct(), FooStruct())
-// PASS_EXPLODE_PATTERN: {{^}}  final let instanceLet4: FooStruct{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  final let instanceLet5: FooStruct{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  final let instanceLet6: FooStruct{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  final let instanceLet7: FooStruct{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  final let instanceLet8: FooStruct{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  final let instanceLet9: FooStruct{{$}}
-// PASS_EXPLODE_PATTERN: {{^}}  final let instanceLet10: FooStruct{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue final let instanceLet4: FooStruct{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue final let instanceLet5: FooStruct{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue final let instanceLet6: FooStruct{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue final let instanceLet7: FooStruct{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue final let instanceLet8: FooStruct{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue final let instanceLet9: FooStruct{{$}}
+// PASS_EXPLODE_PATTERN: {{^}}  @_hasInitialValue final let instanceLet10: FooStruct{{$}}
 }
 
 class d0260_ExplodePattern_TestClassBase {
@@ -751,7 +748,7 @@ class d0260_ExplodePattern_TestClassBase {
 }
 
 class d0261_ExplodePattern_TestClassDerived : d0260_ExplodePattern_TestClassBase {
-// PASS_EXPLODE_PATTERN-LABEL: {{^}}class d0261_ExplodePattern_TestClassDerived : d0260_ExplodePattern_TestClassBase {{{$}}
+// PASS_EXPLODE_PATTERN-LABEL: {{^}}@_inheritsConvenienceInitializers class d0261_ExplodePattern_TestClassDerived : d0260_ExplodePattern_TestClassBase {{{$}}
 
   override final var baseProp2: Int {
     get {
@@ -794,13 +791,13 @@ class ClassWithInheritance2 : FooProtocol, BarProtocol {}
 // PASS_ONE_LINE-DAG: {{^}}class ClassWithInheritance2 : FooProtocol, BarProtocol {{{$}}
 
 class ClassWithInheritance3 : FooClass {}
-// PASS_ONE_LINE-DAG: {{^}}class ClassWithInheritance3 : FooClass {{{$}}
+// PASS_ONE_LINE-DAG: {{^}}@_inheritsConvenienceInitializers class ClassWithInheritance3 : FooClass {{{$}}
 
 class ClassWithInheritance4 : FooClass, FooProtocol {}
-// PASS_ONE_LINE-DAG: {{^}}class ClassWithInheritance4 : FooClass, FooProtocol {{{$}}
+// PASS_ONE_LINE-DAG: {{^}}@_inheritsConvenienceInitializers class ClassWithInheritance4 : FooClass, FooProtocol {{{$}}
 
 class ClassWithInheritance5 : FooClass, FooProtocol, BarProtocol {}
-// PASS_ONE_LINE-DAG: {{^}}class ClassWithInheritance5 : FooClass, FooProtocol, BarProtocol {{{$}}
+// PASS_ONE_LINE-DAG: {{^}}@_inheritsConvenienceInitializers class ClassWithInheritance5 : FooClass, FooProtocol, BarProtocol {{{$}}
 
 class ClassWithInheritance6 : QuxProtocol, SubFooProtocol {
   typealias Qux = Int
@@ -842,7 +839,7 @@ protocol ProtocolWithInheritance1 : FooProtocol {}
 // PASS_ONE_LINE-DAG: {{^}}protocol ProtocolWithInheritance1 : FooProtocol {{{$}}
 
 protocol ProtocolWithInheritance2 : FooProtocol, BarProtocol { }
-// PASS_ONE_LINE-DAG: {{^}}protocol ProtocolWithInheritance2 : FooProtocol, BarProtocol {{{$}}
+// PASS_ONE_LINE-DAG: {{^}}protocol ProtocolWithInheritance2 : BarProtocol, FooProtocol {{{$}}
 
 protocol ProtocolWithInheritance3 : QuxProtocol, SubFooProtocol {
 }
@@ -878,7 +875,13 @@ protocol AssociatedType1 {
 // PASS_ONE_LINE-DAG: {{^}}  associatedtype AssociatedTypeDecl2 : FooProtocol{{$}}
 
   associatedtype AssociatedTypeDecl3 : FooProtocol, BarProtocol
-// PASS_ONE_LINE_TYPEREPR-DAG: {{^}}  associatedtype AssociatedTypeDecl3 : FooProtocol, BarProtocol{{$}}
+// PASS_ONE_LINE_TYPEREPR-DAG: {{^}}  associatedtype AssociatedTypeDecl3 : BarProtocol, FooProtocol{{$}}
+
+  associatedtype AssociatedTypeDecl4 where AssociatedTypeDecl4 : QuxProtocol, AssociatedTypeDecl4.Qux == Int
+// PASS_ONE_LINE_TYPEREPR-DAG: {{^}}  associatedtype AssociatedTypeDecl4 : QuxProtocol where Self.AssociatedTypeDecl4.Qux == Int{{$}}
+
+  associatedtype AssociatedTypeDecl5: FooClass
+// PASS_ONE_LINE_TYPEREPR-DAG: {{^}}  associatedtype AssociatedTypeDecl5 : FooClass{{$}}
 }
 
 //===---
@@ -886,11 +889,11 @@ protocol AssociatedType1 {
 //===---
 
 var d0300_topLevelVar1: Int = 42
-// PASS_COMMON: {{^}}var d0300_topLevelVar1: Int{{$}}
+// PASS_COMMON: {{^}}@_hasInitialValue var d0300_topLevelVar1: Int{{$}}
 // PASS_COMMON-NOT: d0300_topLevelVar1
 
 var d0400_topLevelVar2: Int = 42
-// PASS_COMMON: {{^}}var d0400_topLevelVar2: Int{{$}}
+// PASS_COMMON: {{^}}@_hasInitialValue var d0400_topLevelVar2: Int{{$}}
 // PASS_COMMON-NOT: d0400_topLevelVar2
 
 var d0500_topLevelVar2: Int {
@@ -909,13 +912,13 @@ class d0600_InClassVar1 {
 // PASS_COMMON-NOT: instanceVar1
 
   var instanceVar2: Int = 42
-// PASS_COMMON: {{^}}  var instanceVar2: Int{{$}}
+// PASS_COMMON: {{^}}  @_hasInitialValue var instanceVar2: Int{{$}}
 // PASS_COMMON-NOT: instanceVar2
 
   // FIXME: this is sometimes printed without a type, see PASS_EXPLODE_PATTERN.
   // FIXME: PRINTED_WITHOUT_TYPE
   var instanceVar3 = 42
-// PASS_COMMON: {{^}}  var instanceVar3
+// PASS_COMMON: {{^}}  @_hasInitialValue var instanceVar3
 // PASS_COMMON-NOT: instanceVar3
 
   var instanceVar4: Int {
@@ -1021,6 +1024,8 @@ enum d2000_EnumDecl1 {
 // PASS_COMMON: {{^}}enum d2000_EnumDecl1 {{{$}}
 // PASS_COMMON-NEXT: {{^}}  case ED1_First{{$}}
 // PASS_COMMON-NEXT: {{^}}  case ED1_Second{{$}}
+// PASS_COMMON-NEXT: {{^}}  {{.*}}static func __derived_enum_equals(_ a: d2000_EnumDecl1, _ b: d2000_EnumDecl1) -> Bool
+// PASS_COMMON-NEXT: {{^}}  func hash(into hasher: inout Hasher)
 // PASS_COMMON-NEXT: {{^}}  var hashValue: Int { get }{{$}}
 // PASS_COMMON-NEXT: {{^}}}{{$}}
 
@@ -1077,11 +1082,10 @@ enum d2300_EnumDeclWithValues1 : Int {
 // PASS_COMMON: {{^}}enum d2300_EnumDeclWithValues1 : Int {{{$}}
 // PASS_COMMON-NEXT: {{^}}  case EDV2_First{{$}}
 // PASS_COMMON-NEXT: {{^}}  case EDV2_Second{{$}}
-// PASS_COMMON-NEXT: {{^}}  typealias RawValue = Int
-// PASS_COMMON-NEXT: {{^}}  var hashValue: Int { get }{{$}}
-// PASS_COMMON-NEXT: {{^}}  init?(rawValue: Int){{$}}
-// PASS_COMMON-NEXT: {{^}}  var rawValue: Int { get }{{$}}
-// PASS_COMMON-NEXT: {{^}}}{{$}}
+// PASS_COMMON-DAG: {{^}}  typealias RawValue = Int
+// PASS_COMMON-DAG: {{^}}  init?(rawValue: Int){{$}}
+// PASS_COMMON-DAG: {{^}}  var rawValue: Int { get }{{$}}
+// PASS_COMMON: {{^}}}{{$}}
 
 enum d2400_EnumDeclWithValues2 : Double {
   case EDV3_First = 10
@@ -1090,63 +1094,61 @@ enum d2400_EnumDeclWithValues2 : Double {
 // PASS_COMMON: {{^}}enum d2400_EnumDeclWithValues2 : Double {{{$}}
 // PASS_COMMON-NEXT: {{^}}  case EDV3_First{{$}}
 // PASS_COMMON-NEXT: {{^}}  case EDV3_Second{{$}}
-// PASS_COMMON-NEXT: {{^}}  typealias RawValue = Double
-// PASS_COMMON-NEXT: {{^}}  var hashValue: Int { get }{{$}}
-// PASS_COMMON-NEXT: {{^}}  init?(rawValue: Double){{$}}
-// PASS_COMMON-NEXT: {{^}}  var rawValue: Double { get }{{$}}
-// PASS_COMMON-NEXT: {{^}}}{{$}}
+// PASS_COMMON-DAG: {{^}}  typealias RawValue = Double
+// PASS_COMMON-DAG: {{^}}  init?(rawValue: Double){{$}}
+// PASS_COMMON-DAG: {{^}}  var rawValue: Double { get }{{$}}
+// PASS_COMMON: {{^}}}{{$}}
 
 //===---
 //===--- Custom operator printing.
 //===---
 
-postfix operator <*> {}
+postfix operator <*>
 
-// PASS_2500-LABEL: {{^}}postfix operator <*> {{{$}}
-// PASS_2500-NEXT: {{^}}}{{$}}
+// PASS_2500-LABEL: {{^}}postfix operator <*>{{$}}
 
 protocol d2600_ProtocolWithOperator1 {
-  postfix func <*>(_: Int)
+  static postfix func <*>(_: Self)
 }
 // PASS_2500: {{^}}protocol d2600_ProtocolWithOperator1 {{{$}}
-// PASS_2500-NEXT: {{^}}  postfix func <*>(_: Int){{$}}
+// PASS_2500-NEXT: {{^}}  postfix static func <*> (_: Self){{$}}
 // PASS_2500-NEXT: {{^}}}{{$}}
 
 struct d2601_TestAssignment {}
-infix operator %%% { }
+infix operator %%%
 func %%%(lhs: inout d2601_TestAssignment, rhs: d2601_TestAssignment) -> Int {
   return 0
 }
-// PASS_2500-LABEL: {{^}}infix operator %%% {
-// PASS_2500-NOT: associativity
-// PASS_2500-NOT: precedence
-// PASS_2500-NOT: assignment
-// PASS_2500: {{^}}func %%%(lhs: inout d2601_TestAssignment, rhs: d2601_TestAssignment) -> Int{{$}}
+// PASS_2500-LABEL: {{^}}infix operator %%% : DefaultPrecedence{{$}}
+// PASS_2500: {{^}}func %%% (lhs: inout d2601_TestAssignment, rhs: d2601_TestAssignment) -> Int{{$}}
 
-infix operator %%< {
-// PASS_2500-LABEL: {{^}}infix operator %%< {{{$}}
-  associativity left
-// PASS_2500-NEXT: {{^}}  associativity left{{$}}
-  precedence 47
-// PASS_2500-NEXT: {{^}}  precedence 47{{$}}
+precedencegroup BoringPrecedence {
+// PASS_2500-LABEL: {{^}}precedencegroup BoringPrecedence {{{$}}
+  associativity: left
+// PASS_2500-NEXT: {{^}}  associativity: left{{$}}
+  higherThan: AssignmentPrecedence
+// PASS_2500-NEXT: {{^}}  higherThan: AssignmentPrecedence{{$}}
 // PASS_2500-NOT:         assignment
+// PASS_2500-NOT:         lowerThan
 }
 
-infix operator %%> {
-// PASS_2500-LABEL: {{^}}infix operator %%> {{{$}}
-  associativity right
-// PASS_2500-NEXT: {{^}}  associativity right{{$}}
-// PASS_2500-NOT: precedence
+precedencegroup ReallyBoringPrecedence {
+// PASS_2500-LABEL: {{^}}precedencegroup ReallyBoringPrecedence {{{$}}
+  associativity: right
+// PASS_2500-NEXT: {{^}}  associativity: right{{$}}
+// PASS_2500-NOT: higherThan
+// PASS_2500-NOT: lowerThan
 // PASS_2500-NOT: assignment
 }
 
-infix operator %%<> {
-// PASS_2500-LABEL: {{^}}infix operator %%<> {{{$}}
-  precedence 47
-  assignment
-// PASS_2500-NEXT: {{^}}  precedence 47{{$}}
-// PASS_2500-NEXT: {{^}}  assignment{{$}}
+precedencegroup BoringAssignmentPrecedence {
+// PASS_2500-LABEL: {{^}}precedencegroup BoringAssignmentPrecedence {{{$}}
+  lowerThan: AssignmentPrecedence
+  assignment: true
+// PASS_2500-NEXT: {{^}}  assignment: true{{$}}
+// PASS_2500-NEXT: {{^}}  lowerThan: AssignmentPrecedence{{$}}
 // PASS_2500-NOT: associativity
+// PASS_2500-NOT: higherThan
 }
 // PASS_2500: {{^}}}{{$}}
 
@@ -1159,10 +1161,15 @@ protocol d2700_ProtocolWithAssociatedType1 {
   func returnsTA1() -> TA1
 }
 
-// PASS_COMMON: {{^}}protocol d2700_ProtocolWithAssociatedType1 {{{$}}
-// PASS_COMMON-NEXT: {{^}}  associatedtype TA1{{$}}
-// PASS_COMMON-NEXT: {{^}}  func returnsTA1() -> Self.TA1{{$}}
-// PASS_COMMON-NEXT: {{^}}}{{$}}
+// PREFER_TYPE_PRINTING: {{^}}protocol d2700_ProtocolWithAssociatedType1 {{{$}}
+// PREFER_TYPE_PRINTING-NEXT: {{^}}  associatedtype TA1{{$}}
+// PREFER_TYPE_PRINTING-NEXT: {{^}}  func returnsTA1() -> Self.TA1{{$}}
+// PREFER_TYPE_PRINTING-NEXT: {{^}}}{{$}}
+
+// PREFER_TYPEREPR_PRINTING: {{^}}protocol d2700_ProtocolWithAssociatedType1 {{{$}}
+// PREFER_TYPEREPR_PRINTING-NEXT: {{^}}  associatedtype TA1{{$}}
+// PREFER_TYPEREPR_PRINTING-NEXT: {{^}}  func returnsTA1() -> TA1{{$}}
+// PREFER_TYPEREPR_PRINTING-NEXT: {{^}}}{{$}}
 
 struct d2800_ProtocolWithAssociatedType1Impl : d2700_ProtocolWithAssociatedType1 {
   func returnsTA1() -> Int {
@@ -1172,8 +1179,8 @@ struct d2800_ProtocolWithAssociatedType1Impl : d2700_ProtocolWithAssociatedType1
 
 // PASS_COMMON: {{^}}struct d2800_ProtocolWithAssociatedType1Impl : d2700_ProtocolWithAssociatedType1 {{{$}}
 // PASS_COMMON-NEXT: {{^}}  func returnsTA1() -> Int{{$}}
-// PASS_COMMON-NEXT: {{^}}  init(){{$}}
 // PASS_COMMON-NEXT: {{^}}  typealias TA1 = Int
+// PASS_COMMON-NEXT: {{^}}  init(){{$}}
 // PASS_COMMON-NEXT: {{^}}}{{$}}
 
 //===---
@@ -1183,63 +1190,70 @@ struct d2800_ProtocolWithAssociatedType1Impl : d2700_ProtocolWithAssociatedType1
 struct GenericParams1<
     StructGenericFoo : FooProtocol,
     StructGenericFooX : FooClass,
-    StructGenericBar : protocol<FooProtocol, BarProtocol>,
+    StructGenericBar : FooProtocol & BarProtocol,
     StructGenericBaz> {
-// PASS_ONE_LINE_TYPE-DAG: {{^}}struct GenericParams1<StructGenericFoo : FooProtocol, StructGenericFooX : FooClass, StructGenericBar : protocol<BarProtocol, FooProtocol>, StructGenericBaz> {{{$}}
-// FIXME: in protocol compositions protocols are listed in reverse order.
-//
-// PASS_ONE_LINE_TYPEREPR-DAG: {{^}}struct GenericParams1<StructGenericFoo : FooProtocol, StructGenericFooX : FooClass, StructGenericBar : protocol<FooProtocol, BarProtocol>, StructGenericBaz> {{{$}}
+// PASS_ONE_LINE_TYPE-DAG: {{^}}struct GenericParams1<StructGenericFoo, StructGenericFooX, StructGenericBar, StructGenericBaz> where StructGenericFoo : FooProtocol, StructGenericFooX : FooClass, StructGenericBar : BarProtocol, StructGenericBar : FooProtocol {{{$}}
+// PASS_ONE_LINE_TYPEREPR-DAG: {{^}}struct GenericParams1<StructGenericFoo, StructGenericFooX, StructGenericBar, StructGenericBaz> where StructGenericFoo : FooProtocol, StructGenericFooX : FooClass, StructGenericBar : BarProtocol, StructGenericBar : FooProtocol {{{$}}
   init<
       GenericFoo : FooProtocol,
       GenericFooX : FooClass,
-      GenericBar : protocol<FooProtocol, BarProtocol>,
+      GenericBar : FooProtocol & BarProtocol,
       GenericBaz>(a: StructGenericFoo, b: StructGenericBar, c: StructGenericBaz,
                   d: GenericFoo, e: GenericFooX, f: GenericBar, g: GenericBaz)
   {}
-// PASS_ONE_LINE_TYPE-DAG: {{^}}  init<GenericFoo : FooProtocol, GenericFooX : FooClass, GenericBar : protocol<BarProtocol, FooProtocol>, GenericBaz>(a: StructGenericFoo, b: StructGenericBar, c: StructGenericBaz, d: GenericFoo, e: GenericFooX, f: GenericBar, g: GenericBaz){{$}}
+// PASS_ONE_LINE_TYPE-DAG: {{^}}  init<GenericFoo, GenericFooX, GenericBar, GenericBaz>(a: StructGenericFoo, b: StructGenericBar, c: StructGenericBaz, d: GenericFoo, e: GenericFooX, f: GenericBar, g: GenericBaz) where GenericFoo : FooProtocol, GenericFooX : FooClass, GenericBar : BarProtocol, GenericBar : FooProtocol{{$}}
 // FIXME: in protocol compositions protocols are listed in reverse order.
 //
-// PASS_ONE_LINE_TYPEREPR-DAG: {{^}}  init<GenericFoo : FooProtocol, GenericFooX : FooClass, GenericBar : protocol<FooProtocol, BarProtocol>, GenericBaz>(a: StructGenericFoo, b: StructGenericBar, c: StructGenericBaz, d: GenericFoo, e: GenericFooX, f: GenericBar, g: GenericBaz){{$}}
+// PASS_ONE_LINE_TYPEREPR-DAG: {{^}}  init<GenericFoo, GenericFooX, GenericBar, GenericBaz>(a: StructGenericFoo, b: StructGenericBar, c: StructGenericBaz, d: GenericFoo, e: GenericFooX, f: GenericBar, g: GenericBaz) where GenericFoo : FooProtocol, GenericFooX : FooClass, GenericBar : BarProtocol, GenericBar : FooProtocol{{$}}
 
   func genericParams1<
       GenericFoo : FooProtocol,
       GenericFooX : FooClass,
-      GenericBar : protocol<FooProtocol, BarProtocol>,
+      GenericBar : FooProtocol & BarProtocol,
       GenericBaz>(a: StructGenericFoo, b: StructGenericBar, c: StructGenericBaz,
                   d: GenericFoo, e: GenericFooX, f: GenericBar, g: GenericBaz)
   {}
-// PASS_ONE_LINE_TYPE-DAG: {{^}}  func genericParams1<GenericFoo : FooProtocol, GenericFooX : FooClass, GenericBar : protocol<BarProtocol, FooProtocol>, GenericBaz>(a: StructGenericFoo, b: StructGenericBar, c: StructGenericBaz, d: GenericFoo, e: GenericFooX, f: GenericBar, g: GenericBaz){{$}}
+// PASS_ONE_LINE_TYPE-DAG: {{^}}  func genericParams1<GenericFoo, GenericFooX, GenericBar, GenericBaz>(a: StructGenericFoo, b: StructGenericBar, c: StructGenericBaz, d: GenericFoo, e: GenericFooX, f: GenericBar, g: GenericBaz) where GenericFoo : FooProtocol, GenericFooX : FooClass, GenericBar : BarProtocol, GenericBar : FooProtocol{{$}}
 // FIXME: in protocol compositions protocols are listed in reverse order.
 //
-// PASS_ONE_LINE_TYPEREPR-DAG: {{^}}  func genericParams1<GenericFoo : FooProtocol, GenericFooX : FooClass, GenericBar : protocol<FooProtocol, BarProtocol>, GenericBaz>(a: StructGenericFoo, b: StructGenericBar, c: StructGenericBaz, d: GenericFoo, e: GenericFooX, f: GenericBar, g: GenericBaz){{$}}
+// PASS_ONE_LINE_TYPEREPR-DAG: {{^}}  func genericParams1<GenericFoo, GenericFooX, GenericBar, GenericBaz>(a: StructGenericFoo, b: StructGenericBar, c: StructGenericBaz, d: GenericFoo, e: GenericFooX, f: GenericBar, g: GenericBaz) where GenericFoo : FooProtocol, GenericFooX : FooClass, GenericBar : BarProtocol, GenericBar : FooProtocol{{$}}
+
+  func contextualWhereClause1() where StructGenericBaz == Never {}
+  // PASS_PRINT_AST: func contextualWhereClause1() where StructGenericBaz == Never{{$}}
+
+  subscript(index: Int) -> Never where StructGenericBaz: FooProtocol {
+    return fatalError()
+  }
+  // PASS_PRINT_AST: subscript(index: Int) -> Never where StructGenericBaz : FooProtocol { get }{{$}}
+}
+extension GenericParams1 where StructGenericBaz: FooProtocol {
+  static func contextualWhereClause2() where StructGenericBaz: FooClass {}
+  // PASS_PRINT_AST: static func contextualWhereClause2() where StructGenericBaz : FooClass{{$}}
+
+  typealias ContextualWhereClause3 = Never where StructGenericBaz: QuxProtocol, StructGenericBaz.Qux == Void
+  // PASS_PRINT_AST: typealias ContextualWhereClause3 = Never where StructGenericBaz : QuxProtocol, StructGenericBaz.Qux == (){{$}}
 }
 
-struct GenericParams2<T : FooProtocol where T : BarProtocol> {}
-// PASS_ONE_LINE-DAG: {{^}}struct GenericParams2<T : FooProtocol where T : BarProtocol> {{{$}}
+struct GenericParams2<T : FooProtocol> where T : BarProtocol {}
+// PASS_ONE_LINE-DAG: {{^}}struct GenericParams2<T> where T : BarProtocol, T : FooProtocol {{{$}}
 
-struct GenericParams3<T : FooProtocol where T : BarProtocol, T : QuxProtocol> {}
-// PASS_ONE_LINE-DAG: {{^}}struct GenericParams3<T : FooProtocol where T : BarProtocol, T : QuxProtocol> {{{$}}
+struct GenericParams3<T : FooProtocol> where T : BarProtocol, T : QuxProtocol {}
+// PASS_ONE_LINE-DAG: {{^}}struct GenericParams3<T> where T : BarProtocol, T : FooProtocol, T : QuxProtocol {{{$}}
 
-struct GenericParams4<T : QuxProtocol where T.Qux : FooProtocol> {}
-// PASS_ONE_LINE-DAG: {{^}}struct GenericParams4<T : QuxProtocol where T.Qux : FooProtocol> {{{$}}
+struct GenericParams4<T : QuxProtocol> where T.Qux : FooProtocol {}
+// PASS_ONE_LINE-DAG: {{^}}struct GenericParams4<T> where T : QuxProtocol, T.Qux : FooProtocol {{{$}}
 
-struct GenericParams5<T : QuxProtocol where T.Qux : protocol<FooProtocol, BarProtocol>> {}
-// PREFER_TYPE_PRINTING: {{^}}struct GenericParams5<T : QuxProtocol where T.Qux : protocol<BarProtocol, FooProtocol>> {{{$}}
-// FIXME: in protocol compositions protocols are listed in reverse order.
-//
-// PREFER_TYPE_REPR_PRINTING: {{^}}struct GenericParams5<T : QuxProtocol where T.Qux : protocol<FooProtocol, BarProtocol>> {{{$}}
+struct GenericParams5<T : QuxProtocol> where T.Qux : FooProtocol & BarProtocol {}
+// PREFER_TYPE_PRINTING: {{^}}struct GenericParams5<T> where T : QuxProtocol, T.Qux : BarProtocol, T.Qux : FooProtocol {{{$}}
+// PREFER_TYPE_REPR_PRINTING: {{^}}struct GenericParams5<T> where T : QuxProtocol, T.Qux : BarProtocol, T.Qux : FooProtocol {{{$}}
 
-struct GenericParams6<T : QuxProtocol, U : QuxProtocol where T.Qux == U.Qux> {}
-// Because of the same type conformance, 'T.Qux' and 'U.Qux' types are
-// identical, so they are printed exactly the same way.  Printing a TypeRepr
-// allows us to recover the original spelling.
-//
-// PREFER_TYPE_PRINTING: {{^}}struct GenericParams6<T : QuxProtocol, U : QuxProtocol where T.Qux == T.Qux> {{{$}}
-// PREFER_TYPE_REPR_PRINTING: {{^}}struct GenericParams6<T : QuxProtocol, U : QuxProtocol where T.Qux == U.Qux> {{{$}}
+struct GenericParams6<T : QuxProtocol, U : QuxProtocol> where T.Qux == U.Qux {}
+// PREFER_TYPE_PRINTING: {{^}}struct GenericParams6<T, U> where T : QuxProtocol, U : QuxProtocol, T.Qux == U.Qux {{{$}}
+// PREFER_TYPE_REPR_PRINTING: {{^}}struct GenericParams6<T, U> where T : QuxProtocol, U : QuxProtocol, T.Qux == U.Qux {{{$}}
 
-struct GenericParams7<T : QuxProtocol, U : QuxProtocol where T.Qux : QuxProtocol, U.Qux : QuxProtocol, T.Qux.Qux == U.Qux.Qux> {}
-// PREFER_TYPE_PRINTING: {{^}}struct GenericParams7<T : QuxProtocol, U : QuxProtocol where T.Qux : QuxProtocol, U.Qux : QuxProtocol, T.Qux.Qux == T.Qux.Qux> {{{$}}
-// PREFER_TYPE_REPR_PRINTING: {{^}}struct GenericParams7<T : QuxProtocol, U : QuxProtocol where T.Qux : QuxProtocol, U.Qux : QuxProtocol, T.Qux.Qux == U.Qux.Qux> {{{$}}
+struct GenericParams7<T : QuxProtocol, U : QuxProtocol> where T.Qux : QuxProtocol, U.Qux : QuxProtocol, T.Qux.Qux == U.Qux.Qux {}
+// PREFER_TYPE_PRINTING: {{^}}struct GenericParams7<T, U> where T : QuxProtocol, U : QuxProtocol, T.Qux : QuxProtocol, U.Qux : QuxProtocol, T.Qux.Qux == U.Qux.Qux {{{$}}
+// PREFER_TYPE_REPR_PRINTING: {{^}}struct GenericParams7<T, U> where T : QuxProtocol, U : QuxProtocol, T.Qux : QuxProtocol, U.Qux : QuxProtocol, T.Qux.Qux == U.Qux.Qux {{{$}}
 
 //===---
 //===--- Tupe sugar for library types.
@@ -1284,31 +1298,17 @@ struct d2900_TypeSugar1 {
 // PASS_COMMON-NEXT: {{^}}  init(){{$}}
 // PASS_COMMON-NEXT: {{^}}}{{$}}
 
-// @warn_unused_result attribute
-public struct ArrayThingy {
-    // PASS_PRINT_AST: @warn_unused_result(mutable_variant: "sort")
-    // PASS_PRINT_AST-NEXT: public func sort() -> ArrayThingy
-    @warn_unused_result(mutable_variant: "sort")
-    public func sort() -> ArrayThingy { return self }
+// @discardableResult attribute
+public struct DiscardableThingy {
+    // PASS_PRINT_AST: @discardableResult
+    // PASS_PRINT_AST-NEXT: public init()
+    @discardableResult
+    public init() {}
 
-    public mutating func sort() { }
-
-    // PASS_PRINT_AST: @warn_unused_result(message: "dummy", mutable_variant: "reverseInPlace")
-    // PASS_PRINT_AST-NEXT: public func reverse() -> ArrayThingy
-    @warn_unused_result(message: "dummy", mutable_variant: "reverseInPlace")
-    public func reverse() -> ArrayThingy { return self }
-
-    public mutating func reverseInPlace() { }
-
-    // PASS_PRINT_AST: @warn_unused_result
-    // PASS_PRINT_AST-NEXT: public func mineGold() -> Int
-    @warn_unused_result
-    public func mineGold() -> Int { return 0 }
-
-    // PASS_PRINT_AST: @warn_unused_result(message: "oops")
-    // PASS_PRINT_AST-NEXT: public func mineCopper() -> Int
-    @warn_unused_result(message: "oops")
-    public func mineCopper() -> Int { return 0 }
+    // PASS_PRINT_AST: @discardableResult
+    // PASS_PRINT_AST-NEXT: public func useless() -> Int
+    @discardableResult
+    public func useless() -> Int { return 0 }
 }
 
 
@@ -1316,19 +1316,71 @@ public struct ArrayThingy {
 
 
 // <rdar://problem/19775868> Swift 1.2b1: Header gen puts @autoclosure in the wrong place
-// PASS_PRINT_AST: public func ParamAttrs1(@autoclosure a: () -> ())
-public func ParamAttrs1(@autoclosure a : () -> ()) {
+// PASS_PRINT_AST: public func ParamAttrs1(a: @autoclosure () -> ())
+public func ParamAttrs1(a : @autoclosure () -> ()) {
   a()
 }
 
-// PASS_PRINT_AST: public func ParamAttrs2(@autoclosure(escaping) a: () -> ())
-public func ParamAttrs2(@autoclosure(escaping) a : () -> ()) {
+// PASS_PRINT_AST: public func ParamAttrs2(a: @autoclosure @escaping () -> ())
+public func ParamAttrs2(a : @autoclosure @escaping () -> ()) {
   a()
 }
 
-// PASS_PRINT_AST: public func ParamAttrs3(@noescape a: () -> ())
-public func ParamAttrs3(@noescape a : () -> ()) {
+// PASS_PRINT_AST: public func ParamAttrs3(a: () -> ())
+public func ParamAttrs3(a : () -> ()) {
   a()
+}
+
+// PASS_PRINT_AST: public func ParamAttrs4(a: @escaping () -> ())
+public func ParamAttrs4(a : @escaping () -> ()) {
+  a()
+}
+
+// PASS_PRINT_AST: public func ParamAttrs5(a: (@escaping () -> ()) -> ())
+public func ParamAttrs5(a : (@escaping () -> ()) -> ()) {
+}
+
+// PASS_PRINT_AST: public typealias ParamAttrs6 = (@autoclosure () -> ()) -> ()
+public typealias ParamAttrs6 = (@autoclosure () -> ()) -> ()
+
+// The following type only has the internal paramter name inferred from the
+// closure on the right-hand side of `=`. Thus, it is only part of the `Type`
+// and not part of the `TypeRepr`.
+// PASS_PRINT_AST_TYPE: public var ParamAttrs7: (_ f: @escaping () -> ()) -> ()
+// PASS_PRINT_AST_TYPEREPR: public var ParamAttrs7: (@escaping () -> ()) -> ()
+public var ParamAttrs7: (@escaping () -> ()) -> () = { f in f() }
+
+// PASS_PRINT_AST: public var ParamAttrs8: (_ f: @escaping () -> ()) -> ()
+public var ParamAttrs8: (_ f: @escaping () -> ()) -> () = { f in f() }
+
+// Setter
+// PASS_PRINT_AST: class FooClassComputed {
+class FooClassComputed {
+
+// PASS_PRINT_AST:   var stored: (((Int) -> Int) -> Int)?
+  var stored : (((Int) -> Int) -> Int)? = nil
+
+// PASS_PRINT_AST:   var computed: ((Int) -> Int) -> Int { get set }
+  var computed : ((Int) -> Int) -> Int {
+    get { return stored! }
+    set { stored = newValue }
+  }
+
+// PASS_PRINT_AST: }
+}
+
+// PASS_PRINT_AST: struct HasDefaultTupleOfNils {
+// PASS_PRINT_AST:   var x: (Int?, Int?)
+// PASS_PRINT_AST:   var y: Int?
+// PASS_PRINT_AST:   var z: Int
+// PASS_PRINT_AST:   var w: ((Int?, (), Int?), (Int?, Int?))
+// PASS_PRINT_AST:   init(x: (Int?, Int?) = (nil, nil), y: Int? = nil, z: Int, w: ((Int?, (), Int?), (Int?, Int?)) = ((nil, (), nil), (nil, nil)))
+// PASS_PRINT_AST: }
+struct HasDefaultTupleOfNils {
+  var x: (Int?, Int?)
+  var y: Int?
+  var z: Int
+  var w: ((Int?, (), Int?), (Int?, Int?))
 }
 
 // Protocol extensions
@@ -1339,6 +1391,21 @@ protocol ProtocolToExtend {
 
 extension ProtocolToExtend where Self.Assoc == Int {}
 // PREFER_TYPE_REPR_PRINTING: extension ProtocolToExtend where Self.Assoc == Int {
+
+// Protocol with where clauses
+
+protocol ProtocolWithWhereClause : QuxProtocol where Qux == Int {}
+// PREFER_TYPE_REPR_PRINTING: protocol ProtocolWithWhereClause : QuxProtocol where Self.Qux == Int {
+
+protocol ProtocolWithWhereClauseAndAssoc : QuxProtocol where Qux == Int {
+// PREFER_TYPE_REPR_PRINTING-DAG: protocol ProtocolWithWhereClauseAndAssoc : QuxProtocol where Self.Qux == Int {
+  associatedtype A1 : QuxProtocol where A1 : FooProtocol, A1.Qux : QuxProtocol, Int == A1.Qux.Qux
+// PREFER_TYPE_REPR_PRINTING-DAG: {{^}}  associatedtype A1 : FooProtocol, QuxProtocol where Self.A1.Qux : QuxProtocol, Self.A1.Qux.Qux == Int{{$}}
+
+  // FIXME: this same type requirement with Self should be printed here
+  associatedtype A2 : QuxProtocol where A2.Qux == Self
+// PREFER_TYPE_REPR_PRINTING-DAG: {{^}}  associatedtype A2 : QuxProtocol where Self == Self.A2.Qux{{$}}
+}
 
 #if true
 #elseif false
@@ -1354,3 +1421,5 @@ public typealias MyPairI<B> = MyPair<Int, B>
 // PASS_PRINT_AST: public typealias MyPairI<B> = MyPair<Int, B>
 public typealias MyPairAlias<T, U> = MyPair<T, U>
 // PASS_PRINT_AST: public typealias MyPairAlias<T, U> = MyPair<T, U>
+typealias MyPairAlias2<T: FooProtocol, U> = MyPair<T, U> where U: BarProtocol
+// PASS_PRINT_AST: typealias MyPairAlias2<T, U> = MyPair<T, U> where T : FooProtocol, U : BarProtocol

@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,7 +27,7 @@
 #include "clang/AST/Decl.h"
 #include "clang/Index/CommentToXML.h"
 
-using namespace llvm::markup;
+using namespace swift::markup;
 using namespace swift;
 
 //===----------------------------------------------------------------------===//
@@ -69,7 +69,19 @@ struct CommentToXMLConverter {
 #include "swift/Markup/SimpleFields.def"
 
   void printDocument(const Document *D) {
-    llvm_unreachable("Can't print an llvm::markup::Document as XML directly");
+    llvm_unreachable("Can't print a swift::markup::Document as XML directly");
+  }
+
+  void printInlineAttributes(const InlineAttributes *A) {
+    OS << "<InlineAttributes attributes=\"";
+    appendWithXMLEscaping(OS, A->getAttributes());
+    OS << "\">";
+
+    for (const auto *N : A->getChildren()) {
+      printASTNode(N);
+    }
+
+    OS << "</InlineAttributes>";
   }
 
   void printBlockQuote(const BlockQuote *BQ) {
@@ -206,18 +218,29 @@ struct CommentToXMLConverter {
         printInlinesUnder(N, S);
       S << "\"";
     }
-    S << "\\>";
+    S << "/>";
     printRawHTML(S.str());
   }
 
   void printParamField(const ParamField *PF) {
-    OS << "<Parameter><Name>";
+    OS << "<Parameter>";
+    OS << "<Name>";
     OS << PF->getName();
-    OS << "</Name><Direction isExplicit=\"0\">in</Direction><Discussion>";
-    for (auto Child : PF->getChildren())
-      printASTNode(Child);
+    OS << "</Name>";
+    OS << "<Direction isExplicit=\"0\">in</Direction>";
 
-    OS << "</Discussion></Parameter>";
+    if (PF->isClosureParameter()) {
+      OS << "<ClosureParameter>";
+      visitCommentParts(PF->getParts().getValue());
+      OS << "</ClosureParameter>";
+    } else {
+      OS << "<Discussion>";
+      for (auto Child : PF->getChildren()) {
+        printASTNode(Child);
+      }
+      OS << "</Discussion>";
+    }
+    OS << "</Parameter>";
   }
 
   void printResultDiscussion(const ReturnsField *RF) {
@@ -234,11 +257,60 @@ struct CommentToXMLConverter {
     OS << "</ThrowsDiscussion>";
   }
 
-  void visitDocComment(const DocComment *DC);
+  void printTagFields(ArrayRef<StringRef> Tags) {
+    OS << "<Tags>";
+    for (const auto &Tag : Tags) {
+      if (Tag.empty()) {
+        continue;
+      }
+      OS << "<Tag>";
+      appendWithXMLEscaping(OS, Tag);
+      OS << "</Tag>";
+    }
+    OS << "</Tags>";
+  }
+
+  void visitDocComment(const DocComment *DC, TypeOrExtensionDecl SynthesizedTarget);
+  void visitCommentParts(const swift::markup::CommentParts &Parts);
 };
 } // unnamed namespace
 
-void CommentToXMLConverter::visitDocComment(const DocComment *DC) {
+void CommentToXMLConverter::visitCommentParts(const swift::markup::CommentParts &Parts) {
+  if (Parts.Brief.hasValue()) {
+    OS << "<Abstract>";
+    printASTNode(Parts.Brief.getValue());
+    OS << "</Abstract>";
+  }
+
+  if (!Parts.ParamFields.empty()) {
+    OS << "<Parameters>";
+    for (const auto *PF : Parts.ParamFields)
+      printParamField(PF);
+
+    OS << "</Parameters>";
+  }
+
+  if (Parts.ReturnsField.hasValue())
+    printResultDiscussion(Parts.ReturnsField.getValue());
+
+  if (Parts.ThrowsField.hasValue())
+    printThrowsDiscussion(Parts.ThrowsField.getValue());
+
+  if (!Parts.Tags.empty()) {
+    printTagFields(llvm::makeArrayRef(Parts.Tags.begin(), Parts.Tags.end()));
+  }
+
+  if (!Parts.BodyNodes.empty()) {
+    OS << "<Discussion>";
+    for (const auto *N : Parts.BodyNodes)
+      printASTNode(N);
+
+    OS << "</Discussion>";
+  }
+}
+
+void CommentToXMLConverter::
+visitDocComment(const DocComment *DC, TypeOrExtensionDecl SynthesizedTarget) {
   const Decl *D = DC->getDecl();
 
   StringRef RootEndTag;
@@ -255,12 +327,11 @@ void CommentToXMLConverter::visitDocComment(const DocComment *DC) {
 
   {
     // Print line and column number.
-    auto Loc = D->getLoc();
+    auto Loc = D->getLoc(/*SerializedOK=*/true);
     if (Loc.isValid()) {
       const auto &SM = D->getASTContext().SourceMgr;
-      unsigned BufferID = SM.findBufferContainingLoc(Loc);
-      StringRef FileName = SM.getIdentifierForBuffer(BufferID);
-      auto LineAndColumn = SM.getLineAndColumn(Loc);
+      StringRef FileName = SM.getDisplayNameForLoc(Loc);
+      auto LineAndColumn = SM.getPresumedLineAndColumnForLoc(Loc);
       OS << " file=\"";
       appendWithXMLEscaping(OS, FileName);
       OS << "\"";
@@ -278,7 +349,7 @@ void CommentToXMLConverter::visitDocComment(const DocComment *DC) {
   if (VD && VD->hasName()) {
     llvm::SmallString<64> SS;
     llvm::raw_svector_ostream NameOS(SS);
-    NameOS << VD->getFullName();
+    NameOS << VD->getName();
     appendWithXMLEscaping(OS, NameOS.str());
   }
   OS << "</Name>";
@@ -288,7 +359,11 @@ void CommentToXMLConverter::visitDocComment(const DocComment *DC) {
     bool Failed;
     {
       llvm::raw_svector_ostream OS(SS);
-      Failed = ide::printDeclUSR(VD, OS);
+      Failed = ide::printValueDeclUSR(VD, OS);
+      if (!Failed && SynthesizedTarget) {
+        OS << "::SYNTHESIZED::";
+        Failed = ide::printValueDeclUSR(SynthesizedTarget.getBaseNominal(), OS);
+      }
     }
     if (!Failed && !SS.empty()) {
       OS << "<USR>" << SS << "</USR>";
@@ -296,12 +371,18 @@ void CommentToXMLConverter::visitDocComment(const DocComment *DC) {
   }
 
   {
-    PrintOptions PO = PrintOptions::printInterface();
-    PO.PrintAccessibility = false;
-    PO.AccessibilityFilter = Accessibility::Private;
+    PrintOptions PO = PrintOptions::printInterface(
+        D->getASTContext().TypeCheckerOpts.PrintFullConvention);
+    PO.PrintAccess = false;
+    PO.AccessFilter = AccessLevel::Private;
     PO.PrintDocumentationComments = false;
     PO.TypeDefinitions = false;
     PO.VarInitializers = false;
+    PO.ShouldQualifyNestedDeclarations =
+        PrintOptions::QualifyNestedDeclarations::TypesOnly;
+    PO.SkipUnderscoredStdlibProtocols = false;
+    if (SynthesizedTarget)
+      PO.initForSynthesizedExtension(SynthesizedTarget);
 
     OS << "<Declaration>";
     llvm::SmallString<32> DeclSS;
@@ -312,37 +393,10 @@ void CommentToXMLConverter::visitDocComment(const DocComment *DC) {
     appendWithXMLEscaping(OS, DeclSS);
     OS << "</Declaration>";
   }
-
-  auto Brief = DC->getBrief();
-  if (Brief.hasValue()) {
-    OS << "<Abstract>";
-    printASTNode(Brief.getValue());
-    OS << "</Abstract>";
-  }
-
-  if (!DC->getParamFields().empty()) {
-    OS << "<Parameters>";
-    for (const auto *PF : DC->getParamFields())
-      printParamField(PF);
-
-    OS << "</Parameters>";
-  }
-
-  auto RF = DC->getReturnsField();
-  if (RF.hasValue())
-    printResultDiscussion(RF.getValue());
-
-  auto TF = DC->getThrowsField();
-  if (TF.hasValue())
-    printThrowsDiscussion(TF.getValue());
-
-  if (!DC->getBodyNodes().empty()) {
-    OS << "<Discussion>";
-    for (const auto *N : DC->getBodyNodes())
-      printASTNode(N);
-
-    OS << "</Discussion>";
-  }
+  
+  OS << "<CommentParts>";
+  visitCommentParts(DC->getParts());
+  OS << "</CommentParts>";
 
   OS << RootEndTag;
 }
@@ -365,28 +419,33 @@ static bool getClangDocumentationCommentAsXML(const clang::Decl *D,
   return true;
 }
 
-static void replaceObjcDeclarationsWithSwiftOnes(const Decl *D,
-                                                       StringRef Doc,
-                                                       raw_ostream &OS) {
+static void
+replaceObjcDeclarationsWithSwiftOnes(const Decl *D, StringRef Doc,
+                                     raw_ostream &OS,
+                                     TypeOrExtensionDecl SynthesizedTarget) {
   StringRef Open = "<Declaration>";
   StringRef Close = "</Declaration>";
   PrintOptions Options = PrintOptions::printQuickHelpDeclaration();
+  if (SynthesizedTarget)
+      Options.initForSynthesizedExtension(SynthesizedTarget);
   std::string S;
   llvm::raw_string_ostream SS(S);
   D->print(SS, Options);
-  std::string Signature = SS.str();
   auto OI = Doc.find(Open);
   auto CI = Doc.find(Close);
-  if (StringRef::npos != OI && StringRef::npos != CI && CI > OI)
-    OS << Doc.substr(0, OI) << Open << Signature << Close <<
-      Doc.substr(CI + Close.size());
-  else
+  if (StringRef::npos != OI && StringRef::npos != CI && CI > OI) {
+    OS << Doc.substr(0, OI) << Open;
+    appendWithXMLEscaping(OS, SS.str());
+    OS << Close << Doc.substr(CI + Close.size());
+  } else {
     OS << Doc;
+  }
 }
 
-std::string ide::extractPlainTextFromComment(const StringRef Text) {
+static LineList getLineListFromComment(SourceManager &SourceMgr,
+                                       swift::markup::MarkupContext &MC,
+                                       const StringRef Text) {
   LangOptions LangOpts;
-  SourceManager SourceMgr;
   auto Tokens = swift::tokenize(LangOpts, SourceMgr,
                                 SourceMgr.addMemBufferCopy(Text));
   std::vector<SingleRawComment> Comments;
@@ -400,33 +459,72 @@ std::string ide::extractPlainTextFromComment(const StringRef Text) {
     return {};
 
   RawComment Comment(Comments);
-  llvm::markup::MarkupContext MC;
-  return MC.getLineList(Comment).str();
+  return MC.getLineList(Comment);
 }
 
-bool ide::getDocumentationCommentAsXML(const Decl *D, raw_ostream &OS) {
+std::string ide::extractPlainTextFromComment(const StringRef Text) {
+  SourceManager SourceMgr;
+  swift::markup::MarkupContext MC;
+  return getLineListFromComment(SourceMgr, MC, Text).str();
+}
+
+bool ide::getDocumentationCommentAsXML(const Decl *D, raw_ostream &OS,
+                                       TypeOrExtensionDecl SynthesizedTarget) {
   auto MaybeClangNode = D->getClangNode();
   if (MaybeClangNode) {
     if (auto *CD = MaybeClangNode.getAsDecl()) {
       std::string S;
       llvm::raw_string_ostream SS(S);
       if (getClangDocumentationCommentAsXML(CD, SS)) {
-        replaceObjcDeclarationsWithSwiftOnes(D, SS.str(), OS);
+        replaceObjcDeclarationsWithSwiftOnes(D, SS.str(), OS,
+                                             SynthesizedTarget);
         return true;
       }
     }
     return false;
   }
 
-  llvm::markup::MarkupContext MC;
-  auto DC = getDocComment(MC, D);
-  if (!DC.hasValue())
+  swift::markup::MarkupContext MC;
+  auto DC = getCascadingDocComment(MC, D);
+  if (!DC)
     return false;
 
   CommentToXMLConverter Converter(OS);
-  Converter.visitDocComment(DC.getValue());
+  Converter.visitDocComment(DC, SynthesizedTarget);
 
   OS.flush();
+  return true;
+}
+
+bool ide::getLocalizationKey(const Decl *D, raw_ostream &OS) {
+  swift::markup::MarkupContext MC;
+  auto DC = getCascadingDocComment(MC, D);
+  if (!DC)
+    return false;
+
+  if (const auto LKF = DC->getLocalizationKeyField()) {
+    printInlinesUnder(LKF.getValue(), OS);
+    return true;
+  }
+
+  return false;
+}
+
+bool ide::convertMarkupToXML(StringRef Text, raw_ostream &OS) {
+  std::string Comment;
+  {
+    llvm::raw_string_ostream OS(Comment);
+    OS << "/**\n" << Text << "\n" << "*/";
+  }
+  SourceManager SourceMgr;
+  MarkupContext MC;
+  LineList LL = getLineListFromComment(SourceMgr, MC, Comment);
+  if (auto *Doc = swift::markup::parseDocument(MC, LL)) {
+    CommentToXMLConverter Converter(OS);
+    Converter.visitCommentParts(extractCommentParts(MC, Doc));
+    OS.flush();
+    return false;
+  }
   return true;
 }
 
@@ -434,129 +532,204 @@ bool ide::getDocumentationCommentAsXML(const Decl *D, raw_ostream &OS) {
 // Conversion to Doxygen.
 //===----------------------------------------------------------------------===//
 
-namespace {
-struct CommentToDoxygenConverter {
-  raw_ostream &OS;
-  unsigned PendingNewlines = 1;
+class DoxygenConverter : public MarkupASTVisitor<DoxygenConverter> {
+  llvm::raw_ostream &OS;
+  unsigned Indent;
+  unsigned IsFreshLine : 1;
+  unsigned IsEmptyComment : 1;
 
-  CommentToDoxygenConverter(raw_ostream &OS) : OS(OS) {}
-
-  void print(StringRef Text) {
-    for (unsigned i = 0; i != PendingNewlines; ++i) {
-      OS << "\n///";
-      if (i == PendingNewlines - 1)
-        OS << " ";
+  void printIndent() {
+    for (unsigned i = 0; i < Indent; ++i) {
+      OS << ' ';
     }
-    PendingNewlines = 0;
-    OS << Text;
+  }
+
+  void indent(unsigned Amount = 2) {
+    Indent += Amount;
+  }
+
+  void dedent(unsigned Amount = 2) {
+    Indent -= Amount;
+  }
+
+  void print(StringRef Str) {
+    for (auto c : Str) {
+      if (c == '\n') {
+        if (IsFreshLine && !IsEmptyComment)
+          OS << "///";
+        IsFreshLine = true;
+      } else {
+        if (IsFreshLine && !IsEmptyComment)
+          OS << "///";
+        if (IsFreshLine) {
+          printIndent();
+          IsFreshLine = false;
+        }
+      }
+      OS << c;
+      IsEmptyComment = false;
+    }
+  }
+
+  void printNestedParamField(const ParamField *PF) {
+    auto Parts = PF->getParts().getValue();
+    if (Parts.Brief.hasValue()) {
+      visit(Parts.Brief.getValue());
+    }
+
+    if (!Parts.ParamFields.empty()) {
+      printNewline();
+      print("\\a ");
+      print(PF->getName());
+      print(" parameters:");
+      printNewline();
+
+      print("<ul>");
+      printNewline();
+      for (auto Param : Parts.ParamFields) {
+        print("<li>");
+        printNewline();
+        print(Param->getName());
+        print(": ");
+        printNestedParamField(Param);
+        print("</li>");
+        printNewline();
+      }
+      print("</ul>");
+      printNewline();
+      printNewline();
+    }
+
+    if (Parts.ReturnsField.hasValue()) {
+      printNewline();
+      print("\\a ");
+      print(PF->getName());
+      print(" returns: ");
+
+      for (auto Child : Parts.ReturnsField.getValue()->getChildren()) {
+        visit(Child);
+      }
+    }
+
+    if (Parts.ThrowsField.hasValue()) {
+      printNewline();
+      print("\\a ");
+      print(PF->getName());
+      print(" error: ");
+
+      for (auto Child : Parts.ThrowsField.getValue()->getChildren()) {
+        visit(Child);
+      }
+    }
+
+    for (auto BodyNode : Parts.BodyNodes) {
+      visit(BodyNode);
+    }
+  }
+
+public:
+  DoxygenConverter(llvm::raw_ostream &OS)
+    : OS(OS), Indent(1), IsFreshLine(true), IsEmptyComment(true) {
+    printOpeningComment();
   }
 
   void printNewline() {
-    PendingNewlines++;
+    print("\n");
   }
 
-  void printASTNode(const MarkupASTNode *N) {
-    switch (N->getKind()) {
-#define MARKUP_AST_NODE(Id, Parent) \
-case ASTNodeKind::Id: \
-print##Id(cast<Id>(N)); \
-break;
-#define ABSTRACT_MARKUP_AST_NODE(Id, Parent)
-#define MARKUP_AST_NODE_RANGE(Id, FirstId, LastId)
-#include "swift/Markup/ASTNodes.def"
-    }
+  void printOpeningComment() {
+    OS << "///";
   }
 
-#define MARKUP_SIMPLE_FIELD(Id, Keyword, XMLKind) \
-  void print##Id(const Id *Field) { \
-    OS << "\\" << #XMLKind << " "; \
-    for (auto Child : Field->getChildren()) \
-      printASTNode(Child); \
-      printNewline(); \
-  }
-#include "swift/Markup/SimpleFields.def"
-
-  void printDocument(const Document *D) {
-    // FIXME: Why keep doing this?
-    llvm_unreachable("Can't print an llvm::markup::Document as XML directly");
+  void printUncommentedNewline() {
+    OS << '\n';
   }
 
-  void printBlockQuote(const BlockQuote *BQ) {
+  void visitDocument(const Document *D) {
+    for (const auto *Child : D->getChildren())
+      visit(Child);
+  }
+
+  void visitInlineAttributes(const InlineAttributes *A) {
+    // attributed strings don't have an analogue in Doxygen, so just print out the text
+    for (const auto *Child : A->getChildren())
+      visit(Child);
+  }
+
+  void visitBlockQuote(const BlockQuote *BQ) {
     print("<blockquote>");
-    for (const auto *N : BQ->getChildren())
-      printASTNode(N);
-
+    printNewline();
+    for (const auto *Child : BQ->getChildren())
+      visit(Child);
+    printNewline();
     print("</blockquote>");
-  }
-
-  void printList(const List *BL) {
-    print(BL->isOrdered() ? "<ol>" : "<ul>");
-    for (const auto *I : BL->getChildren())
-      printASTNode(I);
-
-    print(BL->isOrdered() ? "</ol>" : "</ul>");
-  }
-
-  void printItem(const Item *I) {
-    print("<li>");
-    for (const auto *N : I->getChildren())
-      printASTNode(N);
-
-    print("</li>");
-  }
-
-  void printCodeBlock(const CodeBlock *CB) {
-    print("<code>");
-    SmallVector<StringRef, 8> Lines;
-    CB->getLiteralContent().split(Lines, "\n");
-    for (auto Line : Lines) {
-      print(Line);
-      printNewline();
-    }
-    print("</code>");
-  }
-
-  void printCode(const Code *C) {
-    print("<code>");
-    SmallVector<StringRef, 8> Lines;
-    C->getLiteralContent().split(Lines, "\n");
-    for (auto Line : Lines) {
-      print(Line);
-      printNewline();
-    }
-    print("</code>");
-  }
-
-  void printHTML(const HTML *H) {
-    print(H->getLiteralContent().str());
-  }
-
-  void printInlineHTML(const InlineHTML *IH) {
-    print(IH->getLiteralContent().str());
-  }
-
-  void printSoftBreak(const SoftBreak *SB) {
     printNewline();
   }
 
-  void printLineBreak(const LineBreak *LB) {
+  void visitList(const List *BL) {
+    print(BL->isOrdered() ? "<ol>" : "<ul>");
+    indent();
+    printNewline();
+    for (const auto *Child : BL->getChildren())
+      visit(Child);
+    dedent();
+    print(BL->isOrdered() ? "</ol>" : "</ul>");
+    printNewline();
+  }
+
+  void visitItem(const Item *I) {
+    print("<li>");
+    indent();
+    printNewline();
+    for (const auto *N : I->getChildren())
+      visit(N);
+    dedent();
+    print("</li>");
+    printNewline();
+  }
+
+  void visitCodeBlock(const CodeBlock *CB) {
+    print("\\code");
+    printNewline();
+    print(CB->getLiteralContent());
+    printNewline();
+    print("\\endcode");
+  }
+
+  void visitCode(const Code *C) {
+    print("<code>");
+    print(C->getLiteralContent());
+    print("</code>");
+  }
+
+  void visitHTML(const HTML *H) {
+    print(H->getLiteralContent());
+  }
+
+  void visitInlineHTML(const InlineHTML *IH) {
+    print(IH->getLiteralContent());
+  }
+
+  void visitSoftBreak(const SoftBreak *SB) {
+    printNewline();
+  }
+
+  void visitLineBreak(const LineBreak *LB) {
     print("<br/>");
     printNewline();
   }
 
-  void printLink(const Link *L) {
+  void visitLink(const Link *L) {
     SmallString<32> Tag;
     llvm::raw_svector_ostream S(Tag);
     S << "<a href=\"" << L->getDestination() << "\">";
     print(S.str());
-
-    for (const auto N : L->getChildren())
-      printASTNode(N);
-
+    for (const auto *Child : L->getChildren())
+      visit(Child);
     print("</a>");
   }
 
-  void printImage(const Image *I) {
+  void visitImage(const Image *I) {
     SmallString<64> Tag;
     llvm::raw_svector_ostream S(Tag);
     S << "<img src=\"" << I->getDestination() << "\"";
@@ -564,132 +737,136 @@ break;
       S << " title=\"" << I->getTitle() << "\"";
     if (I->getChildren().size()) {
       S << " alt=\"";
-      for (const auto N : I->getChildren())
-        printInlinesUnder(N, S);
+      for (const auto *Child : I->getChildren())
+        printInlinesUnder(Child, S);
       S << "\"";
     }
-    S << "\\>";
+    S << "/>";
     print(S.str());
   }
 
-  void printParagraph(const Paragraph *P) {
-    for (const auto *N : P->getChildren())
-      printASTNode(N);
+  void visitParagraph(const Paragraph *P) {
+    for (const auto *Child : P->getChildren())
+      visit(Child);
+    printNewline();
   }
 
-  void printEmphasis(const Emphasis *E) {
+  void visitEmphasis(const Emphasis *E) {
     print("<em>");
-    for (const auto *N : E->getChildren())
-      printASTNode(N);
-
+    for (const auto *Child : E->getChildren())
+      visit(Child);
     print("</em>");
   }
 
-  void printStrong(const Strong *E) {
+  void visitStrong(const Strong *E) {
     print("<em>");
-    for (const auto *N : E->getChildren())
-      printASTNode(N);
-
+    for (const auto *Child : E->getChildren())
+      visit(Child);
     print("</em>");
   }
 
-  void printHRule(const HRule *HR) {
+  void visitHRule(const HRule *HR) {
     print("<hr/>");
+    printNewline();
   }
 
-  void printHeader(const Header *H) {
+  void visitHeader(const Header *H) {
     llvm::SmallString<4> Tag;
     llvm::raw_svector_ostream TagStream(Tag);
     TagStream << "<h" << H->getLevel() << ">";
     print(TagStream.str());
-    for (auto Child : H->getChildren())
-      printASTNode(Child);
-
+    for (const auto *Child : H->getChildren())
+      visit(Child);
     llvm::SmallString<5> EndTag;
     llvm::raw_svector_ostream EndTagStream(EndTag);
     EndTagStream << "</h" << H->getLevel() << ">";
     print(EndTagStream.str());
+    printNewline();
   }
 
-  void printText(const Text *T) {
-    print(T->getLiteralContent().str());
+  void visitText(const Text *T) {
+    print(T->getLiteralContent());
   }
 
-  void printPrivateExtension(const PrivateExtension *PE) {
+  void visitPrivateExtension(const PrivateExtension *PE) {
     llvm_unreachable("Can't directly print Doxygen for a Swift Markup PrivateExtension");
   }
 
-  void printParamField(const ParamField *PF) {
+  void visitParamField(const ParamField *PF) {
     print("\\param ");
     print(PF->getName());
     print(" ");
-    for (auto Child : PF->getChildren())
-      printASTNode(Child);
-
+    if (PF->isClosureParameter()) {
+      printNestedParamField(PF);
+    } else {
+      for (const auto *Child : PF->getChildren()) {
+        visit(Child);
+      }
+    }
     printNewline();
   }
 
-  void printReturnField(const ReturnsField *RF) {
+  void visitReturnField(const ReturnsField *RF) {
     print("\\returns ");
-    print(" ");
-    for (auto Child : RF->getChildren())
-      printASTNode(Child);
-
+    for (const auto *Child : RF->getChildren())
+      visit(Child);
     printNewline();
   }
 
-  void printThrowField(const ThrowsField *TF) {
+  void visitThrowField(const ThrowsField *TF) {
     print("\\param error ");
-    for (auto Child : TF->getChildren())
-      printASTNode(Child);
-
+    for (const auto *Child : TF->getChildren())
+      visit(Child);
     printNewline();
+  }
+
+#define MARKUP_SIMPLE_FIELD(Id, Keyword, XMLKind) \
+  void visit##Id(const Id *Field) { \
+    print(#Keyword); \
+    print(":"); \
+    printNewline(); \
+    for (const auto *Child : Field->getChildren()) \
+      visit(Child); \
+  }
+#include "swift/Markup/SimpleFields.def"
+
+  ~DoxygenConverter() override {
+    if (IsEmptyComment || !IsFreshLine)
+      printUncommentedNewline();
   }
 };
-} // unnamed namespace
 
 void ide::getDocumentationCommentAsDoxygen(const DocComment *DC,
                                            raw_ostream &OS) {
-  CommentToDoxygenConverter Converter(OS);
+  DoxygenConverter Converter(OS);
 
   auto Brief = DC->getBrief();
   if (Brief.hasValue()) {
-    SmallString<256> BriefStr;
-    llvm::raw_svector_ostream OS(BriefStr);
-    llvm::markup::printInlinesUnder(Brief.getValue(), OS);
-    Converter.print(OS.str());
-    Converter.printNewline();
-    Converter.printNewline();
+    Converter.visit(Brief.getValue());
   }
 
   for (const auto *N : DC->getBodyNodes()) {
     if (const auto *P = dyn_cast<Paragraph>(N)) {
-      Converter.printASTNode(P);
-      Converter.printNewline();
-      Converter.printNewline();
+      Converter.visit(P);
       continue;
     }
-    Converter.printASTNode(N);
-    Converter.printNewline();
+    Converter.visit(N);
   }
 
-  for (const auto PF : DC->getParamFields()) {
-    Converter.printParamField(PF);
-    Converter.printNewline();
+  for (const auto &PF : DC->getParamFields()) {
+    Converter.visit(PF);
   }
 
   auto TF = DC->getThrowsField();
   if (TF.hasValue()) {
-    Converter.printThrowField(TF.getValue());
     Converter.printNewline();
+    Converter.visit(TF.getValue());
   }
 
   auto RF = DC->getReturnsField();
   if (RF.hasValue()) {
-    Converter.printReturnField(RF.getValue());
     Converter.printNewline();
+    Converter.visit(RF.getValue());
   }
-
-  if (Converter.PendingNewlines != 0)
-    OS << "\n";
 }
+

@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,7 +14,9 @@
 #define SWIFT_IDE_COMMENT_CONVERSION_H
 
 #include "swift/Basic/LLVM.h"
+#include "swift/AST/TypeOrExtensionDecl.h"
 #include <memory>
+#include <string>
 
 namespace swift {
 class Decl;
@@ -26,13 +28,22 @@ namespace ide {
 /// in Clang-like XML format.
 ///
 /// \returns true if the declaration has a documentation comment.
-bool getDocumentationCommentAsXML(const Decl *D, raw_ostream &OS);
+bool getDocumentationCommentAsXML(
+  const Decl *D, raw_ostream &OS,
+  TypeOrExtensionDecl SynthesizedTarget = TypeOrExtensionDecl());
+
+/// If the declaration has a documentation comment and a localization key,
+/// print it into the given output stream and return true. Else, return false.
+bool getLocalizationKey(const Decl *D, raw_ostream &OS);
 
 /// Converts the given comment to Doxygen.
 void getDocumentationCommentAsDoxygen(const DocComment *DC, raw_ostream &OS);
 
 /// Extract and normalize text from the given comment.
 std::string extractPlainTextFromComment(const StringRef Text);
+
+/// Given the raw text in markup format, convert its content to xml.
+bool convertMarkupToXML(StringRef Text, raw_ostream &OS);
 
 } // namespace ide
 } // namespace swift

@@ -1,4 +1,4 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 typealias IntegerLiteralType = Int32
 
@@ -10,7 +10,7 @@ func simple() {
 
 
 // Coercion of literals through operators.
-func operators(x1: Int8) {
+func operators(_ x1: Int8) {
   let x2 : Int8 = 1 + 2
   let x3 : Int8 = 1 + x1
   _ = x2 + 1 as Int8
@@ -20,8 +20,8 @@ func operators(x1: Int8) {
 // Check coercion failure due to overflow.
 struct X { }
 struct Y { }
-func accept_integer(x: Int8) -> X { } // expected-note 2{{found this candidate}}
-func accept_integer(x: Int16) -> Y { } // expected-note 2{{found this candidate}}
+func accept_integer(_ x: Int8) -> X { } // expected-note 2{{found this candidate}}
+func accept_integer(_ x: Int16) -> Y { } // expected-note 2{{found this candidate}}
 
 func overflow_check() {
   var y : Y = accept_integer(500)
@@ -31,9 +31,9 @@ func overflow_check() {
 }
 
 // Coercion chaining.
-struct meters : IntegerLiteralConvertible { 
+struct meters : ExpressibleByIntegerLiteral {
   var value : Int8
-  
+
   init(_ value: Int8) {
     self.value = value
   }
@@ -44,10 +44,10 @@ struct meters : IntegerLiteralConvertible {
   }
 }
 
-struct supermeters : IntegerLiteralConvertible { // expected-error{{type 'supermeters' does not conform to protocol 'IntegerLiteralConvertible'}}
+struct supermeters : ExpressibleByIntegerLiteral { // expected-error{{type 'supermeters' does not conform to protocol 'ExpressibleByIntegerLiteral'}}
   var value : meters
-  
-  typealias IntegerLiteralType = meters // expected-note{{possibly intended match 'IntegerLiteralType' (aka 'meters') does not conform to '_BuiltinIntegerLiteralConvertible'}}
+
+  typealias IntegerLiteralType = meters // expected-note{{possibly intended match 'supermeters.IntegerLiteralType' (aka 'meters') does not conform to '_ExpressibleByBuiltinIntegerLiteral'}}
   init(_integerLiteral value: meters) {
     self.value = value
   }
@@ -63,6 +63,6 @@ func chaining() {
 func memberaccess() {
   Int32(5._value) // expected-warning{{unused}}
   // This diagnostic is actually better than it looks, because the inner type is Builtin.Int32, not actually Int32.
-  let x : Int32 = 7._value // expected-error{{cannot convert value of type 'Int32' to specified type 'Int32'}}
+  let x : Int32 = 7._value // expected-error{{cannot convert value of type 'Builtin.Int32' to specified type 'Int32'}}
   _ = x
 }

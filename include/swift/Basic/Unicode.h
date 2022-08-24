@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -54,17 +54,6 @@ extern const uint16_t ExtendedGraphemeClusterNoBoundaryRulesMatrix[];
 /// point.
 GraphemeClusterBreakProperty getGraphemeClusterBreakProperty(uint32_t C);
 
-/// Returns true if there is always an extended grapheme cluster boundary
-/// after a code point with a given property value.  Use only for optimization,
-/// to skip calculating Grapheme_Cluster_Break property for the second code
-/// point.
-static inline bool
-isExtendedGraphemeClusterBoundaryAfter(GraphemeClusterBreakProperty GCB1) {
-  auto RuleRow =
-      ExtendedGraphemeClusterNoBoundaryRulesMatrix[static_cast<unsigned>(GCB1)];
-  return RuleRow == 0;
-}
-
 /// Determine if there is an extended grapheme cluster boundary between code
 /// points with given Grapheme_Cluster_Break property values.
 static inline bool
@@ -79,12 +68,16 @@ bool isSingleUnicodeScalar(StringRef S);
 
 unsigned extractFirstUnicodeScalar(StringRef S);
 
-/// Get the length of the UTF8 string transcoded into UTF16.
-/// Returns the number of code units in UTF16 representation
-uint64_t getUTF16Length(StringRef Str);
+/// Returns true if \p S does not contain any ill-formed subsequences. This does
+/// not check whether all of the characters in it are actually allocated or
+/// used correctly; it just checks that every byte can be grouped into a code
+/// unit (Unicode scalar).
+bool isWellFormedUTF8(StringRef S);
 
-} // namespace unicode
-} // namespace swift
+/// Replaces any ill-formed subsequences with `u8"\ufffd"`.
+std::string sanitizeUTF8(StringRef Text);
 
-#endif
+} // end namespace unicode
+} // end namespace swift
 
+#endif // SWIFT_BASIC_UNICODE_H

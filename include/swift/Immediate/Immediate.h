@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -15,9 +15,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef SWIFT_IMMEDIATE_H
-#define SWIFT_IMMEDIATE_H
+#ifndef SWIFT_IMMEDIATE_IMMEDIATE_H
+#define SWIFT_IMMEDIATE_IMMEDIATE_H
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,7 @@ namespace swift {
   class CompilerInstance;
   class IRGenOptions;
   class SILOptions;
+  class SILModule;
 
   // Using LLVM containers to store command-line arguments turns out
   // to be a lose, because LLVM's execution engine demands this vector
@@ -37,11 +39,8 @@ namespace swift {
   ///
   /// \return the result returned from main(), if execution succeeded
   int RunImmediately(CompilerInstance &CI, const ProcessCmdLine &CmdLine,
-                     IRGenOptions &IRGenOpts, const SILOptions &SILOpts);
+                     const IRGenOptions &IRGenOpts, const SILOptions &SILOpts,
+                     std::unique_ptr<SILModule> &&SM);
+} // end namespace swift
 
-  void runREPL(CompilerInstance &CI, const ProcessCmdLine &CmdLine,
-               bool ParseStdlib);
-}  // end namespace swift
-
-#endif
-
+#endif // SWIFT_IMMEDIATE_IMMEDIATE_H

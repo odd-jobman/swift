@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -21,48 +21,55 @@
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
+#include <algorithm>
 #include <cassert>
 #include <functional>
 #include <iterator>
+#include <numeric>
 #include <type_traits>
-#include <algorithm>
+#include <unordered_set>
 
 namespace swift {
 
-/// @{
+//===----------------------------------------------------------------------===//
+//                              Function Traits
+//===----------------------------------------------------------------------===//
 
-/// An STL-style algorithm similar to std::for_each that applies a second
-/// functor between every pair of elements.
-///
-/// This provides the control flow logic to, for example, print a
-/// comma-separated list:
-/// \code
-///   interleave(names.begin(), names.end(),
-///              [&](StringRef name) { OS << name; },
-///              [&] { OS << ", "; });
-/// \endcode
-template <typename ForwardIterator, typename UnaryFunctor,
-          typename NullaryFunctor>
-inline void interleave(ForwardIterator begin, ForwardIterator end,
-                       UnaryFunctor each_fn,
-                       NullaryFunctor between_fn) {
-  if (begin == end)
-    return;
-  each_fn(*begin);
-  ++begin;
-  for (; begin != end; ++begin) {
-    between_fn();
-    each_fn(*begin);
-  }
-}
+template <class T>
+struct function_traits : function_traits<decltype(&T::operator())> {};
 
-template <typename Container, typename UnaryFunctor, typename NullaryFunctor>
-inline void interleave(const Container &c, UnaryFunctor each_fn,
-                       NullaryFunctor between_fn) {
-  interleave(c.begin(), c.end(), each_fn, between_fn);
-}
+// function
+template <class R, class... Args> struct function_traits<R(Args...)> {
+  using result_type = R;
+  using argument_types = std::tuple<Args...>;
+};
 
-/// @}
+// function pointer
+template <class R, class... Args> struct function_traits<R (*)(Args...)> {
+  using result_type = R;
+  using argument_types = std::tuple<Args...>;
+};
+
+// std::function
+template <class R, class... Args>
+struct function_traits<std::function<R(Args...)>> {
+  using result_type = R;
+  using argument_types = std::tuple<Args...>;
+};
+
+// pointer-to-member-function (i.e., operator()'s)
+template <class T, class R, class... Args>
+struct function_traits<R (T::*)(Args...)> {
+  using result_type = R;
+  using argument_types = std::tuple<Args...>;
+};
+
+template <class T, class R, class... Args>
+struct function_traits<R (T::*)(Args...) const> {
+  using result_type = R;
+  using argument_types = std::tuple<Args...>;
+};
+
 /// @{
 
 /// The equivalent of std::for_each, but for two lists at once.
@@ -180,166 +187,84 @@ inline void set_union_for_each(const Container1 &C1, const Container2 &C2,
   set_union_for_each(C1.begin(), C1.end(), C2.begin(), C2.end(), f);
 }
 
+/// If \p it is equal to \p end, then return \p defaultIter. Otherwise, return
+/// std::next(\p it).
+template <typename Iterator>
+inline Iterator next_or_default(Iterator it, Iterator end,
+                                Iterator defaultIter) {
+  return (it == end) ? defaultIter : std::next(it);
+}
+
+/// If \p it is equal to \p begin, then return \p defaultIter. Otherwise, return
+/// std::prev(\p it).
+template <typename Iterator>
+inline Iterator prev_or_default(Iterator it, Iterator begin,
+                                Iterator defaultIter) {
+  return (it == begin) ? defaultIter : std::prev(it);
+}
+
+/// Takes an iterator and an iterator pointing to the end of the iterator range.
+/// If the iterator already points to the end of its range, simply return it,
+/// otherwise return the next element.
+template <typename Iterator>
+inline Iterator next_or_end(Iterator it, Iterator end) {
+  return next_or_default(it, end, end);
+}
+
+template <typename Iterator>
+inline Iterator prev_or_begin(Iterator it, Iterator begin) {
+  return prev_or_default(it, begin, begin);
+}
+
 /// @}
 
-/// A range of iterators.
-template<typename Iterator>
-class IteratorRange {
-  Iterator First, Last;
-
+/// An iterator that walks a linked list of objects until it reaches
+/// a null pointer.
+template <class T, T* (&getNext)(T*)>
+class LinkedListIterator {
+  T *Pointer;
 public:
-  typedef Iterator iterator;
+  using iterator_category = std::forward_iterator_tag;
+  using value_type = T *;
+  using reference = T *;
+  using pointer = void;
 
-  IteratorRange(Iterator first, Iterator last) : First(first), Last(last) { }
-  iterator begin() const { return First; }
-  iterator end() const { return Last; }
-  bool empty() const { return First == Last; }
-
-  typename std::iterator_traits<iterator>::value_type front() const { 
-    assert(!empty() && "Front of empty range");
-    return *begin(); 
-  }
-};
-
-/// Create a new iterator range.
-template<typename Iterator>
-inline IteratorRange<Iterator> 
-makeIteratorRange(Iterator first, Iterator last) {
-  return IteratorRange<Iterator>(first, last);
-}
-
-/// An iterator that filters the results of an underlying forward
-/// iterator, only passing through those values that satisfy a predicate.
-///
-/// \tparam Iterator the underlying iterator.
-///
-/// \tparam Predicate A predicate that determines whether a value of the
-/// underlying iterator is available in the resulting sequence.
-template<typename Iterator, typename Predicate>
-class FilterIterator {
-  Iterator Current, End;
-
-  /// FIXME: Could optimize away this storage with EBCO tricks.
-  Predicate Pred;
-
-  /// Skip any non-matching elements.
-  void skipNonMatching() {
-    while (Current != End && !Pred(*Current))
-      ++Current;
+  /// Returns an iterator range starting from the given pointer and
+  /// running until it reaches a null pointer.
+  static llvm::iterator_range<LinkedListIterator> rangeBeginning(T *pointer) {
+    return {pointer, nullptr};
   }
 
-public:
-  /// Used to indicate when the current iterator has already been
-  /// "primed", meaning that it's at the end or points to a value that
-  /// satisfies the predicate.
-  enum PrimedT { Primed };
+  constexpr LinkedListIterator(T *pointer) : Pointer(pointer) {}
 
-  typedef std::forward_iterator_tag iterator_category;
-  typedef typename std::iterator_traits<Iterator>::value_type value_type;
-  typedef typename std::iterator_traits<Iterator>::reference  reference;
-  typedef typename std::iterator_traits<Iterator>::pointer    pointer;
-  typedef typename std::iterator_traits<Iterator>::difference_type
-    difference_type;
-
-  /// Construct a new filtering iterator for the given iterator range
-  /// and predicate.
-  FilterIterator(Iterator current, Iterator end, Predicate pred)
-    : Current(current), End(end), Pred(pred) 
-  {
-    // Prime the iterator.
-    skipNonMatching();
+  T *operator*() const {
+    assert(Pointer && "dereferencing a null iterator");
+    return Pointer;
   }
 
-  /// Construct a new filtering iterator for the given iterator range
-  /// and predicate, where the iterator range has already been
-  /// "primed" by ensuring that it is empty or the current iterator
-  /// points to something that matches the predicate.
-  FilterIterator(Iterator current, Iterator end, Predicate pred, PrimedT)
-    : Current(current), End(end), Pred(pred) 
-  { 
-    // Assert that the iterators have already been primed.
-    assert(Current == End || Pred(*Current) && "Not primed!");
-  }
-
-  reference operator*() const {
-    return *Current;
-  }
-
-  pointer operator->() const {
-    return Current.operator->();
-  }
-
-  FilterIterator &operator++() {
-    ++Current;
-    skipNonMatching();
+  LinkedListIterator &operator++() {
+    Pointer = getNext(Pointer);
     return *this;
   }
-
-  FilterIterator operator++(int) {
-    FilterIterator old = *this;
-    ++*this;
-    return old;
+  LinkedListIterator operator++(int) {
+    auto copy = *this;
+    Pointer = getNext(Pointer);
+    return copy;
   }
 
-  friend bool operator==(FilterIterator lhs, FilterIterator rhs) {
-    return lhs.Current == rhs.Current;
+  friend bool operator==(LinkedListIterator lhs, LinkedListIterator rhs) {
+    return lhs.Pointer == rhs.Pointer;
   }
-  friend bool operator!=(FilterIterator lhs, FilterIterator rhs) {
-    return !(lhs == rhs);
-  }
-};
-
-/// Create a new filter iterator.
-template<typename Iterator, typename Predicate>
-inline FilterIterator<Iterator, Predicate> 
-makeFilterIterator(Iterator current, Iterator end, Predicate pred) {
-  return FilterIterator<Iterator, Predicate>(current, end, pred);
-}
-
-/// A range filtered by a specific predicate.
-template<typename Range, typename Predicate>
-class FilterRange {
-  typedef typename Range::iterator Iterator;
-
-  Iterator First, Last;
-  Predicate Pred;
-
-public:
-  typedef FilterIterator<Iterator, Predicate> iterator;
-
-  FilterRange(Range range, Predicate pred)
-    : First(range.begin()), Last(range.end()), Pred(pred) 
-  { 
-    // Prime the sequence.
-    while (First != Last && !Pred(*First))
-      ++First;
-  }
-
-  iterator begin() const { 
-    return iterator(First, Last, Pred, iterator::Primed); 
-  }
-
-  iterator end() const { 
-    return iterator(Last, Last, Pred, iterator::Primed); 
-  }
-
-  bool empty() const { return First == Last; }
-
-  typename std::iterator_traits<iterator>::value_type front() const { 
-    assert(!empty() && "Front of empty range");
-    return *begin(); 
+  friend bool operator!=(LinkedListIterator lhs, LinkedListIterator rhs) {
+    return lhs.Pointer != rhs.Pointer;
   }
 };
 
-/// Create a new filter range.
-template<typename Range, typename Predicate>
-inline FilterRange<Range, Predicate> 
-makeFilterRange(Range range, Predicate pred) {
-  return FilterRange<Range, Predicate>(range, pred);
-}
-
-/// An iterator that transforms the result of an underlying forward
+/// An iterator that transforms the result of an underlying bidirectional
 /// iterator with a given operation.
+///
+/// Slightly different semantics from llvm::map_iterator, but we should
+/// probably figure out how to merge them eventually.
 ///
 /// \tparam Iterator the underlying iterator.
 ///
@@ -354,17 +279,15 @@ class TransformIterator {
 
   /// The underlying reference type, which will be passed to the
   /// operation.
-  typedef typename std::iterator_traits<Iterator>::reference
-    UnderlyingReference;
- 
+  using OpTraits = function_traits<Operation>;
+
 public:
-  typedef std::forward_iterator_tag iterator_category;
-  typedef typename std::result_of<Operation(UnderlyingReference)>::type
-    value_type;
-  typedef value_type reference;
-  typedef void pointer; // FIXME: Should provide a pointer proxy.
-  typedef typename std::iterator_traits<Iterator>::difference_type 
-    difference_type;
+  using iterator_category = std::bidirectional_iterator_tag;
+  using value_type = typename OpTraits::result_type;
+  using reference = value_type;
+  using pointer = void; // FIXME: Should provide a pointer proxy.
+  using difference_type =
+      typename std::iterator_traits<Iterator>::difference_type;
 
   /// Construct a new transforming iterator for the given iterator 
   /// and operation.
@@ -383,6 +306,17 @@ public:
   TransformIterator operator++(int) {
     TransformIterator old = *this;
     ++*this;
+    return old;
+  }
+
+  TransformIterator &operator--() {
+    --Current;
+    return *this;
+  }
+
+  TransformIterator operator--(int) {
+    TransformIterator old = *this;
+    --*this;
     return old;
   }
 
@@ -408,7 +342,7 @@ class TransformRange {
   Operation Op;
 
 public:
-  typedef TransformIterator<typename Range::iterator, Operation> iterator;
+  using iterator = TransformIterator<decltype(Rng.begin()), Operation>;
 
   TransformRange(Range range, Operation op)
     : Rng(range), Op(op) { }
@@ -416,6 +350,20 @@ public:
   iterator begin() const { return iterator(Rng.begin(), Op); }
   iterator end() const { return iterator(Rng.end(), Op); }
   bool empty() const { return begin() == end(); }
+
+  // The dummy template parameter keeps 'size()' from being eagerly
+  // instantiated.
+  template <typename Dummy = Range>
+  typename function_traits<decltype(&Dummy::size)>::result_type
+  size() const {
+    return Rng.size();
+  }
+
+  template <typename Index>
+  typename function_traits<Operation>::result_type
+  operator[](Index index) const {
+    return Op(Rng[index]);
+  }
 
   typename std::iterator_traits<iterator>::value_type front() const { 
     assert(!empty() && "Front of empty range");
@@ -453,11 +401,11 @@ class OptionalTransformIterator {
       ++Current;
   }
 
-  typedef typename std::iterator_traits<Iterator>::reference
-    UnderlyingReference;
-  
-  typedef typename std::result_of<OptionalTransform(UnderlyingReference)>::type 
-    ResultReference;
+  using UnderlyingReference =
+      typename std::iterator_traits<Iterator>::reference;
+
+  using ResultReference =
+      typename std::result_of<OptionalTransform(UnderlyingReference)>::type;
 
 public:
   /// Used to indicate when the current iterator has already been
@@ -465,12 +413,12 @@ public:
   /// satisfies the transform.
   enum PrimedT { Primed };
 
-  typedef std::forward_iterator_tag iterator_category;
-  typedef typename ResultReference::value_type reference;
-  typedef typename ResultReference::value_type value_type;
-  typedef void pointer; // FIXME: should add a proxy here.
-  typedef typename std::iterator_traits<Iterator>::difference_type
-    difference_type;
+  using iterator_category = std::forward_iterator_tag;
+  using reference = typename ResultReference::value_type;
+  using value_type = typename ResultReference::value_type;
+  using pointer = void; // FIXME: should add a proxy here.
+  using difference_type =
+      typename std::iterator_traits<Iterator>::difference_type;
 
   /// Construct a new optional transform iterator for the given
   /// iterator range and operation.
@@ -497,6 +445,8 @@ public:
   reference operator*() const {
     return *Op(*Current);
   }
+
+  reference operator*() { return *Op(*Current); }
 
   OptionalTransformIterator &operator++() {
     ++Current;
@@ -531,14 +481,14 @@ makeOptionalTransformIterator(Iterator current, Iterator end,
 
 /// A range filtered and transformed by the optional transform.
 template <typename Range, typename OptionalTransform,
-          typename Iterator = typename Range::iterator>
+          typename Iterator = decltype(std::declval<Range>().begin())>
 class OptionalTransformRange {
 
   Iterator First, Last;
   OptionalTransform Op;
 
 public:
-  typedef OptionalTransformIterator<Iterator, OptionalTransform> iterator;
+  using iterator = OptionalTransformIterator<Iterator, OptionalTransform>;
 
   OptionalTransformRange(Range range, OptionalTransform op)
     : First(range.begin()), Last(range.end()), Op(op) 
@@ -575,19 +525,18 @@ makeOptionalTransformRange(Range range, OptionalTransform op) {
 /// the result in an optional to indicate success or failure.
 template<typename Subclass>
 struct DowncastAsOptional {
-  template<typename Superclass>
+  template <typename Superclass>
   auto operator()(Superclass &value) const
-         -> Optional<decltype(llvm::cast<Subclass>(value))> {
+      -> llvm::Optional<decltype(llvm::cast<Subclass>(value))> {
     if (auto result = llvm::dyn_cast<Subclass>(value))
       return result;
 
     return None;
   }
 
-  template<typename Superclass>
+  template <typename Superclass>
   auto operator()(const Superclass &value) const
-         -> Optional<decltype(llvm::cast<Subclass>(value))>
-  {
+      -> llvm::Optional<decltype(llvm::cast<Subclass>(value))> {
     if (auto result = llvm::dyn_cast<Subclass>(value))
       return result;
 
@@ -610,7 +559,7 @@ template<typename Subclass, typename Range>
 class DowncastFilterRange 
   : public OptionalTransformRange<Range, DowncastAsOptional<Subclass>> {
 
-  typedef OptionalTransformRange<Range, DowncastAsOptional<Subclass>> Inherited;
+  using Inherited = OptionalTransformRange<Range, DowncastAsOptional<Subclass>>;
 
 public:
   DowncastFilterRange(Range range) 
@@ -691,6 +640,149 @@ inline bool is_sorted_and_uniqued(const Container &C) {
   return is_sorted_and_uniqued(C.begin(), C.end());
 }
 
+template <typename Container, typename T, typename BinaryOperation>
+inline T accumulate(const Container &C, T init, BinaryOperation op) {
+  return std::accumulate(C.begin(), C.end(), init, op);
+}
+
+template <typename Container, typename T>
+inline bool binary_search(const Container &C, const T &value) {
+  return std::binary_search(C.begin(), C.end(), value);
+}
+
+template <typename Container, typename T, typename BinaryOperation>
+inline bool binary_search(const Container &C, const T &value, BinaryOperation op) {
+  return std::binary_search(C.begin(), C.end(), value, op);
+}
+
+/// Returns true if the range defined by \p mainBegin ..< \p mainEnd starts with
+/// the same elements as the range defined by \p prefixBegin ..< \p prefixEnd.
+///
+/// This includes cases where the prefix range is empty, as well as when the two
+/// ranges are the same length and contain the same elements.
+template <typename MainInputIterator, typename PrefixInputIterator>
+inline bool hasPrefix(MainInputIterator mainBegin,
+                      const MainInputIterator mainEnd,
+                      PrefixInputIterator prefixBegin,
+                      const PrefixInputIterator prefixEnd) {
+  while (prefixBegin != prefixEnd) {
+    // If "main" is shorter than "prefix", it does not start with "prefix".
+    if (mainBegin == mainEnd)
+      return false;
+    // If there's a mismatch, "main" does not start with "prefix".
+    if (*mainBegin != *prefixBegin)
+      return false;
+    ++prefixBegin;
+    ++mainBegin;
+  }
+  // If we checked every element of "prefix", "main" does start with "prefix".
+  return true;
+}
+
+/// Provides default implementations of !=, <=, >, and >= based on == and <.
+template <typename T>
+class RelationalOperationsBase {
+public:
+  friend bool operator>(const T &left, const T &right) {
+    return right < left;
+  }
+  friend bool operator>=(const T &left, const T &right) {
+    return !(left < right);
+  }
+  friend bool operator<=(const T &left, const T &right) {
+    return !(right < left);
+  }
+  friend bool operator!=(const T &left, const T &right) {
+    return !(left == right);
+  }
+};
+  
+/// Cast a pointer to \c U  to a pointer to a supertype \c T.
+/// Example:  Wobulator *w = up_cast<Wobulator>(coloredWobulator)
+/// Useful with ?: where each arm is a different subtype.
+/// If \c U is not a subtype of \c T, the compiler will complain.
+template <typename T, typename U>
+T *up_cast(U *ptr) { return ptr; }
+
+/// Removes all runs of values that match \p pred from the range of \p begin
+/// to \p end.
+///
+/// This is similar to std::unique, but std::unique leaves the first value in
+/// place in a run of matching values, whereas this code removes all of them.
+///
+/// \returns The new end iterator for the container. You should erase elements
+/// between this value and the existing end of the container.
+template <typename Iterator, typename BinaryPredicate>
+Iterator removeAdjacentIf(const Iterator first, const Iterator last,
+                          BinaryPredicate pred) {
+  using element_reference_t =
+      typename std::iterator_traits<Iterator>::reference;
+
+  auto nextOverlap = std::adjacent_find(first, last, pred);
+  auto insertionPoint = nextOverlap;
+  while (nextOverlap != last) {
+    // We want to erase *all* the matching elements. There could be three or
+    // more of them. Search for the end of the run.
+    auto lastOverlapInRun =
+        std::adjacent_find(std::next(nextOverlap), last,
+                           [&pred](element_reference_t left,
+                                   element_reference_t right) -> bool {
+      return !pred(left, right);
+    });
+    // If we get the end iterator back, that means all remaining elements match.
+    // If we don't, that means (lastOverlapInRun+1) is part of a different run.
+    if (lastOverlapInRun != last)
+      ++lastOverlapInRun;
+
+    nextOverlap = std::adjacent_find(lastOverlapInRun, last, pred);
+    insertionPoint = std::move(lastOverlapInRun, nextOverlap, insertionPoint);
+  }
+
+  return insertionPoint;
+}
+
+namespace detail {
+template <bool...> struct bool_pack;
+} // namespace detail
+
+template <bool... b>
+using all_true =
+    std::is_same<detail::bool_pack<b..., true>, detail::bool_pack<true, b...>>;
+
+/// traits class for checking whether Ts consists only of compound types.
+template <class... Ts>
+using are_all_compound = all_true<std::is_compound<Ts>::value...>;
+
+/// Erase all elements in \p c that match the given predicate \p pred.
+// FIXME: Remove this when C++20 is the new baseline.
+template <class Key, class Hash, class KeyEqual, class Alloc, class Pred>
+typename std::unordered_set<Key, Hash, KeyEqual, Alloc>::size_type
+erase_if(std::unordered_set<Key, Hash, KeyEqual, Alloc> &c, Pred pred) {
+  auto startingSize = c.size();
+  for (auto i = c.begin(), last = c.end(); i != last;) {
+    if (pred(*i)) {
+      i = c.erase(i);
+    } else {
+      ++i;
+    }
+  }
+  return startingSize - c.size();
+}
+
+/// Call \c vector.emplace_back with each of the other arguments
+/// to this function, in order.  Constructing an intermediate
+/// \c std::initializer_list can be inefficient; more problematically,
+/// types such as \c std::vector copy out of the \c initializer_list
+/// instead of move.
+template <class VectorType, class ValueType, class... ValueTypes>
+void emplace_back_all(VectorType &vector, ValueType &&value,
+                      ValueTypes &&...values) {
+  vector.emplace_back(std::forward<ValueType>(value));
+  emplace_back_all(vector, std::forward<ValueTypes>(values)...);
+}
+template <class VectorType>
+void emplace_back_all(VectorType &vector) {}
+
 } // end namespace swift
 
-#endif
+#endif // SWIFT_BASIC_INTERLEAVE_H

@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -45,8 +45,7 @@ public:
   Explosion &operator=(const Explosion &) = delete;
   Explosion(Explosion &&other) : NextValue(0) {
     // Do an uninitialized copy of the non-consumed elements.
-    Values.reserve(other.size());
-    Values.set_size(other.size());
+    Values.resize_for_overwrite(other.size());
     std::uninitialized_copy(other.begin(), other.end(), Values.begin());
 
     // Remove everything from the other explosion.
@@ -73,11 +72,11 @@ public:
     return Values.size() - NextValue;
   }
 
-  typedef SmallVector<llvm::Value*, 8>::iterator iterator;
+  using iterator = SmallVector<llvm::Value *, 8>::iterator;
   iterator begin() { return Values.begin() + NextValue; }
   iterator end() { return Values.end(); }
 
-  typedef SmallVector<llvm::Value*, 8>::const_iterator const_iterator;
+  using const_iterator = SmallVector<llvm::Value *, 8>::const_iterator;
   const_iterator begin() const { return Values.begin() + NextValue; }
   const_iterator end() const { return Values.end(); }
 
@@ -95,6 +94,10 @@ public:
 #endif
     assert(NextValue == 0 && "adding to partially-claimed explosion?");
     Values.append(values.begin(), values.end());
+  }
+
+  void insert(unsigned index, llvm::Value *value) {
+    Values.insert(Values.begin() + index, value);
   }
 
   /// Return an array containing the given range of values.  The values
@@ -233,12 +236,9 @@ public:
     return Elements[index];
   }
 
-  bool requiresIndirectParameter(IRGenModule &IGM) const;
-  bool requiresIndirectResult(IRGenModule &IGM) const;
+  using iterator = SmallVectorImpl<Element>::iterator;
+  using const_iterator = SmallVectorImpl<Element>::const_iterator;
 
-  typedef SmallVectorImpl<Element>::iterator iterator;
-  typedef SmallVectorImpl<Element>::const_iterator const_iterator;
-  
   iterator begin() { return Elements.begin(); }
   iterator end() { return Elements.end(); }
   const_iterator begin() const { return Elements.begin(); }
@@ -255,13 +255,6 @@ public:
   ///   - the element type, if the schema contains exactly one element;
   ///   - an anonymous struct type concatenating those types, otherwise.
   llvm::Type *getScalarResultType(IRGenModule &IGM) const;
-
-  /// Treating the types in this schema as potential arguments to a
-  /// function call, add them to the end of the given vector of types.
-  void addToArgTypes(IRGenModule &IGM,
-                     const TypeInfo &TI,
-                     llvm::AttributeSet &Attrs,
-                     SmallVectorImpl<llvm::Type*> &types) const;
 };
 
 } // end namespace irgen

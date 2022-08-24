@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -29,6 +29,10 @@
 
 #include "SwiftStdint.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct {
   __swift_intptr_t location;
   __swift_intptr_t length;
@@ -37,8 +41,8 @@ typedef struct {
 #ifdef __OBJC2__
 typedef struct {
     unsigned long state;
-    id __unsafe_unretained *itemsPtr;
-    unsigned long *mutationsPtr;
+    id __unsafe_unretained _Nullable * _Nullable itemsPtr;
+    unsigned long * _Nullable mutationsPtr;
     unsigned long extra[5];
 } _SwiftNSFastEnumerationState;
 #endif
@@ -50,7 +54,12 @@ typedef struct {
   __swift_intptr_t patchVersion;
 } _SwiftNSOperatingSystemVersion;
 
-_SwiftNSOperatingSystemVersion _swift_stdlib_operatingSystemVersion();
+SWIFT_RUNTIME_STDLIB_API
+_SwiftNSOperatingSystemVersion _swift_stdlib_operatingSystemVersion() __attribute__((const));
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
 
 #endif // SWIFT_STDLIB_SHIMS_FOUNDATIONSHIMS_H
 

@@ -1,6 +1,6 @@
-// RUN: %target-swift-frontend -parse -primary-file %s %S/Inputs/accessibility_multi_other.swift -verify
-func read(value: Int) {}
-func reset(value: inout Int) { value = 0 }
+// RUN: %target-swift-frontend -typecheck -primary-file %s %S/Inputs/accessibility_multi_other.swift -verify
+func read(_ value: Int) {}
+func reset(_ value: inout Int) { value = 0 }
 
 func testGlobals() {
   read(privateSetGlobal)
@@ -8,16 +8,30 @@ func testGlobals() {
   reset(&privateSetGlobal) // expected-error {{cannot pass immutable value as inout argument: 'privateSetGlobal' setter is inaccessible}}
 }
 
-func testProperties(instance: Members) {
+func testProperties(_ instance: Members) {
   var instance = instance
   read(instance.privateSetProp)
   instance.privateSetProp = 42 // expected-error {{cannot assign to property: 'privateSetProp' setter is inaccessible}}
   reset(&instance.privateSetProp) // expected-error {{cannot pass immutable value as inout argument: 'privateSetProp' setter is inaccessible}}
 }
 
-func testSubscript(instance: Members) {
+func testSubscript(_ instance: Members) {
   var instance = instance
   read(instance[])
   instance[] = 42 // expected-error {{cannot assign through subscript: subscript setter is inaccessible}}
   reset(&instance[]) // expected-error {{cannot pass immutable value as inout argument: subscript setter is inaccessible}}
+}
+
+func testPrivateConformance(_ instance: PrivateConformance) {
+  instance.publicExtensionMember()
+  // expected-error@-1 {{'publicExtensionMember' is inaccessible due to 'private' protection level}}
+
+  instance.internalExtensionMember()
+  // expected-error@-1 {{'internalExtensionMember' is inaccessible due to 'private' protection level}}
+
+  instance.publicFPExtensionMember()
+  // expected-error@-1 {{'publicFPExtensionMember' is inaccessible due to 'fileprivate' protection level}}
+
+  instance.internalFPExtensionMember()
+  // expected-error@-1 {{'internalFPExtensionMember' is inaccessible due to 'fileprivate' protection level}}
 }

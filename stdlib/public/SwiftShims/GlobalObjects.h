@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -19,10 +19,15 @@
 #define SWIFT_STDLIB_SHIMS_GLOBALOBJECTS_H_
 
 #include "SwiftStdint.h"
+#include "SwiftStdbool.h"
 #include "HeapObject.h"
+#include "Visibility.h"
 
 #ifdef __cplusplus
-namespace swift { extern "C" {
+#ifndef __swift__
+namespace swift {
+#endif
+extern "C" {
 #endif
 
 struct _SwiftArrayBodyStorage {
@@ -35,14 +40,75 @@ struct _SwiftEmptyArrayStorage {
   struct _SwiftArrayBodyStorage body;
 };
 
-extern struct _SwiftEmptyArrayStorage _swiftEmptyArrayStorage;
+SWIFT_RUNTIME_STDLIB_API
+struct _SwiftEmptyArrayStorage _swiftEmptyArrayStorage;
 
-extern __swift_uint64_t _swift_stdlib_HashingDetail_fixedSeedOverride;
+struct _SwiftDictionaryBodyStorage {
+  __swift_intptr_t count;
+  __swift_intptr_t capacity;
+  __swift_int8_t scale;
+  __swift_int8_t reservedScale;
+  __swift_int16_t extra;
+  __swift_int32_t age;
+  __swift_intptr_t seed;
+  void *rawKeys;
+  void *rawValues;
+};
 
-extern void *_swift_stdlib_ProcessArguments;
+struct _SwiftSetBodyStorage {
+  __swift_intptr_t count;
+  __swift_intptr_t capacity;
+  __swift_int8_t scale;
+  __swift_int8_t reservedScale;
+  __swift_int16_t extra;
+  __swift_int32_t age;
+  __swift_intptr_t seed;
+  void *rawElements;
+};
+
+struct _SwiftEmptyDictionarySingleton {
+  struct HeapObject header;
+  struct _SwiftDictionaryBodyStorage body;
+  __swift_uintptr_t metadata;
+};
+
+struct _SwiftEmptySetSingleton {
+  struct HeapObject header;
+  struct _SwiftSetBodyStorage body;
+  __swift_uintptr_t metadata;
+};
+
+SWIFT_RUNTIME_STDLIB_API
+struct _SwiftEmptyDictionarySingleton _swiftEmptyDictionarySingleton;
+
+SWIFT_RUNTIME_STDLIB_API
+struct _SwiftEmptySetSingleton _swiftEmptySetSingleton;
+
+struct _SwiftHashingParameters {
+  __swift_uint64_t seed0;
+  __swift_uint64_t seed1;
+  __swift_bool deterministic;
+};
+  
+SWIFT_RUNTIME_STDLIB_API
+struct _SwiftHashingParameters _swift_stdlib_Hashing_parameters;
 
 #ifdef __cplusplus
-}} // extern "C", namespace swift
+
+static_assert(
+  sizeof(_SwiftDictionaryBodyStorage) ==
+    5 * sizeof(__swift_intptr_t) + sizeof(__swift_int64_t),
+  "_SwiftDictionaryBodyStorage has unexpected size");
+
+static_assert(
+  sizeof(_SwiftSetBodyStorage) ==
+    4 * sizeof(__swift_intptr_t) + sizeof(__swift_int64_t),
+  "_SwiftSetBodyStorage has unexpected size");
+
+} // extern "C"
+#ifndef __swift__
+} // namespace swift
+#endif
 #endif
 
 #endif

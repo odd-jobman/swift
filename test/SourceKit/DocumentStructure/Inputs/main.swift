@@ -15,7 +15,8 @@ class Foo : Bar {
 class Foo2 {}
 
 class Foo3 {
-    @IBInspectable var testInspectable : Int
+    @IBInspectable var testIBInspectable : Int
+    @GKInspectable var testGKInspectable : Int
 }
 
 protocol MyProt {}
@@ -74,9 +75,9 @@ var (sd2: Qtys)
 
 for i in 0...5 {}
 for var i = 0, i2 = 1; i == 0; ++i {}
-while var v = o, z = o where v > z {}
+while var v = o, var z = o, v > z {}
 repeat {} while v == 0
-if var v = o, z = o where v > z {}
+if var v = o, var z = o, v > z {}
 switch v {
   case 1: break;
   case 2, 3: break;
@@ -97,4 +98,89 @@ class ClassObjcAttr : NSObject {
 class ClassObjcAttr2 : NSObject {
     @objc(Foo)
     func m() {}
+}
+
+protocol FooProtocol {
+    associatedtype Bar
+    associatedtype Baz: Equatable
+}
+
+// SR-5717
+a.b(c: d?.e?.f, h: i)
+
+// SR-6926
+/* 👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦 */
+`init`(x: Int, y: Int) {}
+class C {
+/* 👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦 */
+`init`(x: Int, y: Int) {}
+}
+var // comment
+  `$` = 1
+func /* comment */`foo`(x: Int) {}
+
+// rdar://40085232
+enum MyEnum {
+  case Bar(arg: Int)
+}
+
+enum MySecondEnum {
+  case One = 1
+}
+
+func someFunc(input :Int?, completion: () throws -> Void) rethrows {}
+
+class OneMore {
+  @IBSegueAction func testAction(coder: AnyObject, _ ident: String) -> AnyObject {
+    fatalError()
+  }
+}
+
+class Chain<A> {
+  func + (lhs: Chain<A>, rhs: Chain<A>) -> Chain<A> { fatalError() }
+}
+
+public init() {
+    fatalError()
+}
+
+deinit {
+    fatalError()
+}
+
+#if false
+extension Result {
+  func foo() {}
+}
+
+extension Outer {
+  class Inner {
+    deinit {}
+  }
+}
+
+public extension Outer2 {
+  class Inner2 {
+    deinit {}
+  }
+}
+#endif
+
+@objc(FPBarProto)
+protocol BarProtocol {}
+
+var var_with_didset = 10 {
+  didSet { print(oldValue) }
+}
+
+#if os(iOS)
+@objc protocol MyProtocol: NSObjectProtocol {
+    var thing: NSObject {get}
+}
+#endif
+
+class A {
+  #if true
+  @IBAction @objc func foo(a: Int) {}
+  #endif
 }

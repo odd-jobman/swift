@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -16,6 +16,7 @@
 #include "llvm/Option/Arg.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/Option.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace sourcekitd_test;
@@ -26,9 +27,9 @@ namespace {
 // Create enum with OPT_xxx values for each option in Options.td.
 enum Opt {
   OPT_INVALID = 0,
-#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM, \
-               HELP, META) \
-          OPT_##ID,
+#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
+               HELP, META, VALUES)                                             \
+  OPT_##ID,
 #include "Options.inc"
   LastOption
 #undef OPTION
@@ -41,10 +42,12 @@ enum Opt {
 
 // Create table mapping all options defined in Options.td.
 static const llvm::opt::OptTable::Info InfoTable[] = {
-#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM, \
-               HELPTEXT, METAVAR)   \
-  { PREFIX, NAME, HELPTEXT, METAVAR, OPT_##ID, llvm::opt::Option::KIND##Class, \
-    PARAM, FLAGS, OPT_##GROUP, OPT_##ALIAS, ALIASARGS },
+#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
+               HELPTEXT, METAVAR, VALUES)                                      \
+  {PREFIX,      NAME,      HELPTEXT,                                           \
+   METAVAR,     OPT_##ID,  llvm::opt::Option::KIND##Class,                     \
+   PARAM,       FLAGS,     OPT_##GROUP,                                        \
+   OPT_##ALIAS, ALIASARGS, VALUES},
 #include "Options.inc"
 #undef OPTION
 };
@@ -55,21 +58,21 @@ public:
   TestOptTable() : OptTable(InfoTable, llvm::array_lengthof(InfoTable)){}
 };
 
-} // namespace anonymous
+} // end anonymous namespace
 
 static std::pair<unsigned, unsigned> parseLineCol(StringRef LineCol) {
   unsigned Line, Col;
   size_t ColonIdx = LineCol.find(':');
   if (ColonIdx == StringRef::npos) {
-    llvm::errs() << "wrong pos format, it should be '<line>:<column'\n";
+    llvm::errs() << "wrong pos format, it should be '<line>:<column>'\n";
     exit(1);
   }
   if (LineCol.substr(0, ColonIdx).getAsInteger(10, Line)) {
-    llvm::errs() << "wrong pos format, it should be '<line>:<column'\n";
+    llvm::errs() << "wrong pos format, it should be '<line>:<column>'\n";
     exit(1);
   }
   if (LineCol.substr(ColonIdx+1).getAsInteger(10, Col)) {
-    llvm::errs() << "wrong pos format, it should be '<line>:<column'\n";
+    llvm::errs() << "wrong pos format, it should be '<line>:<column>'\n";
     exit(1);
   }
 
@@ -103,6 +106,7 @@ bool TestOptions::parseArgs(llvm::ArrayRef<const char *> Args) {
     case OPT_req:
       Request = llvm::StringSwitch<SourceKitRequest>(InputArg->getValue())
         .Case("version", SourceKitRequest::ProtocolVersion)
+        .Case("compiler-version", SourceKitRequest::CompilerVersion)
         .Case("demangle", SourceKitRequest::DemangleNames)
         .Case("mangle", SourceKitRequest::MangleSimpleClasses)
         .Case("index", SourceKitRequest::Index)
@@ -112,9 +116,12 @@ bool TestOptions::parseArgs(llvm::ArrayRef<const char *> Args) {
         .Case("complete.update", SourceKitRequest::CodeCompleteUpdate)
         .Case("complete.cache.ondisk", SourceKitRequest::CodeCompleteCacheOnDisk)
         .Case("complete.setpopularapi", SourceKitRequest::CodeCompleteSetPopularAPI)
+        .Case("typecontextinfo", SourceKitRequest::TypeContextInfo)
+        .Case("conformingmethods", SourceKitRequest::ConformingMethodList)
         .Case("cursor", SourceKitRequest::CursorInfo)
         .Case("related-idents", SourceKitRequest::RelatedIdents)
         .Case("syntax-map", SourceKitRequest::SyntaxMap)
+        .Case("syntax-tree", SourceKitRequest::SyntaxTree)
         .Case("structure", SourceKitRequest::Structure)
         .Case("format", SourceKitRequest::Format)
         .Case("expand-placeholder", SourceKitRequest::ExpandPlaceholder)
@@ -125,21 +132,89 @@ bool TestOptions::parseArgs(llvm::ArrayRef<const char *> Args) {
         .Case("find-usr", SourceKitRequest::FindUSR)
         .Case("find-interface", SourceKitRequest::FindInterfaceDoc)
         .Case("open", SourceKitRequest::Open)
+        .Case("close", SourceKitRequest::Close)
         .Case("edit", SourceKitRequest::Edit)
         .Case("print-annotations", SourceKitRequest::PrintAnnotations)
         .Case("print-diags", SourceKitRequest::PrintDiags)
         .Case("extract-comment", SourceKitRequest::ExtractComment)
         .Case("module-groups", SourceKitRequest::ModuleGroups)
+        .Case("range", SourceKitRequest::RangeInfo)
+        .Case("syntactic-rename", SourceKitRequest::SyntacticRename)
+        .Case("find-rename-ranges", SourceKitRequest::FindRenameRanges)
+        .Case("find-local-rename-ranges", SourceKitRequest::FindLocalRenameRanges)
+        .Case("translate", SourceKitRequest::NameTranslation)
+        .Case("markup-xml", SourceKitRequest::MarkupToXML)
+        .Case("stats", SourceKitRequest::Statistics)
+        .Case("track-compiles", SourceKitRequest::EnableCompileNotifications)
+        .Case("collect-type", SourceKitRequest::CollectExpresstionType)
+        .Case("collect-var-type", SourceKitRequest::CollectVariableType)
+        .Case("global-config", SourceKitRequest::GlobalConfiguration)
+        .Case("dependency-updated", SourceKitRequest::DependencyUpdated)
+        .Case("diags", SourceKitRequest::Diagnostics)
+        .Case("compile", SourceKitRequest::Compile)
+        .Case("compile.close", SourceKitRequest::CompileClose)
+#define SEMANTIC_REFACTORING(KIND, NAME, ID) .Case("refactoring." #ID, SourceKitRequest::KIND)
+#include "swift/IDE/RefactoringKinds.def"
         .Default(SourceKitRequest::None);
+
       if (Request == SourceKitRequest::None) {
-        llvm::errs() << "error: invalid request, expected one of "
-            << "version/demangle/mangle/index/complete/cursor/related-idents/syntax-map/structure/"
-               "format/expand-placeholder/doc-info/sema/interface-gen/interface-gen-open/"
-               "find-usr/find-interface/open/edit/print-annotations/extract-comment/"
-               "module-groups\n";
+        llvm::errs() << "error: invalid request '" << InputArg->getValue()
+                     << "'\nexpected one of "
+                     << "- version\n"
+                     << "- compiler-version\n"
+                     << "- demangle\n"
+                     << "- mangle\n"
+                     << "- index\n"
+                     << "- complete\n"
+                     << "- complete.open\n"
+                     << "- complete.close\n"
+                     << "- complete.update\n"
+                     << "- complete.cache.ondisk\n"
+                     << "- complete.setpopularapi\n"
+                     << "- typecontextinfo\n"
+                     << "- conformingmethods\n"
+                     << "- cursor\n"
+                     << "- related-idents\n"
+                     << "- syntax-map\n"
+                     << "- syntax-tree\n"
+                     << "- structure\n"
+                     << "- format\n"
+                     << "- expand-placeholder\n"
+                     << "- doc-info\n"
+                     << "- sema\n"
+                     << "- interface-gen\n"
+                     << "- interface-gen-open\n"
+                     << "- find-usr\n"
+                     << "- find-interface\n"
+                     << "- open\n"
+                     << "- close\n"
+                     << "- edit\n"
+                     << "- print-annotations\n"
+                     << "- print-diags\n"
+                     << "- extract-comment\n"
+                     << "- module-groups\n"
+                     << "- range\n"
+                     << "- syntactic-rename\n"
+                     << "- find-rename-ranges\n"
+                     << "- find-local-rename-ranges\n"
+                     << "- translate\n"
+                     << "- markup-xml\n"
+                     << "- stats\n"
+                     << "- track-compiles\n"
+                     << "- collect-type\n"
+                     << "- global-config\n"
+                     << "- dependency-updated\n"
+#define SEMANTIC_REFACTORING(KIND, NAME, ID) << "- refactoring." #ID "\n"
+#include "swift/IDE/RefactoringKinds.def"
+                        "\n";
         return true;
       }
       break;
+
+    case OPT_help: {
+      printHelp(false);
+      return true;
+    }
 
     case OPT_offset:
       if (StringRef(InputArg->getValue()).getAsInteger(10, Offset)) {
@@ -162,6 +237,26 @@ bool TestOptions::parseArgs(llvm::ArrayRef<const char *> Args) {
       break;
     }
 
+    case OPT_end_pos: {
+      auto linecol = parseLineCol(InputArg->getValue());
+      EndLine = linecol.first;
+      EndCol = linecol.second;
+      break;
+    }
+
+    case OPT_using_swift_args: {
+      UsingSwiftArgs = true;
+      break;
+    }
+
+    case OPT_swift_version:
+      SwiftVersion = InputArg->getValue();
+      break;
+
+    case OPT_pass_version_as_string:
+      PassVersionAsString = true;
+      break;
+
     case OPT_line:
       if (StringRef(InputArg->getValue()).getAsInteger(10, Line)) {
         llvm::errs() << "error: expected integer for 'line'\n";
@@ -180,6 +275,10 @@ bool TestOptions::parseArgs(llvm::ArrayRef<const char *> Args) {
 
     case OPT_group_name:
       ModuleGroupName = InputArg->getValue();
+      break;
+
+    case OPT_id:
+      RequestId = InputArg->getValue();
       break;
 
     case OPT_interested_usr:
@@ -215,6 +314,10 @@ bool TestOptions::parseArgs(llvm::ArrayRef<const char *> Args) {
       CheckInterfaceIsASCII = true;
       break;
 
+    case OPT_dont_print_request:
+      PrintRequest = false;
+      break;
+
     case OPT_print_response_as_json:
       PrintResponseAsJSON = true;
       break;
@@ -223,10 +326,18 @@ bool TestOptions::parseArgs(llvm::ArrayRef<const char *> Args) {
       PrintRawResponse = true;
       break;
 
+    case OPT_dont_print_response:
+      PrintResponse = false;
+      break;
+
     case OPT_INPUT:
       SourceFile = InputArg->getValue();
       SourceText = llvm::None;
       Inputs.push_back(InputArg->getValue());
+      break;
+
+    case OPT_rename_spec:
+      RenameSpecPath = InputArg->getValue();
       break;
 
     case OPT_json_request_path:
@@ -241,12 +352,128 @@ bool TestOptions::parseArgs(llvm::ArrayRef<const char *> Args) {
       SynthesizedExtensions = true;
       break;
 
+    case OPT_async:
+      isAsyncRequest = true;
+      break;
+
+    case OPT_cursor_action:
+      CollectActionables = true;
+      break;
+
+    case OPT_swift_name:
+      SwiftName = InputArg->getValue();
+      break;
+
+    case OPT_objc_name:
+      ObjCName = InputArg->getValue();
+      break;
+
+    case OPT_objc_selector:
+      ObjCSelector = InputArg->getValue();
+      break;
+
+    case OPT_name:
+      Name = InputArg->getValue();
+      break;
+
+    case OPT_cancel_on_subsequent_request:
+      unsigned Cancel;
+      if (StringRef(InputArg->getValue()).getAsInteger(10, Cancel)) {
+        llvm::errs() << "error: expected integer for 'cancel-on-subsequent-request'\n";
+        return true;
+      }
+      CancelOnSubsequentRequest = Cancel;
+      break;
+
+    case OPT_time_request:
+      timeRequest = true;
+      break;
+
+    case OPT_measure_instructions:
+      measureInstructions = true;
+      break;
+
+    case OPT_repeat_request:
+      if (StringRef(InputArg->getValue()).getAsInteger(10, repeatRequest)) {
+        llvm::errs() << "error: expected integer for 'cancel-on-subsequent-request'\n";
+        return true;
+      } else if (repeatRequest < 1) {
+        llvm::errs() << "error: repeat-request must be >= 1\n";
+        return true;
+      }
+      break;
+
+    case OPT_vfs_files:
+      VFSName = VFSName.getValueOr("in-memory-vfs");
+      for (const char *vfsFile : InputArg->getValues()) {
+        StringRef name, target;
+        std::tie(name, target) = StringRef(vfsFile).split('=');
+        llvm::SmallString<64> nativeName;
+        llvm::sys::path::native(name, nativeName);
+        bool passAsSourceText = target.consume_front("@");
+        VFSFiles.try_emplace(nativeName.str(), VFSFile(target.str(), passAsSourceText));
+      }
+      break;
+
+    case OPT_vfs_name:
+      VFSName = InputArg->getValue();
+      break;
+
+    case OPT_module_cache_path:
+      ModuleCachePath = InputArg->getValue();
+      break;
+
+    case OPT_simulate_long_request:
+      unsigned SimulatedDuration;
+      if (StringRef(InputArg->getValue()).getAsInteger(10, SimulatedDuration)) {
+        llvm::errs() << "error: expected integer for 'simulate-long-request'\n";
+        return true;
+      }
+      SimulateLongRequest = SimulatedDuration;
+      break;
+
+    case OPT_shell:
+      ShellExecution = true;
+      break;
+
+    case OPT_cancel:
+      CancelRequest = InputArg->getValue();
+      break;
+
+    case OPT_disable_implicit_concurrency_module_import:
+      DisableImplicitConcurrencyModuleImport = true;
+      break;
+
+    case OPT_disable_implicit_string_processing_module_import:
+      DisableImplicitStringProcessingModuleImport = true;
+      break;
+
     case OPT_UNKNOWN:
       llvm::errs() << "error: unknown argument: "
-                   << InputArg->getAsString(ParsedArgs) << '\n';
+                   << InputArg->getAsString(ParsedArgs) << '\n'
+                   << "Use -h or -help for assistance" << '\n';
       return true;
     }
   }
 
+  if (Request == SourceKitRequest::InterfaceGenOpen && isAsyncRequest) {
+    llvm::errs()
+        << "error: cannot use -async with interface-gen-open request\n";
+    return true;
+  }
+
   return false;
+}
+
+void TestOptions::printHelp(bool ShowHidden) const {
+
+  // Based off of swift/lib/Driver/Driver.cpp, at Driver::printHelp
+  //FIXME: should we use IncludedFlagsBitmask and ExcludedFlagsBitmask?
+  // Maybe not for modes such as Interactive, Batch, AutolinkExtract, etc,
+  // as in Driver.cpp. But could be useful for extra info, like HelpHidden.
+
+  TestOptTable Table;
+
+  Table.printHelp(llvm::outs(), "sourcekitd-test [options] <inputs>",
+                  "SourceKit Testing Tool", ShowHidden);
 }

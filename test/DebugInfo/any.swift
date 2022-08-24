@@ -1,12 +1,11 @@
-// RUN: %target-swift-frontend %s -emit-ir -g -o - | FileCheck %s
+// RUN: %target-swift-frontend %s -emit-ir -g -o - | %FileCheck %s
 
-func markUsed<T>(t: T) {}
+func markUsed<T>(_ t: T) {}
 
 func main() {
-  // CHECK: call void @llvm.dbg.declare(metadata %"protocol<>"* {{.*}}, metadata ![[S:.*]], metadata !{{[0-9]+}}), !dbg ![[DBG:.*]]
-  // CHECK: ![[SCOPE:.*]] = distinct !DILexicalBlock({{.*}}line: 5, column: 13)
+  // CHECK: call void @llvm.dbg.declare(metadata %Any* {{.*}}, metadata ![[S:.*]], metadata !DIExpression()), !dbg ![[DBG:.*]]
   // CHECK: ![[S]] = !DILocalVariable(name: "s", {{.*}}line: [[@LINE+2]]
-  // CHECK: ![[DBG]] = !DILocation(line: [[@LINE+1]], column: 7, scope: ![[SCOPE]])
+  // CHECK: ![[DBG]] = !DILocation(line: [[@LINE+1]], column: 7,
   var s: Any = "hello world"
   var n: Any = 12
   var t: Any = (1,2)

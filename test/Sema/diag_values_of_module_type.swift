@@ -1,4 +1,4 @@
-// RUN: %target-parse-verify-swift -I %S/Inputs -enable-source-import
+// RUN: %target-typecheck-verify-swift -I %S/Inputs -enable-source-import
 
 import diag_values_of_module_type_foo
 
@@ -70,8 +70,8 @@ func goodTest3() -> Swift.Int {}
 
 func goodTest4<T : diag_values_of_module_type_foo.SomeProtocol>(_: T) {}
 
-func goodTest5<T : diag_values_of_module_type_foo.SomeProtocol
-               where T.Foo == Swift.Int>(_: T) {}
+func goodTest5<T : diag_values_of_module_type_foo.SomeProtocol>(_: T)
+  where T.Foo == Swift.Int {}
 
 //===--- Disallowed uses of module names.
 
@@ -95,13 +95,13 @@ func badTest2() {
   _ = x
 }
 func badTest3() {
-  var _ = Swift. // expected-error {{expected member name following '.'}} expected-error {{expected module member name after module name}}
+  var _ = Swift. // expected-error {{expected member name following '.'}}
 }
 func badTest4() {
-  Swift // expected-error {{expected module member name after module name}}
+  _ = Swift // expected-error {{expected module member name after module name}}
 }
 func badTest5() {
-  Swift. // expected-error {{expected module member name after module name}} expected-error {{expected member name following '.'}}
+  _ = Swift. // expected-error {{expected member name following '.'}}
 }
 func badTest6() {
   _ = { () -> Int in

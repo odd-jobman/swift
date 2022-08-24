@@ -1,18 +1,20 @@
-add_swift_executable(swift-llvm-opt
+add_swift_host_tool(swift-llvm-opt
   LLVMOpt.cpp
-  LINK_LIBRARIES
-  swiftIRGen
-
-  # Swift libraries included to appease the linker on linux.
-  swiftSema
-  swiftAST
-
-  # Clang libraries included to appease the linker on linux.
-  clangBasic
-  clangCodeGen
+  SWIFT_COMPONENT tools
 )
-
-swift_install_in_component(tools
-    TARGETS swift-llvm-opt
-    RUNTIME DESTINATION bin)
-
+target_link_libraries(swift-llvm-opt
+                      PRIVATE
+                        swiftIRGen
+                        # Swift libraries included to appease the linker on linux.
+                        swiftSema
+                        swiftAST
+                        # Clang libraries included to appease the linker on linux.
+                        clangBasic
+                        clangCodeGen
+                        # LLVM libraries included to appease the linker on linux.
+                        LLVMAggressiveInstCombine
+                        LLVMCodeGen
+                        LLVMInstCombine
+                        LLVMScalarOpts
+                        LLVMVectorize
+                        )

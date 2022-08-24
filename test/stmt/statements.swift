@@ -1,11 +1,11 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 /* block comments */
 /* /* nested too */ */
 
-func markUsed<T>(t: T) {}
+func markUsed<T>(_ t: T) {}
 
-func f1(a: Int, _ y: Int) {}
+func f1(_ a: Int, _ y: Int) {}
 func f2() {}
 func f3() -> Int {}
 
@@ -13,25 +13,26 @@ func invalid_semi() {
   ; // expected-error {{';' statements are not allowed}} {{3-5=}}
 }
 
-func nested1(x: Int) {
+func nested1(_ x: Int) {
   var y : Int
+  // expected-warning@-1 {{variable 'y' was never mutated; consider changing to 'let' constant}}
   
-  func nested2(z: Int) -> Int {
+  func nested2(_ z: Int) -> Int {
     return x+y+z
   }
   
-  nested2(1)
+  _ = nested2(1)
 }
 
-func funcdecl5(a: Int, y: Int) {
+func funcdecl5(_ a: Int, y: Int) {
   var x : Int
 
   // a few statements
   if (x != 0) {
     if (x != 0 || f3() != 0) {
       // while with and without a space after it.
-      while(true) { 4; 2; 1 }
-      while (true) { 4; 2; 1 }
+      while(true) { 4; 2; 1 } // expected-warning 3 {{integer literal is unused}}
+      while (true) { 4; 2; 1 } // expected-warning 3 {{integer literal is unused}}
     }
   }
 
@@ -39,8 +40,13 @@ func funcdecl5(a: Int, y: Int) {
   x = y
   (x) = y
 
-  1 = x        // expected-error {{cannot assign to a literal value}}
-  (1) = x      // expected-error {{cannot assign to a literal value}}
+  1 = x        // expected-error {{cannot assign to value: literals are not mutable}}
+  (1) = x      // expected-error {{cannot assign to value: literals are not mutable}}
+  "string" = "other"    // expected-error {{cannot assign to value: literals are not mutable}}
+  [1, 1, 1, 1] = [1, 1] // expected-error {{cannot assign to immutable expression of type '[Int]}}
+  1.0 = x               // expected-error {{cannot assign to value: literals are not mutable}}
+  nil = 1               // expected-error {{cannot assign to value: literals are not mutable}}
+
   (x:1).x = 1 // expected-error {{cannot assign to immutable expression of type 'Int'}}
   var tup : (x:Int, y:Int)
   tup.x = 1
@@ -53,8 +59,8 @@ func funcdecl5(a: Int, y: Int) {
   } else if (y == 2) {
   }
 
-  // FIXME: This diagnostic is terrible - rdar://12939553
-  if x {}   // expected-error {{type 'Int' does not conform to protocol 'Boolean'}}
+  // This diagnostic is terrible - rdar://12939553
+  if x {}   // expected-error {{type 'Int' cannot be used as a boolean; test for '!= 0' instead}}
 
   if true {
     if (B) {
@@ -94,7 +100,7 @@ struct infloopbool {
 }
 
 func infloopbooltest() {
-  if (infloopbool()) {} // expected-error {{type 'infloopbool' does not conform to protocol 'Boolean'}}
+  if (infloopbool()) {} // expected-error {{cannot convert value of type 'infloopbool' to expected condition type 'Bool'}}
 }
 
 // test "builder" API style
@@ -118,35 +124,6 @@ SomeGeneric<Int>
   .builderProp
   .builder2()
 
-func for_loop() {
-  var x = 0
-  for ;; { } // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
-  for x = 1; x != 42; x += 1 { } // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
-  for infloopbooltest(); x != 12; infloopbooltest() {} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
-  
-  for ; { } // expected-error {{expected ';' in 'for' statement}}
-  
-  for var y = 1; y != 42; y += 1 {} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
-  for (var y = 1; y != 42; y += 1) {} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
-  var z = 10
-  for (; z != 0; z -= 1) {} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
-  for (z = 10; z != 0; z -= 1) {} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
-  for var (a,b) = (0,12); a != b; b -= 1 {a += 1} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
-  for (var (a,b) = (0,12); a != b; b -= 1) {a += 1} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
-  var j, k : Int
-  for ((j,k) = (0,10); j != k; k -= 1) {} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
-  for var i = 0, j = 0; i * j < 10; i += 1, j += 1 {} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
-  for j = 0, k = 52; j < k; j += 1, k -= 1 { } // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
-  // rdar://19540536
-  // expected-error@+4{{expected var declaration in a 'for' statement}}
-  // expected-error@+3{{expression resolves to an unused function}}
-  // expected-error@+2{{expected an attribute name}}
-  // expected-error@+1{{braced block of statements is an unused closure}}
-  for @ {}
-
-  // <rdar://problem/17462274> Is increment in for loop optional?
-  for (let i = 0; i < 10; ) {} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
-}
 
 break // expected-error {{'break' is only allowed inside a loop, if, do, or switch}}
 continue // expected-error {{'continue' is only allowed inside a loop}}
@@ -182,13 +159,15 @@ func tuple_assign() {
   (a,b) = (1,2)
   func f() -> (Int,Int) { return (1,2) }
   ((a,b), (c,d)) = (f(), f())
+  _ = (a,b,c,d)
 }
 
 func missing_semicolons() {
   var w = 321
   func g() {}
   g() w += 1             // expected-error{{consecutive statements}} {{6-6=;}}
-  var z = w"hello"    // expected-error{{consecutive statements}} {{12-12=;}}
+  var z = w"hello"    // expected-error{{consecutive statements}} {{12-12=;}} expected-warning {{string literal is unused}}
+  // expected-warning@-1 {{initialization of variable 'z' was never used; consider replacing with assignment to '_' or removing it}}
   class  C {}class  C2 {} // expected-error{{consecutive statements}} {{14-14=;}}
   struct S {}struct S2 {} // expected-error{{consecutive statements}} {{14-14=;}}
   func j() {}func k() {}  // expected-error{{consecutive statements}} {{14-14=;}}
@@ -201,6 +180,7 @@ return 42 // expected-error {{return invalid outside of a func}}
 return // expected-error {{return invalid outside of a func}}
 
 func NonVoidReturn1() -> Int {
+  _ = 0
   return // expected-error {{non-void function should return a value}}
 }
 
@@ -231,8 +211,15 @@ func IfStmt1() {
 
 func IfStmt2() {
   if 1 > 0 {
-  } else // expected-error {{expected '{' after 'else'}}
+  } else // expected-error {{expected '{' or 'if' after 'else'}}
   _ = 42
+}
+func IfStmt3() {
+  if 1 > 0 {
+  } else 1 < 0 { // expected-error {{expected '{' or 'if' after 'else'; did you mean to write 'if'?}} {{9-9= if}}
+    _ = 42
+  } else {
+  }
 }
 
 //===--- While statement.
@@ -249,9 +236,26 @@ func DoStmt() {
   }
 }
 
-func DoWhileStmt() {
-  do { // expected-error {{'do-while' statement is not allowed; use 'repeat-while' instead}} {{3-5=repeat}}
+
+func DoWhileStmt1() {
+  do { // expected-error {{'do-while' statement is not allowed}}
+  // expected-note@-1 {{did you mean 'repeat-while' statement?}} {{3-5=repeat}}
+  // expected-note@-2 {{did you mean separate 'do' and 'while' statements?}} {{5-5=\n}}
   } while true
+}
+
+func DoWhileStmt2() {
+  do {
+
+  }
+  while true {
+
+  }
+}
+
+func LabeledDoStmt() {
+  LABEL: { // expected-error {{labeled block needs 'do'}} {{10-10=do }}
+  }
 }
 
 //===--- Repeat-while statement.
@@ -274,29 +278,30 @@ func RepeatWhileStmt4() {
   } while + // expected-error {{unary operator cannot be separated from its operand}} {{12-1=}} expected-error {{expected expression in 'repeat-while' condition}}
 }
 
-func brokenSwitch(x: Int) -> Int {
+func brokenSwitch(_ x: Int) -> Int {
   switch x {
-  case .Blah(var rep): // expected-error{{enum case 'Blah' not found in type 'Int'}}
+  case .Blah(var rep): // expected-error{{type 'Int' has no member 'Blah'}}
     return rep
   }
 }
 
-func switchWithVarsNotMatchingTypes(x: Int, y: Int, z: String) -> Int {
+func switchWithVarsNotMatchingTypes(_ x: Int, y: Int, z: String) -> Int {
   switch (x,y,z) {
   case (let a, 0, _), (0, let a, _): // OK
     return a
   case (let a, _, _), (_, _, let a): // expected-error {{pattern variable bound to type 'String', expected type 'Int'}}
+  // expected-warning@-1 {{case is already handled by previous patterns; consider removing it}}
     return a
   }
 }
 
-func breakContinue(x : Int) -> Int {
+func breakContinue(_ x : Int) -> Int {
 
 Outer:
   for _ in 0...1000 {
 
-  Switch:
-    switch x {
+  Switch: // expected-error {{switch must be exhaustive}} expected-note{{do you want to add a default clause?}}
+  switch x {
     case 42: break Outer
     case 97: continue Outer
     case 102: break Switch
@@ -327,7 +332,8 @@ Loop:  // expected-note {{previously declared here}}
   let x : Int? = 42
   
   // <rdar://problem/16879701> Should be able to pattern match 'nil' against optionals
-  switch x {
+  switch x { // expected-error {{switch must be exhaustive}}
+  // expected-note@-1 {{missing case: '.some(_)'}}
   case .some(42): break
   case nil: break
   
@@ -340,7 +346,7 @@ enum MyEnumWithCaseLabels {
   case Case(one: String, two: Int)
 }
 
-func testMyEnumWithCaseLabels(a : MyEnumWithCaseLabels) {
+func testMyEnumWithCaseLabels(_ a : MyEnumWithCaseLabels) {
   // <rdar://problem/20135489> Enum case labels are ignored in "case let" statements
   switch a {
   case let .Case(one: _, two: x): break // ok
@@ -351,107 +357,85 @@ func testMyEnumWithCaseLabels(a : MyEnumWithCaseLabels) {
 }
 
 
-
-// "defer"
-
-func test_defer(a : Int) {
-  
-  defer { VoidReturn1() }
-  defer { breakContinue(1)+42 }
-  
-  // Ok:
-  defer { while false { break } }
-
-  // Not ok.
-  while false { defer { break } }   // expected-error {{'break' cannot transfer control out of a defer statement}}
-  defer { return }  // expected-error {{'return' cannot transfer control out of a defer statement}}
-}
-
-class SomeTestClass {
-  var x = 42
-  
-  func method() {
-    defer { x = 97 }  // self. not required here!
-  }
-}
-
-
-func test_require(x : Int, y : Int??, cond : Bool) {
+func test_guard(_ x : Int, y : Int??, z: Int?, cond : Bool) {
   
   // These are all ok.
   guard let a = y else {}
   markUsed(a)
-  guard let b = y where cond else {}
-  guard case let c = x where cond else {}
+  guard let b = y, cond else {}
+  guard case let c = x, cond else {}
   guard case let Optional.some(d) = y else {}
   guard x != 4, case _ = x else { }
+  guard let z, cond else {}
+  
+  
+  guard case let f? : Int?, cond else {}    // expected-error {{variable binding in a condition requires an initializer}}
 
-
-  guard let e where cond else {}    // expected-error {{variable binding in a condition requires an initializer}}
-  guard case let f? : Int? where cond else {}    // expected-error {{variable binding in a condition requires an initializer}}
-
+  // FIXME: Bring back the tailored diagnostic
   guard let g = y else {
-    markUsed(g)  // expected-error {{variable declared in 'guard' condition is not usable in its body}}
+    markUsed(g)  // expected-error {{cannot find 'g' in scope}}
   }
 
-  guard let h = y where cond {}  // expected-error {{expected 'else' after 'guard' condition}}
+  guard let h = y, cond {}  // expected-error {{expected 'else' after 'guard' condition}} {{25-25=else }}
 
 
   guard case _ = x else {}  // expected-warning {{'guard' condition is always true, body is unreachable}}
+
+  // SR-7567
+  guard let outer = y else {
+    // FIXME: Bring back the tailored diagnostic
+    guard true else {
+      print(outer) // expected-error {{cannot find 'outer' in scope}}
+    }
+  }
 }
 
 func test_is_as_patterns() {
   switch 4 {
   case is Int: break        // expected-warning {{'is' test is always true}}
   case _ as Int: break  // expected-warning {{'as' test is always true}}
-  case _: break
+  // expected-warning@-1 {{case is already handled by previous patterns; consider removing it}}
+  case _: break // expected-warning {{case is already handled by previous patterns; consider removing it}}
   }
 }
 
 // <rdar://problem/21387308> Fuzzing SourceKit: crash in Parser::parseStmtForEach(...)
-func matching_pattern_recursion() {
+func matching_pattern_recursion(zs: [Int]) { // expected-note {{'zs' declared here}}
   switch 42 {
   case {  // expected-error {{expression pattern of type '() -> ()' cannot match values of type 'Int'}}
       for i in zs {
       }
   }: break
   }
+
+  switch 42 {
+  case {
+      for i in ws { // expected-error {{cannot find 'ws' in scope; did you mean 'zs'?}}
+      }
+    }: break
+  }
 }
 
 // <rdar://problem/18776073> Swift's break operator in switch should be indicated in errors
-func r18776073(a : Int?) {
+func r18776073(_ a : Int?) {
   switch a {
-    case nil:   // expected-error {{'case' label in a 'switch' should have at least one executable statement}} {{14-14= break}}
+    case nil:   // expected-error {{'case' label in a 'switch' must have at least one executable statement}} {{14-14= break}}
     case _?: break
   }
 }
 
 // <rdar://problem/22491782> unhelpful error message from "throw nil"
 func testThrowNil() throws {
-  throw nil  // expected-error {{cannot infer concrete ErrorProtocol for thrown 'nil' value}}
+  throw nil  // expected-error {{cannot infer concrete Error for thrown 'nil' value}}
 }
 
-
-// <rdar://problem/16650625>
-func for_ignored_lvalue_init() {
-  var i = 0
-  for i;  // expected-error {{expression resolves to an unused l-value}} expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
-    i < 10; i += 1 {}
-}
-
-// rdar://problem/18643692
-func for_loop_multi_iter() {
-  for (var i = 0, x = 0; i < 10; i += 1, // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
-       x) { // expected-error {{expression resolves to an unused l-value}}
-    x -= 1
-  }
-}
 
 // rdar://problem/23684220
 // Even if the condition fails to typecheck, save it in the AST anyway; the old
 // condition may have contained a SequenceExpr.
-func r23684220(b: Any) {
-  if let _ = b ?? b {} // expected-error {{initializer for conditional binding must have Optional type, not 'Any' (aka 'protocol<>')}}
+func r23684220(_ b: Any) {
+  if let _ = b ?? b {} // expected-warning {{left side of nil coalescing operator '??' has non-optional type 'Any', so the right side is never used}}
+  // expected-error@-1 {{initializer for conditional binding must have Optional type, not 'Any'}}
 }
 
 
@@ -470,12 +454,13 @@ func f21080671() {
 
 // <rdar://problem/24467411> QoI: Using "&& #available" should fixit to comma
 // https://twitter.com/radexp/status/694561060230184960
-func f(x : Int, y : Int) {
-  if x == y && #available(iOS 52, *) {}  // expected-error {{expected ',' joining parts of a multi-clause condition}} {{13-15=,}}
-  if #available(iOS 52, *) && x == y {}  // expected-error {{expected ',' joining parts of a multi-clause condition}} {{28-30=,}}
+func f(_ x : Int, y : Int) {
+  if x == y && #available(iOS 52, *) {}  // expected-error {{expected ',' joining parts of a multi-clause condition}} {{12-15=,}}
+  if #available(iOS 52, *) && x == y {}  // expected-error {{expected ',' joining parts of a multi-clause condition}} {{27-30=,}}
 
   // https://twitter.com/radexp/status/694790631881883648
-  if x == y && let _ = Optional(y) {}  // expected-error {{expected ',' joining parts of a multi-clause condition}} {{13-15=,}}
+  if x == y && let _ = Optional(y) {}  // expected-error {{expected ',' joining parts of a multi-clause condition}} {{12-15=,}}
+  if x == y&&let _ = Optional(y) {}  // expected-error {{expected ',' joining parts of a multi-clause condition}} {{12-14=,}}
 }
 
 
@@ -485,8 +470,9 @@ enum Type {
   case Foo
   case Bar
 }
-func r25178926(a : Type) {
-  switch a {
+func r25178926(_ a : Type) {
+  switch a { // expected-error {{switch must be exhaustive}}
+  // expected-note@-1 {{missing case: '.Bar'}}
   case .Foo, .Bar where 1 != 100:
     // expected-warning @-1 {{'where' only applies to the second pattern match in this case}}
     // expected-note @-2 {{disambiguate by adding a line break between them if this is desired}} {{14-14=\n       }}
@@ -494,27 +480,123 @@ func r25178926(a : Type) {
     break
   }
 
-  switch a {
+  switch a { // expected-error {{switch must be exhaustive}}
+  // expected-note@-1 {{missing case: '.Bar'}}
   case .Foo: break
   case .Bar where 1 != 100: break
   }
 
-  switch a {
+  switch a { // expected-error {{switch must be exhaustive}}
+  // expected-note@-1 {{missing case: '.Bar'}}
   case .Foo,  // no warn
        .Bar where 1 != 100:
     break
   }
 
-  switch a {
+  switch a { // expected-error {{switch must be exhaustive}}
+  // expected-note@-1 {{missing case: '.Foo'}}
+  // expected-note@-2 {{missing case: '.Bar'}}
   case .Foo where 1 != 100, .Bar where 1 != 100:
     break
   }
 }
 
+do {
+  guard 1 == 2 else {
+    break // expected-error {{unlabeled 'break' is only allowed inside a loop or switch, a labeled break is required to exit an if or do}}
+  }
+}
 
+func fn(a: Int) {
+  guard a < 1 else {
+    break // expected-error {{'break' is only allowed inside a loop, if, do, or switch}}
+  }
+}
+
+func fn(x: Int) {
+  if x >= 0 {
+    guard x < 1 else {
+      guard x < 2 else {
+        break // expected-error {{unlabeled 'break' is only allowed inside a loop or switch, a labeled break is required to exit an if or do}}
+      }
+      return
+    }
+  }
+}
+
+func bad_if() {
+  if 1 {} // expected-error {{type 'Int' cannot be used as a boolean; test for '!= 0' instead}}
+  if (x: false) {} // expected-error {{cannot convert value of type '(x: Bool)' to expected condition type 'Bool'}}
+  if (x: 1) {} // expected-error {{cannot convert value of type '(x: Int)' to expected condition type 'Bool'}}
+  if nil {} // expected-error {{'nil' is not compatible with expected condition type 'Bool'}}
+}
+
+// Typo correction for loop labels
+for _ in [1] {
+  break outerloop // expected-error {{cannot find label 'outerloop' in scope}}
+  continue outerloop // expected-error {{cannot find label 'outerloop' in scope}}
+}
+while true {
+  break outerloop // expected-error {{cannot find label 'outerloop' in scope}}
+  continue outerloop // expected-error {{cannot find label 'outerloop' in scope}}
+}
+repeat {
+  break outerloop // expected-error {{cannot find label 'outerloop' in scope}}
+  continue outerloop // expected-error {{cannot find label 'outerloop' in scope}}
+} while true
+
+outerLoop: for _ in [1] { // expected-note {{'outerLoop' declared here}}
+  break outerloop // expected-error {{cannot find label 'outerloop' in scope; did you mean 'outerLoop'?}} {{9-18=outerLoop}}
+}
+outerLoop: for _ in [1] { // expected-note {{'outerLoop' declared here}}
+  continue outerloop // expected-error {{cannot find label 'outerloop' in scope; did you mean 'outerLoop'?}} {{12-21=outerLoop}}
+}
+outerLoop: while true { // expected-note {{'outerLoop' declared here}}
+  break outerloop // expected-error {{cannot find label 'outerloop' in scope; did you mean 'outerLoop'?}} {{9-18=outerLoop}}
+}
+outerLoop: while true { // expected-note {{'outerLoop' declared here}}
+  continue outerloop // expected-error {{cannot find label 'outerloop' in scope; did you mean 'outerLoop'?}} {{12-21=outerLoop}}
+}
+outerLoop: repeat { // expected-note {{'outerLoop' declared here}}
+  break outerloop // expected-error {{cannot find label 'outerloop' in scope; did you mean 'outerLoop'?}} {{9-18=outerLoop}}
+} while true
+outerLoop: repeat { // expected-note {{'outerLoop' declared here}}
+  continue outerloop // expected-error {{cannot find label 'outerloop' in scope; did you mean 'outerLoop'?}} {{12-21=outerLoop}}
+} while true
+
+outerLoop1: for _ in [1] { // expected-note {{did you mean 'outerLoop1'?}} {{11-20=outerLoop1}}
+  outerLoop2: for _ in [1] { // expected-note {{did you mean 'outerLoop2'?}} {{11-20=outerLoop2}}
+    break outerloop // expected-error {{cannot find label 'outerloop' in scope}}
+  }
+}
+outerLoop1: for _ in [1] { // expected-note {{did you mean 'outerLoop1'?}} {{14-23=outerLoop1}}
+  outerLoop2: for _ in [1] { // expected-note {{did you mean 'outerLoop2'?}} {{14-23=outerLoop2}}
+    continue outerloop // expected-error {{cannot find label 'outerloop' in scope}}
+  }
+}
+outerLoop1: while true { // expected-note {{did you mean 'outerLoop1'?}} {{11-20=outerLoop1}}
+  outerLoop2: while true { // expected-note {{did you mean 'outerLoop2'?}} {{11-20=outerLoop2}}
+    break outerloop // expected-error {{cannot find label 'outerloop' in scope}}
+  }
+}
+outerLoop1: while true { // expected-note {{did you mean 'outerLoop1'?}} {{14-23=outerLoop1}}
+  outerLoop2: while true { // expected-note {{did you mean 'outerLoop2'?}} {{14-23=outerLoop2}}
+    continue outerloop // expected-error {{cannot find label 'outerloop' in scope}}
+  }
+}
+outerLoop1: repeat { // expected-note {{did you mean 'outerLoop1'?}} {{11-20=outerLoop1}}
+  outerLoop2: repeat { // expected-note {{did you mean 'outerLoop2'?}} {{11-20=outerLoop2}}
+    break outerloop // expected-error {{cannot find label 'outerloop' in scope}}
+  } while true
+} while true
+outerLoop1: repeat { // expected-note {{did you mean 'outerLoop1'?}} {{14-23=outerLoop1}}
+  outerLoop2: repeat { // expected-note {{did you mean 'outerLoop2'?}} {{14-23=outerLoop2}}
+    continue outerloop // expected-error {{cannot find label 'outerloop' in scope}}
+  } while true
+} while true
 
 // Errors in case syntax
 class
-case, // expected-error {{expected identifier in enum 'case' declaration}} expected-error {{expected pattern}}
-case  // expected-error {{expected identifier after comma in enum 'case' declaration}} expected-error {{expected identifier in enum 'case' declaration}} expected-error {{enum 'case' is not allowed outside of an enum}} expected-error {{expected pattern}}
+case, // expected-error {{expected identifier in enum 'case' declaration}} expected-error {{expected identifier after comma in enum 'case' declaration}} expected-error {{enum 'case' is not allowed outside of an enum}}
+case  // expected-error {{expected identifier in enum 'case' declaration}} expected-error {{enum 'case' is not allowed outside of an enum}}
 // NOTE: EOF is important here to properly test a code path that used to crash the parser

@@ -5,7 +5,7 @@ protocol SourceTargetTransformable {
     associatedtype Target
   
     // FIXME: should really be a typealias once we support that
-    associatedtype Transformer = Source -> Target
+    associatedtype Transformer = (Source) -> Target
 }
 
 
@@ -15,13 +15,13 @@ struct PiecewiseTransformedIteratorOf<
                                         SourceIterator: IteratorProtocol,
                                         TransformerIterator: IteratorProtocol,
                                         Transformable: SourceTargetTransformable
-                                      where
-                                        Transformable.Source == Source,
-                                        Transformable.Target == Target,
-                                        SourceIterator.Element == Source,
-                                        TransformerIterator.Element == Transformable.Transformer
                                       >
-       : IteratorProtocol {
+       : IteratorProtocol
+      where
+	Transformable.Source == Source,
+	Transformable.Target == Target,
+	SourceIterator.Element == Source,
+	TransformerIterator.Element == Transformable.Transformer {
     typealias Element = Target
     
     var sourceIterator: SourceIterator
@@ -32,7 +32,7 @@ struct PiecewiseTransformedIteratorOf<
         if let source: Transformable.Source = source {
             let transformer: Transformable.Transformer? = transformerIterator.next()
             if let transformer: Transformable.Transformer = transformer {
-                let tfunc: (Source -> Target)? = transformer as? (Source -> Target)
+                let tfunc: ((Source) -> Target)? = transformer as? ((Source) -> Target)
                 if let tfunc = tfunc {
                     return tfunc(source)
                 }
@@ -46,10 +46,10 @@ struct PiecewiseTransformedSequenceOf<
         SourceSequence: Sequence,
         TransformerSequence: Sequence,
         Transformable: SourceTargetTransformable
+        >: Sequence
     where
         SourceSequence.Iterator.Element == Transformable.Source,
-        TransformerSequence.Iterator.Element == Transformable.Transformer
-        >: Sequence {
+        TransformerSequence.Iterator.Element == Transformable.Transformer {
     
     typealias Source = SourceSequence.Iterator.Element
     typealias Target = Transformable.Target

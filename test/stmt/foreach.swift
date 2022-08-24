@@ -1,11 +1,11 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 // Bad containers and ranges
 struct BadContainer1 {
 }
 
 func bad_containers_1(bc: BadContainer1) {
-  for e in bc { } // expected-error{{type 'BadContainer1' does not conform to protocol 'Sequence'}}
+  for e in bc { } // expected-error{{for-in loop requires 'BadContainer1' to conform to 'Sequence'}}
 }
 
 struct BadContainer2 : Sequence { // expected-error{{type 'BadContainer2' does not conform to protocol 'Sequence'}}
@@ -17,7 +17,7 @@ func bad_containers_2(bc: BadContainer2) {
 }
 
 struct BadContainer3 : Sequence { // expected-error{{type 'BadContainer3' does not conform to protocol 'Sequence'}}
-  func makeIterator() { } // expected-note{{inferred type '()' (by matching requirement 'makeIterator()') is invalid: does not conform to 'IteratorProtocol'}}
+  func makeIterator() { } // expected-note{{candidate can not infer 'Iterator' = '()' because '()' is not a nominal type and so can't conform to 'IteratorProtocol'}}
 }
 
 func bad_containers_3(bc: BadContainer3) {
@@ -27,7 +27,7 @@ func bad_containers_3(bc: BadContainer3) {
 struct BadIterator1 {}
 
 struct BadContainer4 : Sequence { // expected-error{{type 'BadContainer4' does not conform to protocol 'Sequence'}}
-  typealias Iterator = BadIterator1 // expected-note{{possibly intended match 'Iterator' (aka 'BadIterator1') does not conform to 'IteratorProtocol'}}
+  typealias Iterator = BadIterator1 // expected-note{{possibly intended match 'BadContainer4.Iterator' (aka 'BadIterator1') does not conform to 'IteratorProtocol'}}
   func makeIterator() -> BadIterator1 { }
 }
 
@@ -53,24 +53,27 @@ struct GoodTupleIterator: Sequence, IteratorProtocol {
   func makeIterator() -> GoodTupleIterator {}
 }
 
+protocol ElementProtocol {}
+
 func patterns(gir: GoodRange<Int>, gtr: GoodTupleIterator) {
   var sum : Int
   var sumf : Float
   for i : Int in gir { sum = sum + i }
   for i in gir { sum = sum + i }
-  for f : Float in gir { sum = sum + f } // expected-error{{'Int' is not convertible to 'Float'}}
+  for f : Float in gir { sum = sum + f } // expected-error{{cannot convert sequence element type 'Int' to expected type 'Float'}}
+  for f : ElementProtocol in gir { } // expected-error {{sequence element type 'Int' does not conform to expected protocol 'ElementProtocol'}}
 
   for (i, f) : (Int, Float) in gtr { sum = sum + i }
 
   for (i, f) in gtr {
     sum = sum + i
     sumf = sumf + f
-    sum = sum + f  // expected-error{{cannot convert value of type 'Float' to expected argument type 'Int'}}
+    sum = sum + f  // expected-error {{cannot convert value of type 'Float' to expected argument type 'Int'}} {{17-17=Int(}} {{18-18=)}}
   }
 
   for (i, _) : (Int, Float) in gtr { sum = sum + i }
 
-  for (i, _) : (Int, Int) in gtr { sum = sum + i } // expected-error{{'Element' (aka '(Int, Float)') is not convertible to '(Int, Int)'}}
+  for (i, _) : (Int, Int) in gtr { sum = sum + i } // expected-error{{cannot convert sequence element type '(Int, Float)' to expected type '(Int, Int)'}}
 
   for (i, f) in gtr {}
 }
@@ -127,14 +130,14 @@ func testForEachInference() {
   // Generic sequence resolved contextually
   for i: Int in getGenericSeq() { }
   for d: Double in getGenericSeq() { }
-  
+
   // Inference of generic arguments in the element type from the
   // sequence.
-  for x: X in getXIntSeq() { 
+  for x: X in getXIntSeq() {
     let z = x.value + 1
   }
 
-  for x: X in getOvlSeq() { 
+  for x: X in getOvlSeq() {
     let z = x.value + 1
   }
 
@@ -167,8 +170,83 @@ func testMatchingPatterns() {
 
 // <rdar://problem/21662365> QoI: diagnostic for for-each over an optional sequence isn't great
 func testOptionalSequence() {
-  let array : [Int]? = nil
-  for x in array {  // expected-error {{value of optional type '[Int]?' not unwrapped; did you mean to use '!' or '?'?}} {{17-17=!}}
+  let array : [Int]?
+  for x in array {  // expected-error {{for-in loop requires '[Int]?' to conform to 'Sequence'; did you mean to unwrap optional?}}
   }
 }
 
+func testExistentialSequence(s: any Sequence) {
+  for x in s {
+    _ = x
+  }
+}
+
+// rdar://92177656 - implicit existential opening should work with for-in loops
+func testForEachWithAnyCollection(c: any Collection) {
+  for v in c {
+    print(v)
+  }
+}
+
+// Conditional conformance to Sequence and IteratorProtocol.
+protocol P { }
+
+struct RepeatedSequence<T> {
+  var value: T
+  var count: Int
+}
+
+struct RepeatedIterator<T> {
+  var value: T
+  var count: Int
+}
+
+extension RepeatedIterator: IteratorProtocol where T: P {
+  typealias Element = T
+
+  mutating func next() -> T? {
+    if count == 0 { return nil }
+    count = count - 1
+    return value
+  }
+}
+
+extension RepeatedSequence: Sequence where T: P {
+  typealias Element = T
+  typealias Iterator = RepeatedIterator<T>
+  typealias SubSequence = AnySequence<T>
+
+  func makeIterator() -> RepeatedIterator<T> {
+    return Iterator(value: value, count: count)
+  }
+}
+
+extension Int : P { }
+
+func testRepeated(ri: RepeatedSequence<Int>) {
+  for x in ri { _ = x }
+}
+
+// SR-12398: Poor pattern matching diagnostic: "for-in loop requires '[Int]' to conform to 'Sequence'"
+func sr_12398(arr1: [Int], arr2: [(a: Int, b: String)]) {
+  for (x, y) in arr1 {}
+  // expected-error@-1 {{tuple pattern cannot match values of non-tuple type 'Int'}}
+
+  for (x, y, _) in arr2 {}
+  // expected-error@-1 {{pattern cannot match values of type '(a: Int, b: String)'}}
+}
+
+// rdar://62339835
+func testForEachWhereWithClosure(_ x: [Int]) {
+  func foo<T>(_ fn: () -> T) -> Bool { true }
+
+  for i in x where foo({ i }) {}
+  for i in x where foo({ i.byteSwapped == 5 }) {}
+  for i in x where x.contains(where: { $0.byteSwapped == i }) {}
+}
+
+// https://github.com/apple/swift/issues/59522 - use of `prefix` with generic base causes ambiguity in for-in statement
+func test_no_ambiguity_with_prefix_iterator<C: Collection>(c: C) {
+  for _ in c.prefix(1) { // Ok
+  }
+}

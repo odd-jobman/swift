@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,17 +15,17 @@
 #include "swift/Markup/LineList.h"
 #include "swift/Markup/Markup.h"
 
-using namespace llvm;
+using namespace swift;
 using namespace markup;
 
 std::string LineList::str() const {
   std::string Result;
-  raw_string_ostream Stream(Result);
+  llvm::raw_string_ostream Stream(Result);
   if (Lines.empty())
     return "";
 
   auto FirstLine = Lines.begin();
-  while (FirstLine->Text.empty() && FirstLine != Lines.end())
+  while (FirstLine != Lines.end() && FirstLine->Text.empty())
     ++FirstLine;
 
   if (FirstLine == Lines.end())
@@ -42,11 +42,11 @@ std::string LineList::str() const {
   return Result;
 }
 
-size_t llvm::markup::measureIndentation(StringRef Text) {
+size_t swift::markup::measureIndentation(StringRef Text) {
   size_t Col = 0;
   for (size_t i = 0, e = Text.size(); i != e; ++i) {
     if (Text[i] == ' ' || Text[i] == '\v' || Text[i] == '\f') {
-      Col++;
+      ++Col;
       continue;
     }
 
@@ -78,7 +78,7 @@ static unsigned measureASCIIArt(StringRef S, unsigned NumLeadingSpaces) {
 
   if (S.startswith(" * "))
     return NumLeadingSpaces + 3;
-  if (S.startswith(" *\n") || S.startswith(" *\n\r"))
+  if (S.startswith(" *\n") || S.startswith(" *\r\n"))
     return NumLeadingSpaces + 2;
   return 0;
 }
@@ -97,7 +97,7 @@ LineList MarkupContext::getLineList(swift::RawComment RC) {
       auto CleanedStartLoc =
           C.Range.getStart().getAdvancedLocOrInvalid(CommentMarkerBytes);
       auto CleanedEndLoc =
-          C.Range.getStart().getAdvancedLocOrInvalid(Cleaned.size());
+          CleanedStartLoc.getAdvancedLocOrInvalid(Cleaned.size());
       Builder.addLine(Cleaned, { CleanedStartLoc, CleanedEndLoc });
     } else {
       // Skip comment markers at the beginning and at the end.
@@ -115,12 +115,10 @@ LineList MarkupContext::getLineList(swift::RawComment RC) {
       // Determine if we have leading decorations in this block comment.
       bool HasASCIIArt = false;
       if (swift::startsWithNewline(Cleaned)) {
-        Builder.addLine(Cleaned.substr(0, 0), { C.Range.getStart(),
-                                                C.Range.getStart() });
         unsigned NewlineBytes = swift::measureNewline(Cleaned);
         Cleaned = Cleaned.drop_front(NewlineBytes);
         CleanedStartLoc = CleanedStartLoc.getAdvancedLocOrInvalid(NewlineBytes);
-        HasASCIIArt = measureASCIIArt(Cleaned, C.StartColumn - 1) != 0;
+        HasASCIIArt = measureASCIIArt(Cleaned, C.ColumnIndent - 1) != 0;
       }
 
       while (!Cleaned.empty()) {
@@ -131,7 +129,7 @@ LineList MarkupContext::getLineList(swift::RawComment RC) {
         // Skip over ASCII art, if present.
         if (HasASCIIArt)
           if (unsigned ASCIIArtBytes =
-              measureASCIIArt(Cleaned, C.StartColumn - 1)) {
+                  measureASCIIArt(Cleaned, C.ColumnIndent - 1)) {
             Cleaned = Cleaned.drop_front(ASCIIArtBytes);
             CleanedStartLoc =
             CleanedStartLoc.getAdvancedLocOrInvalid(ASCIIArtBytes);
@@ -141,13 +139,13 @@ LineList MarkupContext::getLineList(swift::RawComment RC) {
         StringRef Line = Cleaned.substr(0, Pos);
         auto CleanedEndLoc = CleanedStartLoc.getAdvancedLocOrInvalid(Pos);
 
+        Builder.addLine(Line, { CleanedStartLoc, CleanedEndLoc });
+
         Cleaned = Cleaned.drop_front(Pos);
         unsigned NewlineBytes = swift::measureNewline(Cleaned);
         Cleaned = Cleaned.drop_front(NewlineBytes);
         Pos += NewlineBytes;
         CleanedStartLoc = CleanedStartLoc.getAdvancedLocOrInvalid(Pos);
-
-        Builder.addLine(Line, { CleanedStartLoc, CleanedEndLoc });
       }
     }
   }

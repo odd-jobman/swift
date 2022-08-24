@@ -2,96 +2,116 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
-//
-//===----------------------------------------------------------------------===//
-//
-// Implementation of
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 #include "swift/Runtime/Config.h"
 #include "swift/Runtime/Debug.h"
+#include "swift/Runtime/Portability.h"
+#include "SwiftShims/AssertionReporting.h"
+#include <cstdarg>
 #include <cstdint>
 #include <stdio.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
 using namespace swift;
 
-// Report a fatal error to system console, stderr, and crash logs.
-// <prefix>: <message>: file <file>, line <line>\n
-// The message may be omitted by passing messageLength=0.
-SWIFT_RUNTIME_STDLIB_INTERFACE
-extern "C" void
-_swift_stdlib_reportFatalErrorInFile(const char *prefix, intptr_t prefixLength,
-                                   const char *message, intptr_t messageLength,
-                                   const char *file, intptr_t fileLength,
-                                   uintptr_t line,
-                                     uint32_t flags) {
+static void logPrefixAndMessageToDebugger(
+    const unsigned char *prefix, int prefixLength,
+    const unsigned char *message, int messageLength
+) {
+  if (!_swift_shouldReportFatalErrorsToDebugger())
+    return;
+
+  char *debuggerMessage;
+  if (messageLength) {
+    swift_asprintf(&debuggerMessage, "%.*s: %.*s", prefixLength, prefix,
+        messageLength, message);
+  } else {
+    swift_asprintf(&debuggerMessage, "%.*s", prefixLength, prefix);
+  }
+  _swift_reportToDebugger(RuntimeErrorFlagFatal, debuggerMessage);
+  free(debuggerMessage);
+}
+
+void _swift_stdlib_reportFatalErrorInFile(
+    const unsigned char *prefix, int prefixLength,
+    const unsigned char *message, int messageLength,
+    const unsigned char *file, int fileLength,
+    uint32_t line,
+    uint32_t flags
+) {
   char *log;
-  asprintf(&log, "%.*s: %.*s%sfile %.*s, line %zu\n", (int)prefixLength, prefix,
-           (int)messageLength, message, (messageLength ? ": " : ""),
-           (int)fileLength, file, (size_t)line);
-  
+  swift_asprintf(
+      &log, "%.*s:%" PRIu32 ": %.*s%s%.*s\n",
+      fileLength, file,
+      line,
+      prefixLength, prefix,
+      (messageLength > 0 ? ": " : ""),
+      messageLength, message);
+
+  swift_reportError(flags, log);
+  free(log);
+
+  logPrefixAndMessageToDebugger(prefix, prefixLength, message, messageLength);
+}
+
+void _swift_stdlib_reportFatalError(
+    const unsigned char *prefix, int prefixLength,
+    const unsigned char *message, int messageLength,
+    uint32_t flags
+) {
+  char *log;
+  swift_asprintf(
+      &log, "%.*s: %.*s\n",
+      prefixLength, prefix,
+      messageLength, message);
+
+  swift_reportError(flags, log);
+  free(log);
+
+  logPrefixAndMessageToDebugger(prefix, prefixLength, message, messageLength);
+}
+
+void _swift_stdlib_reportUnimplementedInitializerInFile(
+    const unsigned char *className, int classNameLength,
+    const unsigned char *initName, int initNameLength,
+    const unsigned char *file, int fileLength,
+    uint32_t line, uint32_t column,
+    uint32_t flags
+) {
+  char *log;
+  swift_asprintf(
+      &log,
+      "%.*s:%" PRIu32 ": Fatal error: Use of unimplemented "
+      "initializer '%.*s' for class '%.*s'\n",
+      fileLength, file,
+      line,
+      initNameLength, initName,
+      classNameLength, className);
+
   swift_reportError(flags, log);
   free(log);
 }
 
-// Report a fatal error to system console, stderr, and crash logs.
-// <prefix>: <message>: file <file>, line <line>\n
-// The message may be omitted by passing messageLength=0.
-SWIFT_RUNTIME_STDLIB_INTERFACE
-extern "C" void
-_swift_stdlib_reportFatalError(const char *prefix,
-                               intptr_t prefixLength,
-                               const char *message,
-                               intptr_t messageLength,
-                               uint32_t flags) {
+void _swift_stdlib_reportUnimplementedInitializer(
+    const unsigned char *className, int classNameLength,
+    const unsigned char *initName, int initNameLength,
+    uint32_t flags
+) {
   char *log;
-  asprintf(&log, "%.*s: %.*s\n", (int)prefixLength, prefix,
-           (int)messageLength, message);
-  
-  swift_reportError(flags, log);
-  free(log);
-}
-
-// Report a call to an unimplemented initializer.
-// <file>: <line>: <column>: fatal error: use of unimplemented
-// initializer '<initName>' for class 'className'
-SWIFT_RUNTIME_STDLIB_INTERFACE
-extern "C" void
-_swift_stdlib_reportUnimplementedInitializerInFile(
-         const char *className, intptr_t classNameLength, const char *initName,
-         intptr_t initNameLength, const char *file, intptr_t fileLength,
-         uintptr_t line, uintptr_t column, uint32_t flags) {
-  char *log;
-  asprintf(&log, "%.*s: %zu: %zu: fatal error: use of unimplemented "
-           "initializer '%.*s' for class '%.*s'\n",
-           (int)fileLength, file, (size_t)line, (size_t)column,
-           (int)initNameLength, initName, (int)classNameLength, className);
-
-  swift_reportError(flags, log);
-  free(log);
-}
-
-// Report a call to an unimplemented initializer.
-// fatal error: use of unimplemented initializer '<initName>' for class
-// 'className'
-SWIFT_RUNTIME_STDLIB_INTERFACE
-extern "C" void
-_swift_stdlib_reportUnimplementedInitializer(const char *className,
-                                             intptr_t classNameLength,
-                                             const char *initName,
-                                             intptr_t initNameLength,
-                                             uint32_t flags) {
-  char *log;
-  asprintf(&log, "fatal error: use of unimplemented "
-           "initializer '%.*s' for class '%.*s'\n",
-           (int)initNameLength, initName, (int)classNameLength, className);
+  swift_asprintf(
+      &log,
+      "Fatal error: Use of unimplemented "
+      "initializer '%.*s' for class '%.*s'\n",
+      initNameLength, initName,
+      classNameLength, className);
 
   swift_reportError(flags, log);
   free(log);

@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -18,7 +18,7 @@
 #include "swift/AST/ParameterList.h"
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/Expr.h"
-#include "swift/AST/ExprHandle.h"
+#include "swift/AST/Types.h"
 using namespace swift;
 
 /// TODO: unique and reuse the () parameter list in ASTContext, it is common to
@@ -41,19 +41,6 @@ ParameterList::create(const ASTContext &C, SourceLoc LParenLoc,
   return PL;
 }
 
-/// Create an implicit 'self' decl for a method in the specified decl context.
-/// If 'static' is true, then this is self for a static method in the type.
-///
-/// Note that this decl is created, but it is returned with an incorrect
-/// DeclContext that needs to be set correctly.  This is automatically handled
-/// when a function is created with this as part of its argument list.
-///
-ParameterList *ParameterList::createSelf(SourceLoc loc, DeclContext *DC,
-                                         bool isStaticMethod, bool isInOut) {
-  auto *PD = ParamDecl::createSelf(loc, DC, isStaticMethod, isInOut);
-  return create(DC->getASTContext(), PD);
-}
-
 /// Change the DeclContext of any contained parameters to the specified
 /// DeclContext.
 void ParameterList::setDeclContextOfParamDecls(DeclContext *DC) {
@@ -61,12 +48,11 @@ void ParameterList::setDeclContextOfParamDecls(DeclContext *DC) {
     P->setDeclContext(DC);
 }
 
-
-
 /// Make a duplicate copy of this parameter list.  This allocates copies of
 /// the ParamDecls, so they can be reparented into a new DeclContext.
 ParameterList *ParameterList::clone(const ASTContext &C,
                                     OptionSet<CloneFlags> options) const {
+  // TODO(distributed): copy types thanks to flag in options
   // If this list is empty, don't actually bother with a copy.
   if (size() == 0)
     return const_cast<ParameterList*>(this);
@@ -75,62 +61,43 @@ ParameterList *ParameterList::clone(const ASTContext &C,
 
   // Remap the ParamDecls inside of the ParameterList.
   for (auto &decl : params) {
-    decl = new (C) ParamDecl(decl);
+    auto defaultArgKind = decl->getDefaultArgumentKind();
+
+    decl = ParamDecl::cloneWithoutType(C, decl);
     if (options & Implicit)
       decl->setImplicit();
 
-    // If the argument isn't named, and we're cloning for an inherited
-    // constructor, give the parameter a name so that silgen will produce a
-    // value for it.
-    if (decl->getName().empty() && (options & Inherited))
+    // If the argument isn't named, give the parameter a name so that
+    // silgen will produce a value for it.
+    if (decl->getName().empty() && (options & NamedArguments))
       decl->setName(C.getIdentifier("argument"));
     
     // If we're inheriting a default argument, mark it as such.
-    if (decl->isDefaultArgument() && (options & Inherited)) {
-      decl->setDefaultArgumentKind(DefaultArgumentKind::Inherited);
-      decl->setDefaultValue(nullptr);
+    // FIXME: Figure out how to clone default arguments as well.
+    if (options & Inherited) {
+      switch (defaultArgKind) {
+      case DefaultArgumentKind::Normal:
+      case DefaultArgumentKind::StoredProperty:
+        decl->setDefaultArgumentKind(DefaultArgumentKind::Inherited);
+        break;
+
+      default:
+        break;
+      }
+    } else {
+      decl->setDefaultArgumentKind(DefaultArgumentKind::None);
     }
   }
   
   return create(C, params);
 }
 
-/// Return a TupleType or ParenType for this parameter list.  This returns a
-/// null type if one of the ParamDecls does not have a type set for it yet.
-Type ParameterList::getType(const ASTContext &C) const {
-  if (size() == 0)
-    return TupleType::getEmpty(C);
-  
-  SmallVector<TupleTypeElt, 8> argumentInfo;
-  
-  for (auto P : *this) {
-    if (!P->hasType()) return Type();
-    
-    argumentInfo.push_back({
-      P->getType(), P->getArgumentName(),
-      P->getDefaultArgumentKind(), P->isVariadic()
-    });
-  }
-  
-  return TupleType::get(argumentInfo, C);
+void ParameterList::getParams(
+                        SmallVectorImpl<AnyFunctionType::Param> &params) const {
+  for (auto P : *this)
+    params.push_back(P->toFunctionParam());
 }
 
-
-/// Return the full function type for a set of curried parameter lists that
-/// returns the specified result type.  This returns a null type if one of the
-/// ParamDecls does not have a type set for it yet.
-///
-Type ParameterList::getFullType(Type resultType, ArrayRef<ParameterList*> PLL) {
-  auto result = resultType;
-  auto &C = result->getASTContext();
-  
-  for (auto PL : reversed(PLL)) {
-    auto paramType = PL->getType(C);
-    if (!paramType) return Type();
-    result = FunctionType::get(paramType, result);
-  }
-  return result;
-}
 
 /// Return the full source range of this parameter list.
 SourceRange ParameterList::getSourceRange() const {

@@ -3,7 +3,7 @@
 We have a pretty good user model for C pointer interop now, but the language
 model still needs improvement. Building the user model on top of implicit
 conversions has a number of undesirable side effects. We end up with a mess of
-pointer types—the intended user-facing, one-word pointer types
+pointer types--the intended user-facing, one-word pointer types
 ``UnsafeMutablePointer`` and ``OpaquePointer``, which expose a full pointer-ish API
 and are naturally ABI-compatible with C pointers; and the bridging pointer
 types, ``ObjCMutablePointer``, ``CMutablePointer``, ``CConstPointer``,
@@ -16,7 +16,7 @@ confusing jumble.
 
 The best solution to this is to burn the user model into the language, giving
 function applications special powers to provide the user model for pointers. We
-then provide only one set of plain pointer types, with 
+then provide only one set of plain pointer types, with
 special intrinsic behavior when used as function arguments.
 
 The Pointer Types
@@ -61,12 +61,12 @@ accept any of the following:
   array, and lifetime-extended for the duration of the callee.
 
 As a special case, when a function is declared as taking an
-``UnsafeMutablePointer<Void>`` argument, it can accept the same operands as
+``UnsafeMutableRawPointer`` argument, it can accept the same operands as
 ``UnsafeMutablePointer<T>`` for any type T.
 
 So if you have a function declared::
 
-  func foo(x: UnsafeMutablePointer<Float>)
+  func foo(_ x: UnsafeMutablePointer<Float>)
 
 You can call it as any of::
 
@@ -80,7 +80,7 @@ You can call it as any of::
 
 And if you have a function declared::
 
-  func bar(x: UnsafeMutablePointer<Void>)
+  func bar(_ x: UnsafeMutableRawPointer)
 
 You can call it as any of::
 
@@ -112,11 +112,11 @@ Note that the above list does not include arrays, since implicit autoreleasing-t
 
 So if you have a function declared::
 
-  func bas(x: AutoreleasingUnsafeMutablePointer<NSBas?>)
+  func bas(_ x: AutoreleasingUnsafeMutablePointer<NSBas?>)
 
 You can call it as any of::
 
-  var x: NSBas? = nil
+  var x: NSBas?
   var p: AutoreleasingUnsafeMutablePointer<NSBas?> = nil
   bas(nil)
   bas(p)
@@ -139,13 +139,13 @@ accept any of the following:
   array, and lifetime-extended for the duration of the callee.
 
 As a special case, when a function is declared as taking an
-``UnsafePointer<Void>`` argument, it can accept the same operands as
+``UnsafeRawPointer`` argument, it can accept the same operands as
 ``UnsafePointer<T>`` for any type ``T``. Pointers to certain integer
 types can furthermore interoperate with strings; see `Strings`_ below.
 
 So if you have a function declared::
 
-  func zim(x: UnsafePointer<Float>)
+  func zim(_ x: UnsafePointer<Float>)
 
 You can call it as any of::
 
@@ -158,7 +158,7 @@ You can call it as any of::
 
 And if you have a function declared::
 
-  func zang(x: UnsafePointer<Void>)
+  func zang(_ x: UnsafeRawPointer)
 
 You can call it as any of::
 
@@ -175,8 +175,8 @@ You can call it as any of::
   zang(ints)
 
 A type checker limitation prevents array literals from being passed directly
-to ``UnsafePointer<Void>`` arguments without type annotation. As a
-workaround, you can bind the array literal to a constant, as above, or 
+to ``UnsafeRawPointer`` arguments without type annotation. As a
+workaround, you can bind the array literal to a constant, as above, or
 specify the array type with ``as``::
 
   zang([1.0, 2.0, 3.0] as [Double])

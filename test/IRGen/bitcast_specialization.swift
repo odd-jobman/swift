@@ -5,11 +5,12 @@
 // specialized version fo myDictionaryBridge.
 // <rdar://problem/17821040>
 
-// A minimized version of _dictionaryBridgeToObjectiveC in the stdlib 
+// A minimized version of _dictionaryBridgeToObjectiveC that used to be in the
+// stdlib 
 public func myDictionaryBridge<
     SrcType, DestType
 >(
-    source: Dictionary<SrcType, Int>, _ keyBridgesDirectly : Bool
+    _ source: Dictionary<SrcType, Int>, _ keyBridgesDirectly : Bool
 ) -> DestType? {
 
   for (key, value) in source {

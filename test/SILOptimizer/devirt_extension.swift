@@ -1,9 +1,9 @@
-// RUN: %target-swift-frontend -O -emit-sil %s | FileCheck %s
+// RUN: %target-swift-frontend -O -emit-sil %s | %FileCheck %s
 
 protocol DrawingElementDispatch {}
 
 extension DrawingElementDispatch {
-  final var boundingBox: Int32 {
+  var boundingBox: Int32 {
     return 0
   }
 }

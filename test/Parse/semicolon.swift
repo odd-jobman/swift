@@ -1,4 +1,4 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 let a = 42;
 var b = "b";
@@ -44,7 +44,7 @@ for i in 1..<1000 {
     };
 }
 
-let six = (1..<3).reduce(0, combine: +);
+let six = (1..<3).reduce(0, +);
 
 func lessThanTwo(input: UInt) -> Bool {
     switch input {

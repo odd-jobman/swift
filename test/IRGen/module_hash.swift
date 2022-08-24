@@ -1,4 +1,5 @@
-// RUN: rm -rf %t && mkdir -p %t
+// REQUIRES: fuzzer_runtime
+// RUN: %empty-directory(%t)
 
 
 // Test with a single output file
@@ -31,6 +32,25 @@
 // CHECK: test.o: MD5=[[TEST3_MD5:[0-9a-f]+]]
 // CHECK: test.o: prev MD5=[[TEST2_MD5]] recompiling
 
+// RUN: echo "empty file" >>%t/log
+// RUN: %target-swift-frontend -c -primary-file %S/../Inputs/empty.swift -module-name=empty -o %t/empty.o -Xllvm -debug-only=irgen 2>>%t/log
+// RUN: echo "empty file with profiling" >>%t/log
+// RUN: %target-swift-frontend -c -primary-file %S/../Inputs/empty.swift -module-name=empty -o %t/empty.o -Xllvm -debug-only=irgen -profile-generate 2>>%t/log
+
+// CHECK-LABEL: empty file
+// CHECK: empty.o: MD5=[[EMPTY_MD5:[0-9a-f]+]]
+// CHECK-LABEL: empty file with profiling
+// CHECK: empty.o: prev MD5=[[EMPTY_MD5]] recompiling
+
+// RUN: echo "empty file" >>%t/log
+// RUN: %target-swift-frontend -c -primary-file %S/../Inputs/empty.swift -module-name=empty -o %t/empty.o -Xllvm -debug-only=irgen 2>>%t/log
+// RUN: echo "empty file with fuzzer" >>%t/log
+// RUN: %target-swift-frontend -c -primary-file %S/../Inputs/empty.swift -module-name=empty -o %t/empty.o -Xllvm -debug-only=irgen -sanitize=fuzzer 2>>%t/log
+
+// CHECK-LABEL: empty file
+// CHECK: empty.o: MD5=[[EMPTY_MD5_2:[0-9a-f]+]]
+// CHECK-LABEL: empty file with fuzzer
+// CHECK: empty.o: prev MD5=[[EMPTY_MD5_2]] recompiling
 
 // Test with multiple output files
 
@@ -60,7 +80,7 @@
 // CHECK-DAG: simple.o: MD5=[[SIMPLE2_MD5:[0-9a-f]+]]
 // CHECK-DAG: simple.o: prev MD5=[[SIMPLE_MD5]] recompiling
 
-// RUN: FileCheck %s < %t/log
+// RUN: %FileCheck %s < %t/log
 
 // REQUIRES: asserts
 

@@ -2,17 +2,18 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef SWIFT_SEMA_SOURCELOADER_H
 #define SWIFT_SEMA_SOURCELOADER_H
 
+#include "swift/AST/ModuleDependencies.h"
 #include "swift/AST/ModuleLoader.h"
 
 namespace swift {
@@ -20,26 +21,24 @@ namespace swift {
 class ASTContext;
 class ModuleDecl;
   
-/// \brief Imports serialized Swift modules into an ASTContext.
+/// Imports serialized Swift modules into an ASTContext.
 class SourceLoader : public ModuleLoader {
 private:
   ASTContext &Ctx;
-  bool SkipBodies;
-  bool EnableResilience;
+  bool EnableLibraryEvolution;
 
   explicit SourceLoader(ASTContext &ctx,
-                        bool skipBodies,
                         bool enableResilience,
                         DependencyTracker *tracker)
     : ModuleLoader(tracker), Ctx(ctx),
-      SkipBodies(skipBodies), EnableResilience(enableResilience) {}
+      EnableLibraryEvolution(enableResilience) {}
 
 public:
   static std::unique_ptr<SourceLoader>
-  create(ASTContext &ctx, bool skipBodies, bool enableResilience,
+  create(ASTContext &ctx, bool enableResilience,
          DependencyTracker *tracker = nullptr) {
     return std::unique_ptr<SourceLoader>{
-      new SourceLoader(ctx, skipBodies, enableResilience, tracker)
+      new SourceLoader(ctx, enableResilience, tracker)
     };
   }
 
@@ -48,7 +47,21 @@ public:
   SourceLoader &operator=(const SourceLoader &) = delete;
   SourceLoader &operator=(SourceLoader &&) = delete;
 
-  /// \brief Import a module with the given module path.
+  /// Append visible module names to \p names. Note that names are possibly
+  /// duplicated, and not guaranteed to be ordered in any way.
+  void collectVisibleTopLevelModuleNames(
+      SmallVectorImpl<Identifier> &names) const override;
+
+  /// Check whether the module with a given name can be imported without
+  /// importing it.
+  ///
+  /// Note that even if this check succeeds, errors may still occur if the
+  /// module is loaded in full.
+  virtual bool canImportModule(ImportPath::Module named,
+                               llvm::VersionTuple version,
+                               bool underlyingVersion) override;
+
+  /// Import a module with the given module path.
   ///
   /// \param importLoc The location of the 'import' keyword.
   ///
@@ -59,9 +72,9 @@ public:
   /// returns NULL.
   virtual ModuleDecl *
   loadModule(SourceLoc importLoc,
-             ArrayRef<std::pair<Identifier, SourceLoc>> path) override;
+             ImportPath::Module path) override;
 
-  /// \brief Load extensions to the given nominal type.
+  /// Load extensions to the given nominal type.
   ///
   /// \param nominal The nominal type whose extensions should be loaded.
   ///
@@ -72,13 +85,20 @@ public:
                               unsigned previousGeneration) override;
 
   virtual void loadObjCMethods(
-                 ClassDecl *classDecl,
+                 NominalTypeDecl *typeDecl,
                  ObjCSelector selector,
                  bool isInstanceMethod,
                  unsigned previousGeneration,
                  llvm::TinyPtrVector<AbstractFunctionDecl *> &methods) override
   {
     // Parsing populates the Objective-C method tables.
+  }
+
+  Optional<ModuleDependencies> getModuleDependencies(
+      StringRef moduleName, ModuleDependenciesCache &cache,
+      InterfaceSubContextDelegate &delegate) override {
+    // FIXME: Implement?
+    return None;
   }
 };
 

@@ -1,5 +1,5 @@
 // Check JIT mode
-// RUN: %target-jit-run %s | FileCheck %s
+// RUN: %target-jit-run %s | %FileCheck %s
 
 // REQUIRES: swift_interpreter
 // REQUIRES: objc_interop
@@ -30,7 +30,7 @@ extension NSString: Fungible {
   func funge() {}
 }
 
-func check(x: AnyObject) {
+func check(_ x: AnyObject) {
   print("\(x is Fungible) \(x is Runcible)")
 }
 
@@ -54,7 +54,7 @@ class Juice : NSObject {
 }
 
 @objc protocol Fruit {
-  optional var juice: Juice { get }
+  @objc optional var juice: Juice { get }
 }
 
 class Durian : NSObject, Fruit {
@@ -65,7 +65,7 @@ class Durian : NSObject, Fruit {
   var juice: Juice
 }
 
-func consume(fruit: Fruit) {
+func consume(_ fruit: Fruit) {
   _ = fruit.juice
 }
 

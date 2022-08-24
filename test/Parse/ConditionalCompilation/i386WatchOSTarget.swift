@@ -1,4 +1,4 @@
-// RUN: %swift -parse %s -verify -D FOO -D BAR -target i386-apple-watchos2.0 -D FOO -parse-stdlib
+// RUN: %swift -typecheck %s -verify -target i386-apple-watchos2.0 -parse-stdlib
 // RUN: %swift-ide-test -test-input-complete -source-filename=%s -target i386-apple-watchos2.0
 
 #if os(iOS)
@@ -7,7 +7,7 @@
 let i: Int = "Hello"
 #endif
 
-#if arch(i386) && os(watchOS) && _runtime(_ObjC)
+#if arch(i386) && os(watchOS) && _runtime(_ObjC) && _endian(little)
 class C {}
 var x = C()
 #endif

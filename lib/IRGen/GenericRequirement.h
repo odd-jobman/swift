@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -19,10 +19,11 @@
 #ifndef SWIFT_IRGEN_GENERICREQUIREMENT_H
 #define SWIFT_IRGEN_GENERICREQUIREMENT_H
 
+#include "swift/AST/GenericRequirement.h"
 #include "swift/AST/Type.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/DenseMapInfo.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 
 namespace llvm {
 class Value;
@@ -30,21 +31,23 @@ class Value;
 
 namespace swift {
 class CanGenericSignature;
+enum class MetadataState : size_t;
 class ModuleDecl;
 class NominalTypeDecl;
 class ProtocolDecl;
-class Substitution;
+class SubstitutionMap;
 
 namespace irgen {
 class Address;
 class IRGenFunction;
 class IRGenModule;
 
-/// An abstract generic requirement.
-struct GenericRequirement {
-  CanType TypeParameter;
-  ProtocolDecl *Protocol;
-};
+using RequirementCallback =
+  llvm::function_ref<void(GenericRequirement requirement)>;
+
+/// Enumerate the generic requirements imposed by a generic signature.
+void enumerateGenericSignatureRequirements(CanGenericSignature signature,
+                                           const RequirementCallback &callback);
 
 /// Given an array of substitutions that parallel the dependent
 /// signature for which a requirement was emitted, emit the required
@@ -52,9 +55,8 @@ struct GenericRequirement {
 llvm::Value *
 emitGenericRequirementFromSubstitutions(IRGenFunction &IGF,
                                         CanGenericSignature signature,
-                                        ModuleDecl &module,
                                         GenericRequirement requirement,
-                                        ArrayRef<Substitution> subs);
+                                        SubstitutionMap subs);
 
 using EmitGenericRequirementFn =
   llvm::function_ref<llvm::Value*(GenericRequirement reqt)>;
@@ -69,13 +71,15 @@ using GetTypeParameterInContextFn =
 /// Given a required value, map the requirement into the given
 /// context and bind the value.
 void bindGenericRequirement(IRGenFunction &IGF,
-                                     GenericRequirement requirement,
-                                     llvm::Value *requiredValue,
-                                     GetTypeParameterInContextFn getInContext);
+                            GenericRequirement requirement,
+                            llvm::Value *requiredValue,
+                            MetadataState metadataState,
+                            GetTypeParameterInContextFn getInContext);
 
 void bindFromGenericRequirementsBuffer(IRGenFunction &IGF,
                                        ArrayRef<GenericRequirement> reqts,
                                        Address buffer,
+                                       MetadataState metadataState,
                                        GetTypeParameterInContextFn getInContext);
 
 
@@ -89,25 +93,16 @@ void bindFromGenericRequirementsBuffer(IRGenFunction &IGF,
 /// root conformances of the context established by the type, again minus
 /// anything fulfillable from its parent type metadata).
 class GenericTypeRequirements {
-  NominalTypeDecl *TheDecl;
-  CanType ParentType;
   llvm::SmallVector<GenericRequirement, 4> Requirements;
+  CanGenericSignature Generics;
 
 public:
   GenericTypeRequirements(IRGenModule &IGM, NominalTypeDecl *decl);
+  GenericTypeRequirements(IRGenModule &IGM, GenericSignature sig);
 
   /// Return the layout chunks.
   ArrayRef<GenericRequirement> getRequirements() const {
     return Requirements;
-  }
-
-  /// Does this generic type have 
-  bool hasParentType() const {
-    return bool(ParentType);
-  }
-
-  CanType getParentType() const {
-    return ParentType;
   }
 
   /// Return the number of entries required in order to store this data.
@@ -137,42 +132,19 @@ public:
 
   bool empty() const { return Requirements.empty(); }
 
-  using FulfillmentCallback =
-    llvm::function_ref<void(unsigned requirementIndex,
-                            CanType type,
-                            Optional<ProtocolConformanceRef> conf)>;
-  void enumerateFulfillments(IRGenModule &IGM, ArrayRef<Substitution> subs,
+  using FulfillmentCallback = llvm::function_ref<void(
+      unsigned requirementIndex, CanType type, ProtocolConformanceRef conf)>;
+  void enumerateFulfillments(IRGenModule &IGM, SubstitutionMap subs,
                              FulfillmentCallback callback);
 
-  void emitInitOfBuffer(IRGenFunction &IGF, ArrayRef<Substitution> subs,
+  void emitInitOfBuffer(IRGenFunction &IGF, SubstitutionMap subs,
                         Address buffer);
 
-  void bindFromBuffer(IRGenFunction &IGF, Address buffer,
+  void bindFromBuffer(IRGenFunction &IGF, Address buffer, MetadataState state,
                       GetTypeParameterInContextFn getInContext);
 };
 
 } // end namespace irgen
 } // end namespace swift
-
-namespace llvm {
-  template <> struct DenseMapInfo<swift::irgen::GenericRequirement> {
-    using GenericRequirement = swift::irgen::GenericRequirement;
-    using CanTypeInfo = llvm::DenseMapInfo<swift::CanType>;
-    static GenericRequirement getEmptyKey() {
-      return { CanTypeInfo::getEmptyKey(), nullptr };
-    }
-    static GenericRequirement getTombstoneKey() {
-      return { CanTypeInfo::getTombstoneKey(), nullptr };
-    }
-    static llvm::hash_code getHashValue(GenericRequirement req) {
-      return hash_combine(CanTypeInfo::getHashValue(req.TypeParameter),
-                          hash_value(req.Protocol));
-    }
-    static bool isEqual(GenericRequirement lhs, GenericRequirement rhs) {
-      return (lhs.TypeParameter == rhs.TypeParameter &&
-              lhs.Protocol == rhs.Protocol);
-    }
-  };
-}
 
 #endif

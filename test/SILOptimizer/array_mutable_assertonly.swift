@@ -1,16 +1,16 @@
-// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | FileCheck %s --check-prefix=TEST1
-// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | FileCheck %s --check-prefix=TEST2
-// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | FileCheck %s --check-prefix=TEST3
-// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | FileCheck %s --check-prefix=TEST4
-// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | FileCheck %s --check-prefix=TEST5
-// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | FileCheck %s --check-prefix=TEST6
-// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | FileCheck %s --check-prefix=TEST7
-// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | FileCheck %s --check-prefix=TEST8
-// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | FileCheck %s --check-prefix=TEST9
-// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | FileCheck %s --check-prefix=TEST10
-// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | FileCheck %s --check-prefix=TEST11
-// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | FileCheck %s --check-prefix=TEST12
-// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | FileCheck %s --check-prefix=TEST13
+// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | %FileCheck %s --check-prefix=TEST1
+// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | %FileCheck %s --check-prefix=TEST2
+// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | %FileCheck %s --check-prefix=TEST3
+// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | %FileCheck %s --check-prefix=TEST4
+// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | %FileCheck %s --check-prefix=TEST5
+// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | %FileCheck %s --check-prefix=TEST6
+// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | %FileCheck %s --check-prefix=TEST7
+// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | %FileCheck %s --check-prefix=TEST8
+// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | %FileCheck %s --check-prefix=TEST9
+// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | %FileCheck %s --check-prefix=TEST10
+// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | %FileCheck %s --check-prefix=TEST11
+// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | %FileCheck %s --check-prefix=TEST12
+// RUN: %target-swift-frontend -O -emit-sil -Xllvm -debug-only=cowarray-opts -primary-file %s 2>&1 | %FileCheck %s --check-prefix=TEST13
 // REQUIRES: asserts,swift_stdlib_no_asserts,optimized_stdlib
 
 // TEST1-LABEL: COW Array Opts in Func {{.*}}inoutarr{{.*}}
@@ -37,7 +37,7 @@ func arrelt(s: inout S) {
 }
 
 
-class ArrayInClass {
+class Array_in_class {
   final var A : [Int]
   final var B : [Int]
   final var C : [[Int]]
@@ -123,7 +123,7 @@ func hoistMutableOfAppend(A: inout [Int]) {
 }
 
 @inline(never)
-func use(a: [Int]) {
+func use(_ a: [Int]) {
 }
 
 class ArrayHolder {

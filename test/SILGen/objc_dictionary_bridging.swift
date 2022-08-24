@@ -1,7 +1,8 @@
-// RUN: rm -rf %t && mkdir -p %t
+
+// RUN: %empty-directory(%t)
 // RUN: %build-silgen-test-overlays
 
-// RUN: %target-swift-frontend(mock-sdk: -sdk %S/Inputs -I %t) -emit-silgen %s | FileCheck %s
+// RUN: %target-swift-emit-silgen(mock-sdk: -sdk %S/Inputs -I %t) -module-name objc_dictionary_bridging %s | %FileCheck %s
 
 // REQUIRES: objc_interop
 
@@ -10,60 +11,85 @@ import gizmo
 
 @objc class Foo : NSObject {
   // Bridging dictionary parameters
-  // CHECK-LABEL: sil hidden [thunk] @_TToFC24objc_dictionary_bridging3Foo23bridge_Dictionary_param{{.*}} : $@convention(objc_method) (NSDictionary, Foo) -> ()
-  func bridge_Dictionary_param(dict: Dictionary<Foo, Foo>) {
-    // CHECK: bb0([[NSDICT:%[0-9]+]] : $NSDictionary, [[SELF:%[0-9]+]] : $Foo):
-    // CHECK:   [[CONVERTER:%[0-9]+]] = function_ref @_TZFE10FoundationVs10Dictionary36_unconditionallyBridgeFromObjectiveCfGSqCSo12NSDictionary_GS0_xq__
-    // CHECK-NEXT: [[OPT_NSDICT:%[0-9]+]] = enum $Optional<NSDictionary>, #Optional.some!enumelt.1, [[NSDICT]] : $NSDictionary
-    // CHECK-NEXT: [[DICT_META:%[0-9]+]] = metatype $@thin Dictionary<Foo, Foo>.Type
-    // CHECK-NEXT:   [[DICT:%[0-9]+]] = apply [[CONVERTER]]<Foo, Foo>([[OPT_NSDICT]], [[DICT_META]])
-
-    // CHECK:   [[SWIFT_FN:%[0-9]+]] = function_ref @_TFC24objc_dictionary_bridging3Foo23bridge_Dictionary_param
-    // CHECK:   [[RESULT:%[0-9]+]] = apply [[SWIFT_FN]]([[DICT]], [[SELF]]) : $@convention(method) (@owned Dictionary<Foo, Foo>, @guaranteed Foo) -> ()
+  // CHECK-LABEL: sil private [thunk] [ossa] @$s24objc_dictionary_bridging3FooC23bridge_Dictionary_param{{[_0-9a-zA-Z]*}}FTo : $@convention(objc_method) (NSDictionary, Foo) -> ()
+  @objc func bridge_Dictionary_param(_ dict: Dictionary<Foo, Foo>) {
+    // CHECK: bb0([[NSDICT:%[0-9]+]] : @unowned $NSDictionary, [[SELF:%[0-9]+]] : @unowned $Foo):
+    // CHECK:   [[NSDICT_COPY:%.*]] = copy_value [[NSDICT]]
+    // CHECK:   [[SELF_COPY:%.*]] = copy_value [[SELF]]
+    // CHECK:   [[CONVERTER:%[0-9]+]] = function_ref @$sSD10FoundationE36_unconditionallyBridgeFromObjectiveCySDyxq_GSo12NSDictionaryCSgFZ
+    // CHECK:   [[OPT_NSDICT:%[0-9]+]] = enum $Optional<NSDictionary>, #Optional.some!enumelt, [[NSDICT_COPY]] : $NSDictionary
+    // CHECK:   [[DICT_META:%[0-9]+]] = metatype $@thin Dictionary<Foo, Foo>.Type
+    // CHECK:   [[DICT:%[0-9]+]] = apply [[CONVERTER]]<Foo, Foo>([[OPT_NSDICT]], [[DICT_META]])
+    // CHECK:   [[BORROWED_DICT:%.*]] = begin_borrow [[DICT]]
+    // CHECK:   [[BORROWED_SELF_COPY:%.*]] = begin_borrow [[SELF_COPY]]
+    // CHECK:   [[SWIFT_FN:%[0-9]+]] = function_ref @$s24objc_dictionary_bridging3FooC23bridge_Dictionary_param{{[_0-9a-zA-Z]*}}F
+    // CHECK:   [[RESULT:%[0-9]+]] = apply [[SWIFT_FN]]([[BORROWED_DICT]], [[BORROWED_SELF_COPY]]) : $@convention(method) (@guaranteed Dictionary<Foo, Foo>, @guaranteed Foo) -> ()
+    // CHECK:   end_borrow [[BORROWED_SELF_COPY]]
+    // CHECK:   destroy_value [[SELF_COPY]]
     // CHECK:   return [[RESULT]] : $()
   }
+  // CHECK: } // end sil function '$s24objc_dictionary_bridging3FooC23bridge_Dictionary_param{{[_0-9a-zA-Z]*}}FTo'
 
   // Bridging dictionary results
-  // CHECK-LABEL: sil hidden [thunk] @_TToFC24objc_dictionary_bridging3Foo24bridge_Dictionary_result{{.*}} : $@convention(objc_method) (Foo) -> @autoreleased NSDictionary
-  func bridge_Dictionary_result() -> Dictionary<Foo, Foo> { 
-    // CHECK: bb0([[SELF:%[0-9]+]] : $Foo):
-    // CHECK:   [[SWIFT_FN:%[0-9]+]] = function_ref @_TFC24objc_dictionary_bridging3Foo24bridge_Dictionary_result{{.*}} : $@convention(method) (@guaranteed Foo) -> @owned Dictionary<Foo, Foo>
-    // CHECK-NEXT:   [[DICT:%[0-9]+]] = apply [[SWIFT_FN]]([[SELF]]) : $@convention(method) (@guaranteed Foo) -> @owned Dictionary<Foo, Foo>
+  // CHECK-LABEL: sil private [thunk] [ossa] @$s24objc_dictionary_bridging3FooC24bridge_Dictionary_result{{[_0-9a-zA-Z]*}}FTo : $@convention(objc_method) (Foo) -> @autoreleased NSDictionary
+  @objc func bridge_Dictionary_result() -> Dictionary<Foo, Foo> { 
+    // CHECK: bb0([[SELF:%[0-9]+]] : @unowned $Foo):
+    // CHECK:   [[SELF_COPY:%.*]] = copy_value [[SELF]]
+    // CHECK:   [[BORROWED_SELF_COPY:%.*]] = begin_borrow [[SELF_COPY]]
+    // CHECK:   [[SWIFT_FN:%[0-9]+]] = function_ref @$s24objc_dictionary_bridging3FooC24bridge_Dictionary_result{{[_0-9a-zA-Z]*}}F : $@convention(method) (@guaranteed Foo) -> @owned Dictionary<Foo, Foo>
+    // CHECK:   [[DICT:%[0-9]+]] = apply [[SWIFT_FN]]([[BORROWED_SELF_COPY]]) : $@convention(method) (@guaranteed Foo) -> @owned Dictionary<Foo, Foo>
+    // CHECK:   end_borrow [[BORROWED_SELF_COPY]]
+    // CHECK:   destroy_value [[SELF_COPY]]
 
-    // CHECK:   [[CONVERTER:%[0-9]+]] = function_ref @_TFE10FoundationVs10Dictionary19_bridgeToObjectiveCfT_CSo12NSDictionary
-    // CHECK-NEXT:   [[NSDICT:%[0-9]+]] = apply [[CONVERTER]]<Foo, Foo>([[DICT]]) : $@convention(method) <τ_0_0, τ_0_1 where τ_0_0 : Hashable> (@guaranteed Dictionary<τ_0_0, τ_0_1>) -> @owned NSDictionary
-    // CHECK-NEXT:   release_value [[DICT]]
-    // CHECK-NEXT:   return [[NSDICT]] : $NSDictionary
+    // CHECK:   [[CONVERTER:%[0-9]+]] = function_ref @$sSD10FoundationE19_bridgeToObjectiveCSo12NSDictionaryCyF
+    // CHECK:   [[BORROWED_DICT:%.*]] = begin_borrow [[DICT]]
+    // CHECK:   [[NSDICT:%[0-9]+]] = apply [[CONVERTER]]<Foo, Foo>([[BORROWED_DICT]]) : $@convention(method) <τ_0_0, τ_0_1 where τ_0_0 : Hashable> (@guaranteed Dictionary<τ_0_0, τ_0_1>) -> @owned NSDictionary
+    // CHECK:   end_borrow [[BORROWED_DICT]]
+    // CHECK:   destroy_value [[DICT]]
+    // CHECK:   return [[NSDICT]] : $NSDictionary
   }
+  // CHECK: } // end sil function '$s24objc_dictionary_bridging3FooC24bridge_Dictionary_result{{[_0-9a-zA-Z]*}}FTo'
 
-  var property: Dictionary<Foo, Foo> = [:]
+  @objc var property: Dictionary<Foo, Foo> = [:]
 
   // Property getter
-  // CHECK-LABEL: sil hidden [transparent] [thunk] @_TToFC24objc_dictionary_bridging3Foog8propertyGVs10DictionaryS0_S0__ : $@convention(objc_method) (Foo) -> @autoreleased NSDictionary
-  // CHECK: bb0([[SELF:%[0-9]+]] : $Foo):
-  // CHECK:   [[GETTER:%[0-9]+]] = function_ref @_TFC24objc_dictionary_bridging3Foog8propertyGVs10DictionaryS0_S0__ : $@convention(method) (@guaranteed Foo) -> @owned Dictionary<Foo, Foo>
-  // CHECK:   [[DICT:%[0-9]+]] = apply [[GETTER]]([[SELF]]) : $@convention(method) (@guaranteed Foo) -> @owned Dictionary<Foo, Foo>
-  
-  // CHECK:   [[CONVERTER:%[0-9]+]] = function_ref @_TFE10FoundationVs10Dictionary19_bridgeToObjectiveCfT_CSo12NSDictionary
-  // CHECK:   [[NSDICT:%[0-9]+]] = apply [[CONVERTER]]<Foo, Foo>([[DICT]]) : $@convention(method) <τ_0_0, τ_0_1 where τ_0_0 : Hashable> (@guaranteed Dictionary<τ_0_0, τ_0_1>) -> @owned NSDictionary
-  // CHECK:   release_value [[DICT]]
+  // CHECK-LABEL: sil private [thunk] [ossa] @$s24objc_dictionary_bridging3FooC8propertySDyA2CGvgTo : $@convention(objc_method) (Foo) -> @autoreleased NSDictionary
+  //                                 @$s24objc_dictionary_bridging3FooC8propertySDyA2CSo8NSObjectCSH10Foundationg_Gvpfi
+  // CHECK: bb0([[SELF:%[0-9]+]] : @unowned $Foo):
+  // CHECK:   [[SELF_COPY:%.*]] = copy_value [[SELF]]
+  // CHECK:   [[BORROWED_SELF_COPY:%.*]] = begin_borrow [[SELF_COPY]]
+  // CHECK:   [[GETTER:%[0-9]+]] = function_ref @$s24objc_dictionary_bridging3FooC8propertySDyA2CGvg : $@convention(method) (@guaranteed Foo) -> @owned Dictionary<Foo, Foo>
+  // CHECK:   [[DICT:%[0-9]+]] = apply [[GETTER]]([[BORROWED_SELF_COPY]]) : $@convention(method) (@guaranteed Foo) -> @owned Dictionary<Foo, Foo>
+  // CHECK:   end_borrow [[BORROWED_SELF_COPY]]
+  // CHECK:   destroy_value [[SELF_COPY]]
+  // CHECK:   [[CONVERTER:%[0-9]+]] = function_ref @$sSD10FoundationE19_bridgeToObjectiveCSo12NSDictionaryCyF
+  // CHECK:   [[BORROWED_DICT:%.*]] = begin_borrow [[DICT]]
+  // CHECK:   [[NSDICT:%[0-9]+]] = apply [[CONVERTER]]<Foo, Foo>([[BORROWED_DICT]]) : $@convention(method) <τ_0_0, τ_0_1 where τ_0_0 : Hashable> (@guaranteed Dictionary<τ_0_0, τ_0_1>) -> @owned NSDictionary
+  // CHECK:   end_borrow [[BORROWED_DICT]]
+  // CHECK:   destroy_value [[DICT]]
   // CHECK:   return [[NSDICT]] : $NSDictionary
+  // CHECK: } // end sil function
 
   // Property setter
-  // CHECK-LABEL: sil hidden [transparent] [thunk] @_TToFC24objc_dictionary_bridging3Foos8propertyGVs10DictionaryS0_S0__ : $@convention(objc_method) (NSDictionary, Foo) -> ()
-  // CHECK: bb0([[NSDICT:%[0-9]+]] : $NSDictionary, [[SELF:%[0-9]+]] : $Foo):
-// CHECK:   [[CONVERTER:%[0-9]+]] = function_ref @_TZFE10FoundationVs10Dictionary36_unconditionallyBridgeFromObjectiveCfGSqCSo12NSDictionary_GS0_xq__
-// CHECK: [[OPT_NSDICT:%[0-9]+]] = enum $Optional<NSDictionary>, #Optional.some!enumelt.1, [[NSDICT]] : $NSDictionary
-// CHECK: [[DICT_META:%[0-9]+]] = metatype $@thin Dictionary<Foo, Foo>.Type
-// CHECK:   [[DICT:%[0-9]+]] = apply [[CONVERTER]]<Foo, Foo>([[OPT_NSDICT]], [[DICT_META]])
+  // CHECK-LABEL: sil private [thunk] [ossa] @$s24objc_dictionary_bridging3FooC8propertySDyA2CGvsTo : $@convention(objc_method) (NSDictionary, Foo) -> ()
+  // CHECK: bb0([[NSDICT:%[0-9]+]] : @unowned $NSDictionary, [[SELF:%[0-9]+]] : @unowned $Foo):
+  // CHECK:   [[NSDICT_COPY:%.*]] = copy_value [[NSDICT]]
+  // CHECK:   [[SELF_COPY:%.*]] = copy_value [[SELF]]
+  // CHECK:   [[CONVERTER:%[0-9]+]] = function_ref @$sSD10FoundationE36_unconditionallyBridgeFromObjectiveCySDyxq_GSo12NSDictionaryCSgFZ
+  // CHECK:   [[OPT_NSDICT:%[0-9]+]] = enum $Optional<NSDictionary>, #Optional.some!enumelt, [[NSDICT_COPY]] : $NSDictionary
+  // CHECK:   [[DICT_META:%[0-9]+]] = metatype $@thin Dictionary<Foo, Foo>.Type
+  // CHECK:   [[DICT:%[0-9]+]] = apply [[CONVERTER]]<Foo, Foo>([[OPT_NSDICT]], [[DICT_META]])
 
-// CHECK:   [[SETTER:%[0-9]+]] = function_ref @_TFC24objc_dictionary_bridging3Foos8propertyGVs10DictionaryS0_S0__ : $@convention(method) (@owned Dictionary<Foo, Foo>, @guaranteed Foo) -> ()
-// CHECK:   [[RESULT:%[0-9]+]] = apply [[SETTER]]([[DICT]], [[SELF]]) : $@convention(method) (@owned Dictionary<Foo, Foo>, @guaranteed Foo) -> ()
-// CHECK:   return [[RESULT]] : $()
+  // CHECK:   [[BORROWED_SELF_COPY:%.*]] = begin_borrow [[SELF_COPY]]
+  // CHECK:   [[SETTER:%[0-9]+]] = function_ref @$s24objc_dictionary_bridging3FooC8propertySDyA2CGvs : $@convention(method) (@owned Dictionary<Foo, Foo>, @guaranteed Foo) -> ()
+  // CHECK:   [[RESULT:%[0-9]+]] = apply [[SETTER]]([[DICT]], [[BORROWED_SELF_COPY]]) : $@convention(method) (@owned Dictionary<Foo, Foo>, @guaranteed Foo) -> ()
+  // CHECK:   end_borrow [[BORROWED_SELF_COPY]]
+  // CHECK:   destroy_value [[SELF_COPY]]
+  // CHECK:   return [[RESULT]] : $()
 
-  // CHECK-LABEL: sil hidden [transparent] [thunk] @_TToFC24objc_dictionary_bridging3Foog19nonVerbatimProperty{{.*}} : $@convention(objc_method) (Foo) -> @autoreleased NSDictionary
+  // CHECK-LABEL: sil private [thunk] [ossa] @$s24objc_dictionary_bridging3FooC19nonVerbatimProperty{{[_0-9a-zA-Z]*}}vgTo : $@convention(objc_method) (Foo) -> @autoreleased NSDictionary
 
-  // CHECK-LABEL: sil hidden [transparent] [thunk] @_TToFC24objc_dictionary_bridging3Foos19nonVerbatimProperty{{.*}} : $@convention(objc_method) (NSDictionary, Foo) -> ()
+  // CHECK-LABEL: sil private [thunk] [ossa] @$s24objc_dictionary_bridging3FooC19nonVerbatimProperty{{[_0-9a-zA-Z]*}}vsTo : $@convention(objc_method) (NSDictionary, Foo) -> ()
   @objc var nonVerbatimProperty: Dictionary<String, Int> = [:]
 }
 

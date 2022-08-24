@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -17,7 +17,6 @@
 #ifndef SWIFT_IRGEN_GENMETA_H
 #define SWIFT_IRGEN_GENMETA_H
 
-#include "swift/AST/Types.h"
 #include <utility>
 
 namespace llvm {
@@ -30,6 +29,8 @@ namespace llvm {
 
 namespace swift {
   class AbstractFunctionDecl;
+  struct ExistentialTypeGeneralization;
+  class FileUnit;
   class FuncDecl;
   enum class ResilienceExpansion : unsigned;
   struct SILDeclRef;
@@ -38,86 +39,24 @@ namespace swift {
   enum class SpecialProtocol : uint8_t;
   
 namespace irgen {
-  class Callee;
-  class ConstantReference;
-  class Explosion;
+  class ConstantStructBuilder;
   class FieldTypeInfo;
   class GenericTypeRequirements;
   class IRGenFunction;
   class IRGenModule;
+  enum RequireMetadata_t : bool;
   class Size;
   class StructLayout;
-  enum class SymbolReferenceKind : unsigned char;
-  struct ClassLayout;
+  class ClassLayout;
+  class LinkEntity;
 
-  /// Is the given class known to have Swift-compatible metadata?
-  bool hasKnownSwiftMetadata(IRGenModule &IGM, ClassDecl *theClass);
-
-  inline bool isKnownNotTaggedPointer(IRGenModule &IGM, ClassDecl *theClass) {
-    // For now, assume any class type defined in Clang might be tagged.
-    return hasKnownSwiftMetadata(IGM, theClass);
-  }
-
-  /// Is the given class-like type known to have Swift-compatible
-  /// metadata?
-  bool hasKnownSwiftMetadata(IRGenModule &IGM, CanType theType);
-
-  /// Is the given class known to have an implementation in Swift?
-  bool hasKnownSwiftImplementation(IRGenModule &IGM, ClassDecl *theClass);
-  
-  /// Is the given method known to be callable by vtable dispatch?
-  bool hasKnownVTableEntry(IRGenModule &IGM, AbstractFunctionDecl *theMethod);
-
-  /// Emit the body of a lazy cache access function.
-  void emitLazyCacheAccessFunction(IRGenModule &IGM,
-                                   llvm::Function *accessor,
-                                   llvm::GlobalVariable *cacheVariable,
-        const llvm::function_ref<llvm::Value *(IRGenFunction &IGF)> &getValue);
-
-  /// Emit a declaration reference to a metatype object.
-  void emitMetatypeRef(IRGenFunction &IGF, CanMetatypeType type,
-                       Explosion &explosion);
-
-  /// Emit a reference to a compile-time constant piece of type metadata, or
-  /// return a null pointer if the type's metadata cannot be represented by a
-  /// constant.
-  ConstantReference tryEmitConstantTypeMetadataRef(IRGenModule &IGM,
-                                                   CanType type,
-                                                   SymbolReferenceKind refKind);
-
-  /// Emit a reference to a compile-time constant piece of heap metadata, or
-  /// return a null pointer if the type's heap metadata cannot be represented
-  /// by a constant.
-  llvm::Constant *tryEmitConstantHeapMetadataRef(IRGenModule &IGM,
-                                                 CanType type,
-                                                 bool allowUninitialized);
-
-  enum class MetadataValueType { ObjCClass, TypeMetadata };
-
-  /// Emit a reference to the heap metadata for a class.
-  ///
-  /// \returns a value of type ObjCClassPtrTy or TypeMetadataPtrTy,
-  ///    depending on desiredType
-  llvm::Value *emitClassHeapMetadataRef(IRGenFunction &IGF, CanType type,
-                                        MetadataValueType desiredType,
-                                        bool allowUninitialized = false);
-
-  /// Emit a reference to the (initialized) ObjC heap metadata for a class.
-  ///
-  /// \returns a value of type ObjCClassPtrTy
-  llvm::Value *emitObjCHeapMetadataRef(IRGenFunction &IGF, ClassDecl *theClass,
-                                       bool allowUninitialized = false);
-
-  /// Given a class metadata reference, produce the appropriate heap
-  /// metadata reference for it.
-  llvm::Value *emitClassHeapMetadataRefForMetatype(IRGenFunction &IGF,
-                                                   llvm::Value *metatype,
-                                                   CanType type);
+  bool requiresForeignTypeMetadata(CanType type);
+  bool requiresForeignTypeMetadata(NominalTypeDecl *decl);
 
   /// Emit the metadata associated with the given class declaration.
   void emitClassMetadata(IRGenModule &IGM, ClassDecl *theClass,
-                         const StructLayout &layout,
-                         const ClassLayout &fieldLayout);
+                         const ClassLayout &fragileLayout,
+                         const ClassLayout &resilientLayout);
 
   /// Emit the constant initializer of the type metadata candidate for
   /// the given foreign class declaration.
@@ -125,24 +64,52 @@ namespace irgen {
                                                      CanType type,
                                                      Size &addressPointOffset);
 
+  /// Emit a type context descriptor that was demanded by a reference from
+  /// other generated definitions.
+  void emitLazyTypeContextDescriptor(IRGenModule &IGM,
+                                     NominalTypeDecl *type,
+                                     RequireMetadata_t requireMetadata);
+
+  /// Emit type metadata that was demanded by a reference from other
+  /// generated definitions.
+  void emitLazyTypeMetadata(IRGenModule &IGM, NominalTypeDecl *type);
+
+  /// Emit the type metadata accessor for a type for which it might be used.
+  void emitLazyMetadataAccessor(IRGenModule &IGM, NominalTypeDecl *type);
+
+  void emitLazyCanonicalSpecializedMetadataAccessor(IRGenModule &IGM,
+                                                    CanType theType);
+
+  void emitLazySpecializedGenericTypeMetadata(IRGenModule &IGM, CanType type);
+
+  /// Emit metadata for a foreign struct, enum or class.
+  void emitForeignTypeMetadata(IRGenModule &IGM, NominalTypeDecl *decl);
+
   /// Emit the metadata associated with the given struct declaration.
   void emitStructMetadata(IRGenModule &IGM, StructDecl *theStruct);
 
   /// Emit the metadata associated with the given enum declaration.
   void emitEnumMetadata(IRGenModule &IGM, EnumDecl *theEnum);
 
+  /// Emit the metadata associated with a given instantiation of a generic
+  /// struct.
+  void emitSpecializedGenericStructMetadata(IRGenModule &IGM, CanType type,
+                                            StructDecl &decl);
+
+  /// Emit the metadata associated with a given instantiation of a generic enum.
+  void emitSpecializedGenericEnumMetadata(IRGenModule &IGM, CanType type,
+                                          EnumDecl &decl);
+
+  /// Emit the metadata associated with a given instantiation of a generic
+  // class.
+  void emitSpecializedGenericClassMetadata(IRGenModule &IGM, CanType type,
+                                           ClassDecl &decl);
+
   /// Get what will be the index into the generic type argument array at the end
   /// of a nominal type's metadata.
   int32_t getIndexOfGenericArgument(IRGenModule &IGM,
                                     NominalTypeDecl *decl,
                                     ArchetypeType *archetype);
-  
-  /// Given a reference to nominal type metadata of the given type,
-  /// derive a reference to the parent type metadata.  There must be a
-  /// parent type.
-  llvm::Value *emitParentMetadataRef(IRGenFunction &IGF,
-                                     NominalTypeDecl *theDecl,
-                                     llvm::Value *metadata);
 
   /// Given a reference to nominal type metadata of the given type,
   /// derive a reference to the type metadata stored in the nth
@@ -162,90 +129,9 @@ namespace irgen {
                                            unsigned reqtIndex,
                                            llvm::Value *metadata);
 
-  /// Get the offset of a field in the class type metadata.
-  Size getClassFieldOffset(IRGenModule &IGM,
-                           ClassDecl *theClass,
-                           VarDecl *field);
-
-  /// Given a reference to class type metadata of the given type,
-  /// decide the offset to the given field.  This assumes that the
-  /// offset is stored in the metadata, i.e. its offset is potentially
-  /// dependent on generic arguments.  The result is a ptrdiff_t.
-  llvm::Value *emitClassFieldOffset(IRGenFunction &IGF,
-                                    ClassDecl *theClass,
-                                    VarDecl *field,
-                                    llvm::Value *metadata);
-
   /// Given a metatype value, read its instance type.
   llvm::Value *emitMetatypeInstanceType(IRGenFunction &IGF,
                                         llvm::Value *metatypeMetadata);
-
-  /// Load the fragile instance size and alignment mask from a reference to
-  /// class type metadata of the given type.
-  std::pair<llvm::Value *, llvm::Value *>
-  emitClassFragileInstanceSizeAndAlignMask(IRGenFunction &IGF,
-                                           ClassDecl *theClass,
-                                           llvm::Value *metadata);
-
-  /// Load the instance size and alignment mask from a reference to
-  /// class type metadata of the given type.
-  std::pair<llvm::Value *, llvm::Value *>
-  emitClassResilientInstanceSizeAndAlignMask(IRGenFunction &IGF,
-                                             ClassDecl *theClass,
-                                             llvm::Value *metadata);
-  
-  /// Given an opaque class instance pointer, produce the type
-  /// metadata reference as a %type*.
-  llvm::Value *emitDynamicTypeOfOpaqueHeapObject(IRGenFunction &IGF,
-                                                 llvm::Value *object);
-
-  /// Given a heap-object instance, with some heap-object type,
-  /// produce a reference to its type metadata.
-  llvm::Value *emitDynamicTypeOfHeapObject(IRGenFunction &IGF,
-                                           llvm::Value *object,
-                                           SILType objectType,
-                                           bool suppressCast = false);
-
-  /// Given a heap-object instance, with some heap-object type, produce a
-  /// reference to its heap metadata by dynamically asking the runtime for it.
-  llvm::Value *emitHeapMetadataRefForUnknownHeapObject(IRGenFunction &IGF,
-                                                       llvm::Value *object);
-
-  /// Given a heap-object instance, with some heap-object type,
-  /// produce a reference to its heap metadata.
-  llvm::Value *emitHeapMetadataRefForHeapObject(IRGenFunction &IGF,
-                                                llvm::Value *object,
-                                                CanType objectType,
-                                                bool suppressCast = false);
-
-  /// Given a heap-object instance, with some heap-object type,
-  /// produce a reference to its heap metadata.
-  llvm::Value *emitHeapMetadataRefForHeapObject(IRGenFunction &IGF,
-                                                llvm::Value *object,
-                                                SILType objectType,
-                                                bool suppressCast = false);
-
-  /// Given an instance pointer (or, for a static method, a class
-  /// pointer), emit the callee for the given method.
-  llvm::Value *emitVirtualMethodValue(IRGenFunction &IGF,
-                                      llvm::Value *base,
-                                      SILType baseType,
-                                      SILDeclRef method,
-                                      CanSILFunctionType methodType,
-                                      bool useSuperVTable);
-
-  /// \brief Load a reference to the protocol descriptor for the given protocol.
-  ///
-  /// For Swift protocols, this is a constant reference to the protocol
-  /// descriptor symbol.
-  /// For ObjC protocols, descriptors are uniqued at runtime by the ObjC
-  /// runtime. We need to load the unique reference from a global variable fixed up at
-  /// startup.
-  llvm::Value *emitProtocolDescriptorRef(IRGenFunction &IGF,
-                                         ProtocolDecl *protocol);
-  
-  llvm::Value *emitObjCMetadataRefForMetadata(IRGenFunction &IGF,
-                                              llvm::Value *classPtr);
   
   /// Emit the field type accessor for a nominal type's metadata. This function
   /// lazily generates the metadata for the types of all of the nominal type's
@@ -254,7 +140,7 @@ namespace irgen {
                              NominalTypeDecl *type,
                              llvm::Function *fn,
                              ArrayRef<FieldTypeInfo> fieldTypes);
-  
+
   /// Adjustment indices for the address points of various metadata.
   /// Size is in words.
   namespace MetadataAdjustmentIndex {
@@ -272,36 +158,45 @@ namespace irgen {
     };
   }
 
-  enum class MetadataAccessStrategy {
-    /// There is a unique public accessor function for the given type metadata.
-    PublicUniqueAccessor,
-
-    /// There is a unique hidden accessor function for the given type metadata.
-    HiddenUniqueAccessor,
-
-    /// There is a unique private accessor function for the given type metadata.
-    PrivateAccessor,
-
-    /// There is no unique accessor function for the given type metadata, but
-    /// one should be made automatically.
-    NonUniqueAccessor
-  };
-
-  /// Is it basically trivial to access the given metadata?  If so, we don't
-  /// need a cache variable in its accessor.
-  bool isTypeMetadataAccessTrivial(IRGenModule &IGM, CanType type);
-
-  /// Determine how the given type metadata should be accessed.
-  MetadataAccessStrategy getTypeMetadataAccessStrategy(IRGenModule &IGM,
-                                                       CanType type);
-  
-  /// Return the address of a function that will return type metadata 
-  /// for the given non-dependent type.
-  llvm::Function *getOrCreateTypeMetadataAccessFunction(IRGenModule &IGM,
-                                                        CanType type);
-
   /// Get the runtime identifier for a special protocol, if any.
   SpecialProtocol getSpecialProtocolID(ProtocolDecl *P);
+
+  /// Use the argument as the 'self' type metadata.
+  void getArgAsLocalSelfTypeMetadata(IRGenFunction &IGF, llvm::Value *arg,
+                                     CanType abstractType);
+
+  /// Description of the metadata emitted by adding generic requirements.
+  struct GenericRequirementsMetadata {
+    unsigned NumRequirements = 0;
+    unsigned NumGenericKeyArguments = 0;
+    unsigned NumGenericExtraArguments = 0;
+  };
+
+  /// Add generic requirements to the given constant struct builder.
+  ///
+  /// \param sig The generic signature against which the requirements are
+  /// described.
+  ///
+  /// \param requirements The requirements to add.
+  GenericRequirementsMetadata addGenericRequirements(
+                                          IRGenModule &IGM,
+                                          ConstantStructBuilder &B,
+                                          GenericSignature sig,
+                                          ArrayRef<Requirement> requirements);
+
+  llvm::GlobalValue *emitAsyncFunctionPointer(IRGenModule &IGM,
+                                              llvm::Function *function,
+                                              LinkEntity entity,
+                                              Size size);
+
+  /// Determine whether the given opaque type requires a witness table for the
+  /// given requirement.
+  ///
+  /// \returns the protocol when a witness table is required, or \c nullptr
+  /// if the requirement isn't a conformance requirement or doesn't require a
+  /// witness table.
+  ProtocolDecl *opaqueTypeRequiresWitnessTable(
+      OpaqueTypeDecl *opaque, const Requirement &req);
 
 } // end namespace irgen
 } // end namespace swift

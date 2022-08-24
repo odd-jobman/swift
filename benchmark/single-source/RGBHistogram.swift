@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2021 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,20 +15,29 @@
 //
 // Description:
 //     Create a sorted sparse RGB histogram from an array of 300 RGB values.
-import Foundation
 import TestsUtils
 
+public let benchmarks = [
+  BenchmarkInfo(name: "RGBHistogram",
+    runFunction: run_RGBHistogram,
+    tags: [.validation, .algorithm],
+    legacyFactor: 10),
+  BenchmarkInfo(name: "RGBHistogramOfObjects",
+    runFunction: run_RGBHistogramOfObjects,
+    tags: [.validation, .algorithm],
+    legacyFactor: 100),
+]
+
 @inline(never)
-public func run_RGBHistogram(N: Int) {
+public func run_RGBHistogram(_ n: Int) {
     var histogram = [(key: rrggbb_t, value: Int)]()
-    for _ in 1...100*N {
+    for _ in 1...10*n {
         histogram = createSortedSparseRGBHistogram(samples)
         if !isCorrectHistogram(histogram) {
             break
         }
     }
-    CheckResults(isCorrectHistogram(histogram),
-                 "Incorrect results in histogram")
+    check(isCorrectHistogram(histogram))
 }
 
 typealias rrggbb_t = UInt32
@@ -86,15 +95,17 @@ let samples: [rrggbb_t] = [
     0x607F4D9F, 0x9733E55E, 0xA360439D, 0x1DB568FD, 0xB7A5C3A1, 0xBE84492D
 ]
 
-func isCorrectHistogram(histogram: [(key: rrggbb_t, value: Int)]) -> Bool {
+func isCorrectHistogram(_ histogram: [(key: rrggbb_t, value: Int)]) -> Bool {
     return histogram.count  == 157 &&
            histogram[0].0   == 0x00808080 && histogram[0].1   == 54 &&
            histogram[156].0 == 0x003B8D96 && histogram[156].1 == 1
 }
 
-func createSortedSparseRGBHistogram
-        <S: Sequence where S.Iterator.Element == rrggbb_t>
-        (samples: S) -> [(key: rrggbb_t, value: Int)] {
+func createSortedSparseRGBHistogram<S : Sequence>(
+  _ samples: S
+) -> [(key: rrggbb_t, value: Int)]
+  where S.Element == rrggbb_t
+{
     var histogram = Dictionary<rrggbb_t, Int>()
 
     for sample in samples {
@@ -111,34 +122,33 @@ func createSortedSparseRGBHistogram
     }
 }
 
-class Box<T : Hashable where T : Equatable> : Hashable {
+class Box<T : Hashable> : Hashable {
   var value: T
 
   init(_ v: T) {
     value = v
   }
 
-  var hashValue : Int {
-    return value.hashValue
+  func hash(into hasher: inout Hasher) {
+    hasher.combine(value)
+  }
+
+  static func ==(lhs: Box, rhs: Box) -> Bool {
+    return lhs.value == rhs.value
   }
 }
 
-extension Box : Equatable {
-}
-
-func ==<T: Equatable>(lhs: Box<T>,  rhs: Box<T>) -> Bool {
-  return lhs.value == rhs.value
-}
-
-func isCorrectHistogramOfObjects(histogram: [(key: Box<rrggbb_t>, value: Box<Int>)]) -> Bool {
+func isCorrectHistogramOfObjects(_ histogram: [(key: Box<rrggbb_t>, value: Box<Int>)]) -> Bool {
     return histogram.count  == 157 &&
            histogram[0].0.value   == 0x00808080 && histogram[0].1.value   == 54 &&
            histogram[156].0.value == 0x003B8D96 && histogram[156].1.value == 1
 }
 
-func createSortedSparseRGBHistogramOfObjects
-        <S: Sequence where S.Iterator.Element == rrggbb_t>
-        (samples: S) -> [(key: Box<rrggbb_t>, value: Box<Int>)] {
+func createSortedSparseRGBHistogramOfObjects<S : Sequence>(
+  _ samples: S
+) -> [(key: Box<rrggbb_t>, value: Box<Int>)]
+  where S.Element == rrggbb_t
+{
     var histogram = Dictionary<Box<rrggbb_t>, Box<Int>>()
 
     for sample in samples {
@@ -157,16 +167,13 @@ func createSortedSparseRGBHistogramOfObjects
 }
 
 @inline(never)
-public func run_RGBHistogramOfObjects(N: Int) {
+public func run_RGBHistogramOfObjects(_ n: Int) {
     var histogram = [(key: Box<rrggbb_t>, value: Box<Int>)]()
-    for _ in 1...100*N {
+    for _ in 1...n {
         histogram = createSortedSparseRGBHistogramOfObjects(samples)
         if !isCorrectHistogramOfObjects(histogram) {
             break
         }
     }
-    CheckResults(isCorrectHistogramOfObjects(histogram),
-                 "Incorrect results in histogram")
+    check(isCorrectHistogramOfObjects(histogram))
 }
-
-

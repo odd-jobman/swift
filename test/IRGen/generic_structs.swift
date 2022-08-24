@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend -primary-file %s -emit-ir
+// RUN: %target-swift-frontend -disable-type-layout -primary-file %s -emit-ir
 
 struct A<T1, T2>
 {
@@ -24,4 +24,16 @@ struct Foo<A1, A2>
 }
 
 struct Bar<A1, A2> {
+}
+
+public protocol Proto { }
+
+public struct EmptyStruct {}
+
+public struct GenericStruct<T : Proto> {
+  var empty: EmptyStruct = EmptyStruct()
+  var dummy: Int = 0
+  var opt: Optional<T> = nil
+
+  public init() {}
 }

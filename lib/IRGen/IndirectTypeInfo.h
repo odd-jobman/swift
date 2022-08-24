@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -50,16 +50,16 @@ public:
                                               this->getBestKnownAlignment()));
   }
 
-  void initializeFromParams(IRGenFunction &IGF, Explosion &params,
-                            Address dest, SILType T) const override {
+  void initializeFromParams(IRGenFunction &IGF, Explosion &params, Address dest,
+                            SILType T, bool isOutlined) const override {
     Address src = this->getAddressForPointer(params.claimNext());
-    asDerived().Derived::initializeWithTake(IGF, dest, src, T);
+    asDerived().Derived::initializeWithTake(IGF, dest, src, T, isOutlined);
   }
 
-  void assignWithTake(IRGenFunction &IGF, Address dest, Address src,
-                      SILType T) const override {
-    asDerived().Derived::destroy(IGF, dest, T);
-    asDerived().Derived::initializeWithTake(IGF, dest, src, T);
+  void assignWithTake(IRGenFunction &IGF, Address dest, Address src, SILType T,
+                      bool isOutlined) const override {
+    asDerived().Derived::destroy(IGF, dest, T, isOutlined);
+    asDerived().Derived::initializeWithTake(IGF, dest, src, T, isOutlined);
   }
 };
 

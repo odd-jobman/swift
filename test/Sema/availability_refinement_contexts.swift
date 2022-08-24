@@ -1,9 +1,9 @@
-// RUN: %target-swift-frontend -parse -dump-type-refinement-contexts %s > %t.dump 2>&1
-// RUN: FileCheck --strict-whitespace %s < %t.dump
+// RUN: %target-swift-frontend -typecheck -dump-type-refinement-contexts %s > %t.dump 2>&1
+// RUN: %FileCheck --strict-whitespace %s < %t.dump
 
 // REQUIRES: OS=macosx
 
-// CHECK: {{^}}(root versions=[10.{{[0-9]+}}.0,+Inf)
+// CHECK: {{^}}(root versions=[10.{{[0-9]+}},+Inf)
 
 // CHECK-NEXT: {{^}}  (decl versions=[10.51,+Inf) decl=SomeClass
 // CHECK-NEXT: {{^}}    (decl versions=[10.52,+Inf) decl=someMethod()

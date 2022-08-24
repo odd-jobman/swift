@@ -1,15 +1,19 @@
-// RUN: %target-swift-frontend -emit-silgen %s | FileCheck %s
+
+// RUN: %target-swift-emit-silgen -module-name call_chain_reabstraction %s | %FileCheck %s
 
 struct A {
-        func g<U>(recur: (A, U) -> U) -> (A, U) -> U {
+        func g<U>(_ recur: (A, U) -> U) -> (A, U) -> U {
                 return { _, x in return x }
         }
-        // CHECK-LABEL: sil hidden @_TFV24call_chain_reabstraction1A1f
-        // CHECK:         [[G:%.*]] = function_ref @_TFV24call_chain_reabstraction1A1g
+        // CHECK-LABEL: sil hidden [ossa] @$s24call_chain_reabstraction1AV1f{{[_0-9a-zA-Z]*}}F
+        // CHECK:         [[G:%.*]] = function_ref @$s24call_chain_reabstraction1AV1g{{[_0-9a-zA-Z]*}}F
         // CHECK:         [[G2:%.*]] = apply [[G]]<A>
-        // CHECK:         [[REABSTRACT_THUNK:%.*]] = function_ref @_TTRXFo_dV24call_chain_reabstraction1AiS0__iS0__XFo_dS0_dS0__dS0__
-        // CHECK:         [[REABSTRACT:%.*]] = partial_apply [[REABSTRACT_THUNK]]([[G2]])
-        // CHECK:         apply [[REABSTRACT]]([[SELF:%.*]], [[SELF]])
+        // CHECK:         [[G3:%.*]] = convert_function [[G2]]
+        // CHECK:         [[REABSTRACT_THUNK:%.*]] = function_ref @$s24call_chain_reabstraction1AVA2CIegynr_A3CIegyyd_TR
+        // CHECK:         [[REABSTRACT:%.*]] = partial_apply [callee_guaranteed] [[REABSTRACT_THUNK]]([[G3]])
+        // CHECK:         [[BORROW:%.*]] = begin_borrow [[REABSTRACT]]
+        // CHECK:         apply [[BORROW]]([[SELF:%.*]], [[SELF]])
+        // CHECK:         destroy_value [[REABSTRACT]]
         func f() {
                 let recur: (A, A) -> A = { c, x in x }
                 let b = g(recur)(self, self)

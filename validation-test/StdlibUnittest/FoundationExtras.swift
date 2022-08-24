@@ -5,51 +5,44 @@
 
 import StdlibUnittest
 
-// Also import modules which are used by StdlibUnittest internally. This
-// workaround is needed to link all required libraries in case we compile
-// StdlibUnittest with -sil-serialize-all.
-import SwiftPrivate
-#if _runtime(_ObjC)
-import ObjectiveC
-#endif
 
 import Foundation
 import StdlibUnittestFoundationExtras
 
 var FoundationExtrasTests = TestSuite("FoundationExtras")
 
-FoundationExtrasTests.test("withOverriddenNSLocaleCurrentLocale(NSLocale)") {
+FoundationExtrasTests.test("withOverriddenLocaleCurrentLocale(Locale)") {
   // Check two locales to make sure the behavior is correct even if one of
   // these locales happens to be the same as the actual current locale.
   do {
-    let result = withOverriddenNSLocaleCurrentLocale(
-      NSLocale(localeIdentifier: "en_US")) {
+    let result = withOverriddenLocaleCurrentLocale(
+      Locale(identifier: "en_US") as NSLocale) {
       () -> Int in
-      expectEqual("en_US", NSLocale.current().localeIdentifier)
+      expectEqual("en_US", Locale.current.identifier)
       return 42
     }
     expectEqual(42, result)
   }
   do {
-    let result = withOverriddenNSLocaleCurrentLocale(
-      NSLocale(localeIdentifier: "uk")) {
+    let result = withOverriddenLocaleCurrentLocale(
+      Locale(identifier: "uk") as NSLocale) {
       () -> Int in
-      expectEqual("uk", NSLocale.current().localeIdentifier)
+      expectEqual("uk", Locale.current.identifier)
       return 42
     }
     expectEqual(42, result)
   }
 }
 
-FoundationExtrasTests.test("withOverriddenNSLocaleCurrentLocale(NSLocale)/nested") {
-  withOverriddenNSLocaleCurrentLocale(
-    NSLocale(localeIdentifier: "uk")) {
+FoundationExtrasTests.test("withOverriddenLocaleCurrentLocale(Locale)/nested") {
+  withOverriddenLocaleCurrentLocale(
+    Locale(identifier: "uk") as NSLocale) {
     () -> Void in
 
     expectCrashLater()
 
-    withOverriddenNSLocaleCurrentLocale(
-      NSLocale(localeIdentifier: "uk")) {
+    withOverriddenLocaleCurrentLocale(
+      Locale(identifier: "uk") as NSLocale) {
       () -> Void in
 
       return ()
@@ -57,21 +50,21 @@ FoundationExtrasTests.test("withOverriddenNSLocaleCurrentLocale(NSLocale)/nested
   }
 }
 
-FoundationExtrasTests.test("withOverriddenNSLocaleCurrentLocale(String)") {
+FoundationExtrasTests.test("withOverriddenLocaleCurrentLocale(String)") {
   // Check two locales to make sure the behavior is correct even if one of
   // these locales happens to be the same as the actual current locale.
   do {
-    let result = withOverriddenNSLocaleCurrentLocale("en_US") {
+    let result = withOverriddenLocaleCurrentLocale("en_US") {
       () -> Int in
-      expectEqual("en_US", NSLocale.current().localeIdentifier)
+      expectEqual("en_US", Locale.current.identifier)
       return 42
     }
     expectEqual(42, result)
   }
   do {
-    let result = withOverriddenNSLocaleCurrentLocale("uk") {
+    let result = withOverriddenLocaleCurrentLocale("uk") {
       () -> Int in
-      expectEqual("uk", NSLocale.current().localeIdentifier)
+      expectEqual("uk", Locale.current.identifier)
       return 42
     }
     expectEqual(42, result)
@@ -79,7 +72,7 @@ FoundationExtrasTests.test("withOverriddenNSLocaleCurrentLocale(String)") {
 }
 
 @_silgen_name("objc_autorelease")
-func objc_autorelease(ref: AnyObject)
+func objc_autorelease(_ ref: __owned AnyObject)
 
 FoundationExtrasTests.test("objc_autorelease()") {
   autoreleasepool {

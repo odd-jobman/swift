@@ -1,5 +1,5 @@
 // RUN: %target-swift-ide-test(mock-sdk: %clang-importer-sdk) -I %t -I %S/Inputs/custom-modules -print-module -module-to-print=ImportedProtocols.SubModule -source-filename %s > %t.printed.txt
-// RUN: FileCheck %s < %t.printed.txt 
+// RUN: %FileCheck %s < %t.printed.txt 
 
 // REQUIRES: objc_interop
 
@@ -10,7 +10,7 @@
 // CHECK: }
 // CHECK: typealias IPSub_t = IPSub
 // CHECK: typealias Dummy = IPSub
-// CHECK: func takesIPSub(in: IPSub_t!)
+// CHECK: func takesIPSub(_ in: IPSub_t!)
 
 import ImportedProtocols
-func noop(p: ImportedProtocolSub) {}
+func noop(_ p: ImportedProtocolSub) {}

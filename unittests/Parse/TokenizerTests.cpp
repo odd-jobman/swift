@@ -1,3 +1,4 @@
+#include "swift/AST/Module.h"
 #include "swift/Basic/LangOptions.h"
 #include "swift/Basic/SourceManager.h"
 #include "swift/Parse/Lexer.h"
@@ -30,7 +31,7 @@ public:
     }
   }
 
-  static StringRef tokToString(swift::tok T) {
+  static std::string tokToString(swift::tok T) {
     switch (T) {
   #define KEYWORD(X) \
     case swift::tok::kw_##X: return "kw_" #X; break;
@@ -38,7 +39,7 @@ public:
     case swift::tok::X: return #X; break;
 #define POUND(X, Y) \
     case swift::tok::pound_##X: return "pound_" #X; break;
-  #include "swift/Parse/Tokens.def"
+  #include "swift/Syntax/TokenKinds.def"
 
   #define OTHER(X) \
   case swift::tok::X: return #X; break;
@@ -81,14 +82,10 @@ public:
   }
   
   std::vector<Token> parseAndGetSplitTokens(unsigned BufID) {
-    swift::ParserUnit PU(SM, BufID, LangOpts, "unknown");
-
-    bool Done = false;
-    while (!Done) {
-      PU.getParser().parseTopLevel();
-      Done = PU.getParser().Tok.is(tok::eof);
-    }
-    
+    swift::ParserUnit PU(SM, SourceFileKind::Main, BufID, LangOpts,
+                         TypeCheckerOptions(), SILOptions(), "unknown");
+    SmallVector<Decl *, 8> decls;
+    PU.getParser().parseTopLevel(decls);
     return PU.getParser().getSplitTokens();
   }
   
@@ -98,6 +95,7 @@ public:
                            BufID, 
                            /* Offset = */ 0,
                            /* EndOffset = */ 0,
+                           /* Diags = */nullptr,
                            /* KeepComments = */ true,
                            /* TokenizeInterpolatedString = */ true,
                            SplitTokens);
@@ -155,7 +153,7 @@ TEST_F(TokenizerTest, ProperlySplitTokens) {
      "integer_literal: 100\n"
      "r_brace: }\n"
      "kw_func: func\n"
-     "identifier: ⊕\n"
+     "oper_binary_spaced: ⊕\n"
      "oper_binary_unspaced: <\n"
      "identifier: T\n"
      "oper_binary_unspaced: >\n"

@@ -1,10 +1,10 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 class C : Hashable {
 	var x = 0
 
-  var hashValue: Int {
-    return x
+  func hash(into hasher: inout Hasher) {
+    hasher.combine(x)
   }
 }
 
@@ -19,3 +19,4 @@ var setD = Set<D>()
 // Test set upcasts
 setC = setD
 setD = setC // expected-error{{cannot assign value of type 'Set<C>' to type 'Set<D>'}}
+// expected-note@-1 {{arguments to generic parameter 'Element' ('C' and 'D') are expected to be equal}}

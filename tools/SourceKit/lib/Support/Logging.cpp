@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -63,7 +63,7 @@ Logger::~Logger() {
   OS << llvm::format("%7.4f] ", TR.getWallTime() - sBeginTR.getWallTime());
   OS << Msg.str();
 
-  llvm::errs() << LoggerName << ": " << LogMsg.str() << '\n';
+  fprintf(stderr, "%s: %s\n", LoggerName.c_str(), LogMsg.c_str());
 
 #if __APPLE__
   // Use the Apple System Log facility.

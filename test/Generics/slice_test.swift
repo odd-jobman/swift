@@ -1,36 +1,42 @@
-// RUN: %target-parse-verify-swift -parse-stdlib
+// RUN: %target-typecheck-verify-swift -parse-stdlib
 
 import Swift
 
-infix operator < {
-  associativity none
-  precedence 170
+infix operator < : ComparisonPrecedence
+precedencegroup ComparisonPrecedence {
+  associativity: none
+  higherThan: EqualityPrecedence
 }
 
-infix operator == {
-  associativity none
-  precedence 160
+infix operator == : EqualityPrecedence
+infix operator != : EqualityPrecedence
+precedencegroup EqualityPrecedence {
+  associativity: none
+  higherThan: AssignmentPrecedence
 }
 
-infix operator != {
-  associativity none
-  precedence 160
+precedencegroup AssignmentPrecedence {
+  assignment: true
 }
 
-func testslice(s: Array<Int>) {
+
+func testslice(_ s: Array<Int>) {
   for i in 0..<s.count { print(s[i]+1) }
   for i in s { print(i+1) }
   _ = s[0..<2]
   _ = s[0...1]
+  _ = s[...1]
+  _ = s[1...]
+  _ = s[..<2]
 }
 
-@_silgen_name("malloc") func c_malloc(size: Int) -> UnsafeMutablePointer<Void>
-@_silgen_name("free") func c_free(p: UnsafeMutablePointer<Void>)
+@_silgen_name("malloc") func c_malloc(_ size: Int) -> UnsafeMutableRawPointer
+@_silgen_name("free") func c_free(_ p: UnsafeMutableRawPointer)
 
 class Vector<T> {
   var length : Int
   var capacity : Int
-  var base : UnsafeMutablePointer<T>
+  var base : UnsafeMutablePointer<T>!
 
   init() {
     length = 0
@@ -38,19 +44,20 @@ class Vector<T> {
     base = nil
   }
 
-  func push_back(elem: T) {
+  func push_back(_ elem: T) {
     if length == capacity {
       let newcapacity = capacity * 2 + 2
       let size = Int(Builtin.sizeof(T.self))
-      let newbase = UnsafeMutablePointer<T>(c_malloc(newcapacity * size))
+      let newbase = UnsafeMutablePointer<T>(c_malloc(newcapacity * size)
+        .bindMemory(to: T.self, capacity: newcapacity))
       for i in 0..<length {
-        (newbase + i).initialize(with: (base+i).move())
+        (newbase + i).initialize(to: (base+i).move())
       }
       c_free(base)
       base = newbase
       capacity = newcapacity
     }
-    (base+length).initialize(with: elem)
+    (base+length).initialize(to: elem)
     length += 1
   }
 
@@ -75,18 +82,16 @@ class Vector<T> {
   }
 
   deinit {
-    for i in 0..<length {
-      (base + i).deinitialize()
-    }
+    base.deinitialize(count: length)
     c_free(base)
   }
 }
 
 protocol Comparable {
-  func <(lhs: Self, rhs: Self) -> Bool
+  static func <(lhs: Self, rhs: Self) -> Bool
 }
 
-func sort<T : Comparable>(array: inout [T]) {
+func sort<T : Comparable>(_ array: inout [T]) {
   for i in 0..<array.count {
     for j in i+1..<array.count {
       if array[j] < array[i] {
@@ -98,7 +103,7 @@ func sort<T : Comparable>(array: inout [T]) {
   }
 }
 
-func find<T : Eq>(array: [T], value: T) -> Int {
+func find<T : Eq>(_ array: [T], value: T) -> Int {
   var idx = 0
   for elt in array {
      if (elt == value) { return idx }
@@ -107,7 +112,7 @@ func find<T : Eq>(array: [T], value: T) -> Int {
   return -1
 }
 
-func findIf<T>(array: [T], fn: (T) -> Bool) -> Int {
+func findIf<T>(_ array: [T], fn: (T) -> Bool) -> Int {
   var idx = 0
   for elt in array {
      if (fn(elt)) { return idx }
@@ -117,6 +122,6 @@ func findIf<T>(array: [T], fn: (T) -> Bool) -> Int {
 }
 
 protocol Eq {
-  func ==(lhs: Self, rhs: Self) -> Bool
-  func !=(lhs: Self, rhs: Self) -> Bool
+  static func ==(lhs: Self, rhs: Self) -> Bool
+  static func !=(lhs: Self, rhs: Self) -> Bool
 }

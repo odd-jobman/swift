@@ -1,6 +1,6 @@
-// RUN: rm -rf %t && mkdir %t
+// RUN: %empty-directory(%t)
 // RUN: %target-swift-frontend -emit-module -parse-as-library -module-name ProtoModule -o %t/ProtoModule.swiftmodule %s -DPROTO
-// RUN: %target-swift-frontend -emit-module -parse-as-library -module-name ModelModule -o %t/ModelModule.swiftmodule %s -DMODEL -I %t -sil-serialize-all
+// RUN: %target-swift-frontend -emit-module -parse-as-library -module-name ModelModule -o %t/ModelModule.swiftmodule %s -DMODEL -I %t
 // RUN: %target-swift-frontend -emit-sil -O -sil-verify-all -o /dev/null %s -DUSE -I %t
 
 #if PROTO
@@ -29,7 +29,7 @@ import ModelModule
 
 struct OtherStruct {}
 
-func test<T: Proto>(x: T) {
+func test<T: Proto>(_ x: T) {
   x.method(OtherStruct())
 }
 

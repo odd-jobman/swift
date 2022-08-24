@@ -1,6 +1,6 @@
-// RUN: %target-swift-frontend %s -emit-ir -g -o - | FileCheck %s
+// RUN: %target-swift-frontend %s -emit-ir -g -o - | %FileCheck %s
 
-func markUsed<T>(t: T) {}
+func markUsed<T>(_ t: T) {}
 
 protocol AProtocol {
   func print()
@@ -11,13 +11,13 @@ class AClass : AProtocol {
    init() { x = 0xDEADBEEF }
    func print() { markUsed("x = \(x)")}
 }
-// CHECK: define hidden void @_TF17ProtocolContainer3foo
+// CHECK: define hidden {{.*}}void @"$s17ProtocolContainer3foo{{[_0-9a-zA-Z]*}}F"
 // CHECK-NEXT: entry:
-// CHECK-NEXT: %[[X:.*]] = alloca %P17ProtocolContainer9AProtocol_, align {{(4|8)}}
-// CHECK:      call void @llvm.dbg.declare(metadata %P17ProtocolContainer9AProtocol_* %[[X]], metadata ![[XMD:.*]], metadata !{{[0-9]+}})
+// CHECK:      %[[X:.*]] = alloca %T17ProtocolContainer9AProtocolP, align {{(4|8)}}
+// CHECK:      call void @llvm.dbg.declare(metadata %T17ProtocolContainer9AProtocolP* %[[X]], metadata ![[XMD:.*]], metadata !DIExpression())
 // CHECK-NOT: !DILocalVariable({{.*}} name: "x"
 // CHECK-NOT: !DILocalVariable({{.*}} name: "x"
-func foo (x : AProtocol) {
+func foo (_ x : AProtocol) {
   var x = x
 	x.print() // Set breakpoint here
 }

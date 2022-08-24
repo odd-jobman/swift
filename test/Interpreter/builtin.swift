@@ -1,6 +1,7 @@
-// RUN: mkdir -p %t
+// RUN: %empty-directory(%t)
 // RUN: %target-build-swift %s -parse-stdlib -Xfrontend -disable-access-control -o %t/a.out
-// RUN: %target-run %t/a.out | FileCheck %s
+// RUN: %target-codesign %t/a.out
+// RUN: %target-run %t/a.out | %FileCheck %s
 // REQUIRES: executable_test
 
 import Swift

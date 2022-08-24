@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -31,6 +31,8 @@ struct CodeCompletionResultsArrayBuilder::Implementation {
                       Optional<StringRef>,
                       Optional<StringRef>,
                       UIdent,
+                      UIdent,
+                      uint8_t,
                       uint8_t> Builder;
 };
 
@@ -53,11 +55,17 @@ void CodeCompletionResultsArrayBuilder::add(
     Optional<StringRef> DocBrief,
     Optional<StringRef> AssocUSRs,
     UIdent SemanticContext,
+    UIdent TypeRelation,
     bool NotRecommended,
+    bool IsSystem,
     unsigned NumBytesToErase) {
 
-  assert(NumBytesToErase <= (uint8_t(-1) >> 1));
-  uint8_t BytesAndNotRecommended = (NumBytesToErase << 1) | NotRecommended;
+  uint8_t Flags = 0;
+  Flags |= NotRecommended << 1;
+  Flags |= IsSystem << 0;
+
+  assert(NumBytesToErase <= uint8_t(-1));
+
   Impl.Builder.addEntry(Kind,
                         Name,
                         Description,
@@ -67,12 +75,15 @@ void CodeCompletionResultsArrayBuilder::add(
                         DocBrief,
                         AssocUSRs,
                         SemanticContext,
-                        BytesAndNotRecommended);
+                        TypeRelation,
+                        Flags,
+                        uint8_t(NumBytesToErase));
 }
 
 std::unique_ptr<llvm::MemoryBuffer>
 CodeCompletionResultsArrayBuilder::createBuffer() {
-  return Impl.Builder.createBuffer();
+  return Impl.Builder.createBuffer(
+      CustomBufferKind::CodeCompletionResultsArray);
 }
 
 namespace {
@@ -88,10 +99,14 @@ public:
                              const char *,
                              const char *,
                              sourcekitd_uid_t,
+                             sourcekitd_uid_t,
+                             uint8_t,
                              uint8_t> CompactArrayReaderTy;
 
-  static bool dictionary_apply(void *Buf, size_t Index,
-                              sourcekitd_variant_dictionary_applier_t applier) {
+  static bool
+  dictionary_apply(void *Buf, size_t Index,
+                   llvm::function_ref<bool(sourcekitd_uid_t,
+                                           sourcekitd_variant_t)> applier) {
     CompactArrayReaderTy Reader(Buf);
 
     sourcekitd_uid_t Kind;
@@ -103,7 +118,9 @@ public:
     const char *DocBrief;
     const char *AssocUSRs;
     sourcekitd_uid_t SemanticContext;
-    uint8_t BytesAndNotRecommended;
+    sourcekitd_uid_t TypeRelation;
+    uint8_t Flags;
+    uint8_t NumBytesToErase;
 
     Reader.readEntries(Index,
                   Kind,
@@ -115,10 +132,12 @@ public:
                   DocBrief,
                   AssocUSRs,
                   SemanticContext,
-                  BytesAndNotRecommended);
+                  TypeRelation,
+                  Flags,
+                  NumBytesToErase);
 
-    unsigned NumBytesToErase = BytesAndNotRecommended >> 1;
-    bool NotRecommended = BytesAndNotRecommended & 0x1;
+    bool NotRecommended = Flags & 0x2;
+    bool IsSystem = Flags & 0x1;
 
 #define APPLY(K, Ty, Field)                              \
   do {                                                   \
@@ -142,16 +161,20 @@ public:
       APPLY(KeyAssociatedUSRs, String, AssocUSRs);
     }
     APPLY(KeyContext, UID, SemanticContext);
+    APPLY(KeyTypeRelation, UID, TypeRelation);
     APPLY(KeyNumBytesToErase, Int, NumBytesToErase);
     if (NotRecommended) {
       APPLY(KeyNotRecommended, Bool, NotRecommended);
+    }
+    if (IsSystem) {
+      APPLY(KeyIsSystem, Bool, IsSystem);
     }
 
     return true;
   }
 };
 
-}
+} // end anonymous namespace
 
 VariantFunctions *
 sourcekitd::getVariantFunctionsForCodeCompletionResultsArray() {

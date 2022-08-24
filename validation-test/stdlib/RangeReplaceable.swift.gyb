@@ -1,24 +1,9 @@
 // -*- swift -*-
-// RUN: rm -rf %t ; mkdir -p %t
-// RUN: %S/../../utils/gyb %s -o %t/RangeReplaceable.swift
-// RUN: %S/../../utils/line-directive %t/RangeReplaceable.swift -- %target-build-swift %t/RangeReplaceable.swift -o %t/a.out
-// RUN: %S/../../utils/line-directive %t/RangeReplaceable.swift -- %target-run %t/a.out
+// RUN: %target-run-simple-swiftgyb
 // REQUIRES: executable_test
-
-// This is a workaround to avoid the compiler generating too large code: rdar://problem/24330686
-// FIXME: remove the following line when the compiler problem is fixed.
-// REQUIRES: swift_test_mode_optimize_none
 
 import StdlibUnittest
 import StdlibCollectionUnittest
-
-// Also import modules which are used by StdlibUnittest internally. This
-// workaround is needed to link all required libraries in case we compile
-// StdlibUnittest with -sil-serialize-all.
-import SwiftPrivate
-#if _runtime(_ObjC)
-import ObjectiveC
-#endif
 
 var RangeReplaceableTestSuite = TestSuite("RangeReplaceable")
 
@@ -54,14 +39,16 @@ RangeReplaceableTestSuite.test("remove(at:)/dispatch") {
   expectCustomizable(tester, tester.log.removeAt)
 }
 
-RangeReplaceableTestSuite.test("removeLast/whereIndexIsBidirectional/dispatch") {
-  var tester = RangeReplaceableCollectionLog.dispatchTester([ OpaqueValue(1) ])
+RangeReplaceableTestSuite.test("removeLast/whereSelfIsBidirectionalCollection/dispatch") {
+  var tester = LoggingRangeReplaceableBidirectionalCollection(wrapping:
+    LoggingRangeReplaceableBidirectionalCollection(wrapping: [ OpaqueValue(1) ]))
   _ = tester.removeLast()
   expectCustomizable(tester, tester.log._customRemoveLast)
 }
 
-RangeReplaceableTestSuite.test("removeLast(n: Int)/whereIndexIsBidirectional/dispatch") {
-  var tester = RangeReplaceableCollectionLog.dispatchTester([ OpaqueValue(1) ])
+RangeReplaceableTestSuite.test("removeLast(n: Int)/whereSelfIsBidirectionalCollection/dispatch") {
+  var tester = LoggingRangeReplaceableBidirectionalCollection(wrapping:
+    LoggingRangeReplaceableBidirectionalCollection(wrapping: [ OpaqueValue(1) ]))
   _ = tester.removeLast(1)
   expectCustomizable(tester, tester.log._customRemoveLastN)
 }
@@ -91,65 +78,62 @@ RangeReplaceableTestSuite.test("removeAll/dispatch") {
   expectCustomizable(tester, tester.log.removeAll)
 }
 
+RangeReplaceableTestSuite.test("replaceSubrange/strideableRange") {
+  for test in replaceRangeTests {
+    var c =
+      MinimalRangeReplaceableRandomAccessCollectionWithStrideableIndex(elements: test.collection)
+    let rangeToReplace = test.rangeSelection.range(in: c)
+    let newElements =
+      MinimalRangeReplaceableRandomAccessCollectionWithStrideableIndex(elements: test.newElements)
+    c.replaceSubrange(rangeToReplace, with: newElements)
+    expectEqualSequence(
+      test.expected,
+      c.map { $0.value },
+      stackTrace: SourceLocStack().with(test.loc))
+  }
+}
+
+RangeReplaceableTestSuite.test("replaceSubrange/strideableClosedRange") {
+  for test in replaceRangeTests {
+    guard let closedExpected = test.closedExpected else { continue }
+    var c =
+      MinimalRangeReplaceableRandomAccessCollectionWithStrideableIndex(elements: test.collection)
+    let rangeToReplace = test.rangeSelection.closedRange(in: c)
+    let newElements =
+      MinimalRangeReplaceableRandomAccessCollectionWithStrideableIndex(elements: test.newElements)
+    c.replaceSubrange(rangeToReplace, with: newElements)
+    expectEqualSequence(
+      closedExpected,
+      c.map { $0.value },
+      stackTrace: SourceLocStack().with(test.loc))
+  }
+}
+
+% withRangeTypes = ["range", "closedRange"]
+% for rangeType in withRangeTypes:
+RangeReplaceableTestSuite.test("removeSubrange/${rangeType}") {
+%   if rangeType is "closedRange":
+  for test in removeRangeTests.filter({ !$0.rangeSelection.isEmpty }) {
+%   else:
+  for test in removeRangeTests {
+%   end
+    var c =
+      MinimalRangeReplaceableRandomAccessCollectionWithStrideableIndex(elements: test.collection)
+    let rangeToRemove = test.rangeSelection.${rangeType}(in: c)
+    c.removeSubrange(rangeToRemove)
+    expectEqualSequence(
+      test.expected,
+      c.map { $0.value },
+      stackTrace: SourceLocStack().with(test.loc))
+  }
+}
+% end
+
 RangeReplaceableTestSuite.test("reserveCapacity/dispatch") {
   var tester = RangeReplaceableCollectionLog.dispatchTester(Array<Int>())
   tester.reserveCapacity(10)
   expectCustomizable(tester, tester.log.reserveCapacity)
 }
-
-func identity(element: OpaqueValue<Int>) -> OpaqueValue<Int> {
-  return element
-}
-func identityEq(element: MinimalEquatableValue) -> MinimalEquatableValue {
-  return element
-}
-
-% from itertools import product
-% traversals = [ 'Forward', 'Bidirectional', 'RandomAccess' ]
-% base_kinds = [ 'Defaulted', 'Minimal' ]
-% collections = [
-%   ('{}{}RangeReplaceableCollection'.format(base_kind, traversal), traversal)
-%     for base_kind, traversal in product(base_kinds, traversals)
-% ] + [
-%   ('Defaulted{}RangeReplaceableSlice'.format(traversal), traversal)
-%     for traversal in traversals
-% ]
-
-% for Base, traversal in collections:
-%     collection_or_slice = 'Slice' if 'Slice' in Base else 'Collection'
-do {
-  var resiliencyChecks = CollectionMisuseResiliencyChecks.all
-  resiliencyChecks.creatingOutOfBoundsIndicesBehavior = .expectationFailure
-
-  RangeReplaceableTestSuite.add${traversal}RangeReplaceable${collection_or_slice}Tests(
-    makeCollection: { (elements: [OpaqueValue<Int>]) in
-      return ${Base}(elements: elements)
-    },
-    wrapValue: identity,
-    extractValue: identity,
-    makeCollectionOfEquatable: { (elements: [MinimalEquatableValue]) in
-      return ${Base}(elements: elements)
-    },
-    wrapValueIntoEquatable: identityEq,
-    extractValueFromEquatable: identityEq,
-    resiliencyChecks: resiliencyChecks)
-
-  RangeReplaceableTestSuite.add${traversal}RangeReplaceable${collection_or_slice}Tests(
-    makeCollection: { (elements: [LifetimeTracked]) in
-      return ${Base}(elements: elements)
-    },
-    wrapValue: { (element: OpaqueValue<Int>) in LifetimeTracked(element.value) },
-    extractValue: { (element: LifetimeTracked) in OpaqueValue(element.value) },
-    makeCollectionOfEquatable: { (elements: [MinimalEquatableValue]) in
-      // FIXME: use LifetimeTracked.
-      return ${Base}(elements: elements)
-    },
-    wrapValueIntoEquatable: identityEq,
-    extractValueFromEquatable: identityEq,
-    resiliencyChecks: resiliencyChecks)
-}
-
-% end
 
 runAllTests()
 

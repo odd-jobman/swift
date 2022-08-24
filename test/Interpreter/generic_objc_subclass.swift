@@ -1,9 +1,9 @@
-// RUN: rm -rf %t
-// RUN: mkdir -p %t
+// RUN: %empty-directory(%t)
 //
 // RUN: %target-clang -fobjc-arc %S/Inputs/ObjCClasses/ObjCClasses.m -c -o %t/ObjCClasses.o
 // RUN: %target-build-swift -I %S/Inputs/ObjCClasses/ -Xlinker %t/ObjCClasses.o %s -o %t/a.out
-// RUN: %target-run %t/a.out | FileCheck %s
+// RUN: %target-codesign %t/a.out
+// RUN: %target-run %t/a.out | %FileCheck %s
 
 // REQUIRES: executable_test
 // REQUIRES: objc_interop
@@ -25,7 +25,7 @@ protocol PP {
 
 class A<T> : HasHiddenIvars, P {
   var first: Int = 16
-  var second: T? = nil
+  var second: T?
   var third: Int = 61
 
   override var description: String {
@@ -233,3 +233,95 @@ fixedB.third = 17
 
 // CHECK: (101, 0, 0, 0, 16, [19, 84], 17)
 print(fixedG())
+
+// Problem with field alignment in direct generic subclass of NSObject -
+// <https://bugs.swift.org/browse/SR-2586>
+public class PandorasBox<T>: NSObject {
+    final public var value: T
+
+    public init(_ value: T) {
+        // Uses ConstantIndirect access pattern
+        self.value = value
+    }
+}
+
+let c = PandorasBox(30)
+// CHECK: 30
+// Uses ConstantDirect access pattern
+print(c.value)
+
+// Super method calls from a generic subclass of an @objc class
+class HasDynamicMethod : NSObject {
+  @objc dynamic class func funkyTown() {
+    print("Here we are with \(self)")
+  }
+}
+
+class GenericOverrideOfDynamicMethod<T> : HasDynamicMethod {
+  override class func funkyTown() {
+    print("Hello from \(self) with T = \(T.self)")
+    super.funkyTown()
+    print("Goodbye from \(self) with T = \(T.self)")
+  }
+}
+
+class ConcreteOverrideOfDynamicMethod : GenericOverrideOfDynamicMethod<Int> {
+  override class func funkyTown() {
+    print("Hello from \(self)")
+    super.funkyTown()
+    print("Goodbye from \(self)")
+  }
+}
+
+// CHECK: Hello from ConcreteOverrideOfDynamicMethod
+// CHECK: Hello from ConcreteOverrideOfDynamicMethod with T = Int
+// CHECK: Here we are with ConcreteOverrideOfDynamicMethod
+// CHECK: Goodbye from ConcreteOverrideOfDynamicMethod with T = Int
+// CHECK: Goodbye from ConcreteOverrideOfDynamicMethod
+ConcreteOverrideOfDynamicMethod.funkyTown()
+
+class Foo {}
+class Bar {}
+class DependOnAlignOf<T> : HasHiddenIvars2 {
+  var first = Foo()
+  var second = Bar()
+  var third: T?
+}
+
+let ad = DependOnAlignOf<Double>()
+let ai = DependOnAlignOf<Int>()
+
+do {
+  let fd = { (ad.x, ad.first, ad.second, ad.third) }
+  let fi = { (ai.x, ai.first, ai.second, ai.third) }
+
+  // CHECK: (nil, a.Foo, a.Bar, nil)
+  print(fd())
+
+  // CHECK: (nil, a.Foo, a.Bar, nil)
+  print(fi())
+}
+
+// Same as above, but there's another class in between the
+// Objective-C class and us
+class HasHiddenIvars3 : HasHiddenIvars2 { }
+
+class AlsoDependOnAlignOf<T> : HasHiddenIvars3 {
+  var first = Foo()
+  var second = Bar()
+  var third: T?
+}
+
+do {
+  let ad = AlsoDependOnAlignOf<Double>()
+  let ai = AlsoDependOnAlignOf<Int>()
+
+  let fd = { (ad.x, ad.first, ad.second, ad.third) }
+  let fi = { (ai.x, ai.first, ai.second, ai.third) }
+
+  // CHECK: (nil, a.Foo, a.Bar, nil)
+  print(fd())
+
+  // CHECK: (nil, a.Foo, a.Bar, nil)
+  print(fi())
+}

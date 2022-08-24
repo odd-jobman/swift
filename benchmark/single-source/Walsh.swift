@@ -2,41 +2,53 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2021 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 import TestsUtils
+#if os(Linux)
+import Glibc
+#elseif os(Windows)
+import MSVCRT
+#else
 import Darwin
+#endif
 
-func IsPowerOfTwo(x: Int) -> Bool { return (x & (x - 1)) == 0 }
+public let benchmarks =
+  BenchmarkInfo(
+    name: "Walsh",
+    runFunction: run_Walsh,
+    tags: [.validation, .algorithm])
 
-//Fast Walsh Hadamard Transform
-func WalshTransform(data: inout [Double]) {
-  assert(IsPowerOfTwo(data.count), "Not a power of two")
+func isPowerOfTwo(_ x: Int) -> Bool { return (x & (x - 1)) == 0 }
+
+// Fast Walsh Hadamard Transform
+func walshTransform(_ data: inout [Double]) {
+  assert(isPowerOfTwo(data.count), "Not a power of two")
   var temp = [Double](repeating: 0, count: data.count)
-  var ret = WalshImpl(&data, &temp, 0, data.count)
+  let ret = walshImpl(&data, &temp, 0, data.count)
   for i in 0..<data.count {
     data[i] = ret[i]
   }
 }
 
-func Scale(data: inout [Double], _ scalar : Double) {
+func scale(_ data: inout [Double], _ scalar : Double) {
   for i in 0..<data.count {
     data[i] = data[i] * scalar
   }
 }
 
-func InverseWalshTransform(data: inout [Double]) {
-  WalshTransform(&data)
-  Scale(&data, Double(1)/Double(data.count))
+func inverseWalshTransform(_ data: inout [Double]) {
+  walshTransform(&data)
+  scale(&data, Double(1)/Double(data.count))
 }
 
-func WalshImpl(data: inout [Double], _ temp: inout [Double], _ start: Int, _ size: Int) -> [Double] {
+func walshImpl(_ data: inout [Double], _ temp: inout [Double], _ start: Int, _ size: Int) -> [Double] {
   if (size == 1) { return data }
 
   let stride = size/2
@@ -45,27 +57,27 @@ func WalshImpl(data: inout [Double], _ temp: inout [Double], _ start: Int, _ siz
     temp[start + i + stride] = data[start + i] - data[start + i + stride]
   }
 
-  WalshImpl(&temp, &data, start, stride)
-  return WalshImpl(&temp, &data, start + stride, stride)
+  _ = walshImpl(&temp, &data, start, stride)
+  return walshImpl(&temp, &data, start + stride, stride)
 }
 
 func checkCorrectness() {
-  var In : [Double] = [1,0,1,0,0,1,1,0]
-  var Out : [Double] = [4,2,0,-2,0,2,0,2]
-  var data : [Double] = In
-  WalshTransform(&data)
-  var mid = data
-  InverseWalshTransform(&data)
-  for i in 0..<In.count {
+  let input: [Double] = [1,0,1,0,0,1,1,0]
+  let output: [Double] = [4,2,0,-2,0,2,0,2]
+  var data: [Double] = input
+  walshTransform(&data)
+  let mid = data
+  inverseWalshTransform(&data)
+  for i in 0..<input.count {
     // Check encode.
-    CheckResults(abs(data[i] - In[i]) < 0.0001, "Incorrect results in Walsh.")
+    check(abs(data[i] - input[i]) < 0.0001)
     // Check decode.
-    CheckResults(abs(mid[i] - Out[i]) < 0.0001, "Incorrect results in Walsh.")
+    check(abs(mid[i] - output[i]) < 0.0001)
   }
 }
 
 @inline(never)
-public func run_Walsh(N : Int) {
+public func run_Walsh(_ n: Int) {
   checkCorrectness()
 
   // Generate data.
@@ -75,9 +87,8 @@ public func run_Walsh(N : Int) {
   }
 
   // Transform back and forth.
-  for _ in 1...10*N {
-    WalshTransform(&data2)
-    InverseWalshTransform(&data2)
+  for _ in 1...10*n {
+    walshTransform(&data2)
+    inverseWalshTransform(&data2)
   }
 }
-

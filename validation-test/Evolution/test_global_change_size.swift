@@ -4,14 +4,6 @@
 import StdlibUnittest
 import global_change_size
 
-// Also import modules which are used by StdlibUnittest internally. This
-// workaround is needed to link all required libraries in case we compile
-// StdlibUnittest with -sil-serialize-all.
-import SwiftPrivate
-import SwiftPrivatePthreadExtras
-#if _runtime(_ObjC)
-import ObjectiveC
-#endif
 
 var GlobalChangeSizeTest = TestSuite("GlobalChangeSize")
 
@@ -50,6 +42,23 @@ GlobalChangeSizeTest.test("ChangeSize") {
     expectEqual(globalChangeSizeSecond.validate(), true)
     expectEqual(globalChangeSizeFirst.count, -323)
     expectEqual(globalChangeSizeSecond.count, 545)
+  }
+}
+
+GlobalChangeSizeTest.test("ChangeSizeVersioned") {
+  do {
+    expectEqual(getVersionedGlobal().validate(), true)
+    expectEqual(getVersionedGlobal().count, 0)
+
+    setVersionedGlobal(101)
+
+    expectEqual(getVersionedGlobal().validate(), true)
+    expectEqual(getVersionedGlobal().count, 101)
+
+    setVersionedGlobal(-323)
+
+    expectEqual(getVersionedGlobal().validate(), true)
+    expectEqual(getVersionedGlobal().count, -323)
   }
 }
 

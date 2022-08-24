@@ -1,9 +1,9 @@
-// RUN: %target-swift-frontend -O %s -emit-sil | FileCheck %s
+// RUN: %target-swift-frontend -O %s -emit-sil | %FileCheck %s
 
 // Make sure that we can dig all the way through the class hierarchy and
 // protocol conformances.
 
-// CHECK-LABEL: sil @_TF28devirt_inherited_conformance6driverFT_T_ : $@convention(thin) () -> () {
+// CHECK-LABEL: sil @$s28devirt_inherited_conformance6driveryyF : $@convention(thin) () -> () {
 // CHECK: bb0
 // CHECK: [[UNKNOWN2a:%.*]] = function_ref @unknown2a : $@convention(thin) () -> ()
 // CHECK: apply [[UNKNOWN2a]]
@@ -31,7 +31,7 @@ struct Int32 {}
 protocol P {
   // We do not specialize typealias's correctly now.
   //typealias X
-  func doSomething(x : Int32)
+  func doSomething(_ x : Int32)
 
   // This exposes a SILGen bug. FIXME: Fix up this test in the future.
   // class func doSomethingMeta()
@@ -40,7 +40,7 @@ protocol P {
 class B : P {
   // We do not specialize typealias's correctly now.
   //typealias X = B
-  func doSomething(x : Int32) {
+  func doSomething(_ x : Int32) {
     unknown1a()
   }
 
@@ -54,7 +54,7 @@ class B2 : B {
   // When we have covariance in protocols, change this to B2.
   // We do not specialize typealias correctly now.
   //typealias X = B
-  override func doSomething(x : Int32) {
+  override func doSomething(_ x : Int32) {
     unknown2a()
   }
 
@@ -68,7 +68,7 @@ class B3 : B {
   // When we have covariance in protocols, change this to B3.
   // We do not specialize typealias correctly now.
   //typealias X = B
-  override func doSomething(x : Int32) {
+  override func doSomething(_ x : Int32) {
     unknown3a()
   }
 
@@ -78,11 +78,11 @@ class B3 : B {
   //}
 }
 
-func WhatShouldIDo<T : P>(t : T, _ x : Int32) {
+func WhatShouldIDo<T : P>(_ t : T, _ x : Int32) {
   t.doSomething(x)
 }
 
-func WhatShouldIDo2(p : P, _ x : Int32) {
+func WhatShouldIDo2(_ p : P, _ x : Int32) {
   p.doSomething(x)
 }
 
@@ -107,26 +107,26 @@ public protocol Comparable {
 }
 
 // Define a custom operator to be used instead of ==
-infix operator --- { associativity left precedence 140 } 
+infix operator ---
 
 // Simple is a protocol that simply defines an operator and
 // a few methods with different number of arguments.
 public protocol Simple {
    func foo(_: Self) -> Bool
    func boo(_: Self, _: Self) -> Bool
-   func ---(_: Self, _: Self) -> Bool
+   static func ---(_: Self, _: Self) -> Bool
 }
 
 public class C: Equatable, Comparable, Simple {
-  public func compare(c1:C, _ c2:C) -> Bool {
+  public func compare(_ c1:C, _ c2:C) -> Bool {
     return c1 == c2
   }
   
-  public func foo(c:C) -> Bool {
+  public func foo(_ c:C) -> Bool {
     return true
   }
 
-  public func boo(c1:C, _ c2:C) -> Bool {
+  public func boo(_ c1:C, _ c2:C) -> Bool {
     return false
   }
 }
@@ -147,21 +147,21 @@ public func ---(lhs: C, rhs: C) -> Bool {
   return true
 }
 
-public func compareEquals<T:Equatable>(x: T, _ y:T) -> Bool {
+public func compareEquals<T:Equatable>(_ x: T, _ y:T) -> Bool {
   return x == y
 }
 
-public func compareMinMinMin<T:Simple>(x: T, _ y:T) -> Bool {
+public func compareMinMinMin<T:Simple>(_ x: T, _ y:T) -> Bool {
   return x --- y
 }
 
 
-public func compareComparable<T:Comparable>(x: T, _ y:T) -> Bool {
+public func compareComparable<T:Comparable>(_ x: T, _ y:T) -> Bool {
   return x.compare(x, y)
 }
 
 // Check that a call of inherited Equatable.== can be devirtualized.
-// CHECK-LABEL: sil @_TF28devirt_inherited_conformance17testCompareEqualsFT_Sb : $@convention(thin) () -> Bool {
+// CHECK-LABEL: sil @$s28devirt_inherited_conformance17testCompareEqualsSbyF : $@convention(thin) () -> Bool {
 // CHECK: bb0
 // CHECK-NEXT: integer_literal $Builtin.Int1, -1
 // CHECK-NEXT: struct $Bool
@@ -173,8 +173,8 @@ public func testCompareEquals() -> Bool {
 
 
 
-// Check that  acall of inherited Simple.== can be devirtualized.
-// CHECK-LABEL: sil @_TF28devirt_inherited_conformance20testCompareMinMinMinFT_Sb : $@convention(thin) () -> Bool {
+// Check that a call of inherited Simple.== can be devirtualized.
+// CHECK-LABEL: sil @$s28devirt_inherited_conformance014testCompareMinfF0SbyF : $@convention(thin) () -> Bool {
 // CHECK: bb0
 // CHECK-NEXT: integer_literal $Builtin.Int1, -1
 // CHECK-NEXT: struct $Bool
@@ -184,7 +184,7 @@ public func testCompareMinMinMin() -> Bool {
 }
 
 // Check that a call of inherited Comparable.== can be devirtualized.
-// CHECK-LABEL: sil @_TF28devirt_inherited_conformance21testCompareComparableFT_Sb : $@convention(thin) () -> Bool {
+// CHECK-LABEL: sil @$s28devirt_inherited_conformance21testCompareComparableSbyF : $@convention(thin) () -> Bool {
 // CHECK: bb0
 // CHECK-NEXT: integer_literal $Builtin.Int1, -1
 // CHECK-NEXT: struct $Bool
@@ -193,12 +193,12 @@ public func testCompareComparable() -> Bool {
   return compareComparable(D(), D())
 }
 
-public func BooCall<T:Simple>(x:T, _ y:T) -> Bool {
+public func BooCall<T:Simple>(_ x:T, _ y:T) -> Bool {
   return x.boo(y, y) 
 }
 
 // Check that a call of inherited Simple.boo can be devirtualized.
-// CHECK-LABEL: sil @_TF28devirt_inherited_conformance11testBooCallFT_Sb : $@convention(thin) () -> Bool {
+// CHECK-LABEL: sil @$s28devirt_inherited_conformance11testBooCallSbyF : $@convention(thin) () -> Bool {
 // CHECK: bb0
 // CHECK-NEXT: integer_literal $Builtin.Int1, 0
 // CHECK-NEXT: struct $Bool

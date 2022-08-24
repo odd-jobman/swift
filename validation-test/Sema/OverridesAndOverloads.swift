@@ -1,17 +1,9 @@
-// RUN: %target-parse-verify-swift -D ERRORS
+// RUN: %target-typecheck-verify-swift -D ERRORS
 // RUN: %target-run-simple-swift
 // REQUIRES: executable_test
 
 import StdlibUnittest
 
-// Also import modules which are used by StdlibUnittest internally. This
-// workaround is needed to link all required libraries in case we compile
-// StdlibUnittest with -sil-serialize-all.
-import SwiftPrivate
-import SwiftPrivatePthreadExtras
-#if _runtime(_ObjC)
-import ObjectiveC
-#endif
 
 struct Token1 {}
 struct Token2 {}
@@ -111,10 +103,8 @@ Overrides.test("covariant argument override, struct to protocol") {
   }
 
   // FIXME: https://bugs.swift.org/browse/SR-731
-  expectFailure {
-    Derived().foo(P1ImplS1())
-    expectEqual("Derived.foo(P1)", which)
-  }
+  Derived().foo(P1ImplS1())
+  expectEqual("Base.foo(P1ImplS1)", which)
 
   Derived().foo(P1xImplS1())
   expectEqual("Derived.foo(P1)", which)
@@ -130,10 +120,10 @@ Overrides.test("contravariant return type override, optional to non-optional") {
     }
   }
 
-  Derived().foo() as C1
+  _ = Derived().foo() as C1
   expectEqual("Derived.foo() -> C1", which)
 
-  Derived().foo() as C1?
+  _ = Derived().foo() as C1?
   expectEqual("Derived.foo() -> C1", which)
 }
 
@@ -147,10 +137,10 @@ Overrides.test("contravariant return type override, base class to derived class"
     }
   }
 
-  Derived().foo() as C1
+  _ = Derived().foo() as C1
   expectEqual("Derived.foo() -> C1x", which)
 
-  Derived().foo() as C1x
+  _ = Derived().foo() as C1x
   expectEqual("Derived.foo() -> C1x", which)
 }
 
@@ -164,10 +154,10 @@ Overrides.test("contravariant return type override, optional base class to non-o
     }
   }
 
-  Derived().foo() as C1
+  _ = Derived().foo() as C1
   expectEqual("Derived.foo() -> C1x", which)
 
-  Derived().foo() as C1x
+  _ = Derived().foo() as C1x
   expectEqual("Derived.foo() -> C1x", which)
 }
 
@@ -188,7 +178,7 @@ Overrides.test("contravariant return type override, protocol to protocol") {
   // Derived().foo() as P1 // error: ambiguous use of 'foo()'
   // expectEqual("Derived.foo() -> P1x", which)
 
-  Derived().foo() as P1x
+  _ = Derived().foo() as P1x
   expectEqual("Derived.foo() -> P1x", which)
 }
 
@@ -209,7 +199,7 @@ Overrides.test("contravariant return type override, protocol to struct") {
   // Derived().foo() as P1 // error: ambiguous use of 'foo()'
   // expectEqual("Derived.foo() -> P1ImplS1", which)
 
-  Derived().foo() as P1ImplS1
+  _ = Derived().foo() as P1ImplS1
   expectEqual("Derived.foo() -> P1ImplS1", which)
 }
 
@@ -329,14 +319,13 @@ Overloads.test("generic methods are worse than non-generic") {
     func foo(_: C1) { which = "foo(C1)" }
     func foo(_: Any) { which = "foo(Any)" }
     func foo<T>(_: T) { which = "foo(T)" }
-    // It is not possible to call foo<T>(T).  foo(Any) always wins.
 
     func bar(_: C1) { which = "bar(C1)" }
     func bar<T>(_: T) { which = "bar(T)" }
   }
 
   Base().foo(C1());     expectEqual("foo(C1)", which)
-  Base().foo(Token1()); expectEqual("foo(Any)", which)
+  Base().foo(Token1()); expectEqual("foo(T)", which)
 
   Base().bar(C1());     expectEqual("bar(C1)", which)
   Base().bar(Token1()); expectEqual("bar(T)", which)

@@ -2,16 +2,26 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2021 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
-// This test checks the performance of allocations.
 import TestsUtils
+
+// This test checks the performance of allocations.
+// 53% _swift_release_dealloc
+// 30% _swift_alloc_object
+// 10% retain/release
+public let benchmarks =
+  BenchmarkInfo(
+    name: "ObjectAllocation",
+    runFunction: run_ObjectAllocation,
+    tags: [.runtime, .cpubench]
+  )
 
 final class XX {
   var xx: Int
@@ -42,7 +52,7 @@ final class LinkedNode {
 }
 
 @inline(never)
-func getInt(x: XX) -> Int {
+func getInt(_ x: XX) -> Int {
   return x.xx
 }
 
@@ -57,7 +67,7 @@ func testSingleObject() -> Int {
 }
 
 @inline(never)
-func addInts(t: TreeNode) -> Int {
+func addInts(_ t: TreeNode) -> Int {
   return t.left.xx + t.right.xx
 }
 
@@ -72,7 +82,7 @@ func testTree() -> Int {
 }
 
 @inline(never)
-func addAllInts(n: LinkedNode) -> Int {
+func addAllInts(_ n: LinkedNode) -> Int {
   var s = 0
   var iter: LinkedNode? = n
   while let iter2 = iter {
@@ -93,7 +103,7 @@ func testList() -> Int {
 }
 
 @inline(never)
-func identity(x: Int) -> Int {
+func identity(_ x: Int) -> Int {
   return x
 }
 
@@ -109,27 +119,22 @@ func testArray() -> Int {
 }
 
 @inline(never)
-public func run_ObjectAllocation(N: Int) {
+public func run_ObjectAllocation(_ n: Int) {
 
-  var SingleObjectResult = 0
-  var TreeResult = 0
-  var ListResult = 0
-  var ArrayResult = 0
+  var singleObjectResult = 0
+  var treeResult = 0
+  var listResult = 0
+  var arrayResult = 0
 
-  for _ in 0..<N {
-    SingleObjectResult = testSingleObject()
-    TreeResult = testTree()
-    ListResult = testList()
-    ArrayResult = testArray()
+  for _ in 0..<n {
+    singleObjectResult = testSingleObject()
+    treeResult = testTree()
+    listResult = testList()
+    arrayResult = testArray()
   }
 
-  CheckResults(SingleObjectResult == 499500,
-               "Incorrect results in testSingleObject")
-  CheckResults(TreeResult == 90000,
-               "Incorrect results in testTree")
-  CheckResults(ListResult == 48375,
-               "Incorrect results in testList")
-  CheckResults(ArrayResult == 3000,
-               "Incorrect results in testArray")
+  check(singleObjectResult == 499500)
+  check(treeResult == 90000)
+  check(listResult == 48375)
+  check(arrayResult == 3000)
 }
-

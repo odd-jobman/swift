@@ -1,4 +1,4 @@
-// RUN: %target-run-simple-swift | FileCheck %s
+// RUN: %target-run-simple-swift | %FileCheck %s
 // REQUIRES: executable_test
 
 protocol ProtocolHasInOut {
@@ -17,7 +17,7 @@ struct HasInOutProtocol : ProtocolHasInOut {
   let f: (inout Input) -> ()
 }
 
-func foo<T>(t: T.Type) -> Any {
+func foo<T>(_ t: T.Type) -> Any {
   return { (x: T) -> Int in return 6060 }
 }
 
@@ -25,8 +25,8 @@ var i = 0
 
 // Dynamic casting
 var f = foo((Int, Int).self)
-var g = f as! (Int, Int) -> Int
-print(g(1010, 2020))
+var g = f as! ((Int, Int)) -> Int
+print(g((1010, 2020)))
 // CHECK: 6060
 
 // Struct with InOut
@@ -43,7 +43,7 @@ hiop.f(&i)
 print(i)
 // CHECK: 4040
 
-func fooInOut<T>(t: T.Type) -> Any {
+func fooInOut<T>(_ t: T.Type) -> Any {
   return { (x: inout T) -> () in x = unsafeBitCast((8080, 9090), to: T.self) }
 }
 

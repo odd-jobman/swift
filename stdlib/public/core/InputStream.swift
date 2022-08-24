@@ -2,66 +2,47 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2019 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 import SwiftShims
 
-/// Returns `Character`s read from standard input through the end of the
-/// current line or until EOF is reached, or `nil` if EOF has already been
-/// reached.
+#if SWIFT_STDLIB_HAS_STDIN
+
+/// Returns a string read from standard input through the end of the current
+/// line or until EOF is reached.
 ///
-/// If `strippingNewline` is `true`, newline characters and character
-/// combinations will be stripped from the result.  This is the default.
+/// Standard input is interpreted as `UTF-8`. Invalid bytes are replaced by
+/// Unicode [replacement characters][rc].
 ///
-/// Standard input is interpreted as `UTF-8`.  Invalid bytes
-/// will be replaced by Unicode [replacement characters](http://en.wikipedia.org/wiki/Specials_(Unicode_block)#Replacement_character).
-@warn_unused_result
-public func readLine(strippingNewline strippingNewline: Bool = true) -> String? {
-  var linePtr: UnsafeMutablePointer<CChar> = nil
-  var readBytes = swift_stdlib_readLine_stdin(&linePtr)
-  if readBytes == -1 {
+/// [rc]:
+/// https://unicode.org/glossary/#replacement_character
+///
+/// - Parameter strippingNewline: If `true`, newline characters and character
+///   combinations are stripped from the result; otherwise, newline characters
+///   or character combinations are preserved. The default is `true`.
+/// - Returns: The string of characters read from standard input. If EOF has
+///   already been reached when `readLine()` is called, the result is `nil`.
+public func readLine(strippingNewline: Bool = true) -> String? {
+  var utf8Start: UnsafeMutablePointer<UInt8>?
+  let utf8Count = swift_stdlib_readLine_stdin(&utf8Start)
+  defer {
+    _swift_stdlib_free(utf8Start)
+  }
+  guard utf8Count > 0 else {
     return nil
   }
-  _sanityCheck(readBytes >= 0,
-    "unexpected return value from swift_stdlib_readLine_stdin")
-  if readBytes == 0 {
-    return ""
+  let utf8Buffer = UnsafeBufferPointer(start: utf8Start, count: utf8Count)
+  var result = String._fromUTF8Repairing(utf8Buffer).result
+  if strippingNewline, result.last == "\n" || result.last == "\r\n" {
+    _ = result.removeLast()
   }
-  if strippingNewline {
-    // FIXME: Unicode conformance.  To fix this, we need to reimplement the
-    // code we call above to get a line, since it will only stop on LF.
-    //
-    // <rdar://problem/20013999> Recognize Unicode newlines in readLine()
-    //
-    // Recognize only LF and CR+LF combinations for now.
-    let cr = CChar(_ascii8("\r"))
-    let lf = CChar(_ascii8("\n"))
-    if readBytes == 1 && linePtr[0] == lf {
-      return ""
-    }
-    if readBytes >= 2 {
-      switch (linePtr[readBytes - 2], linePtr[readBytes - 1]) {
-      case (cr, lf):
-        readBytes -= 2
-        break
-      case (_, lf):
-        readBytes -= 1
-        break
-      default:
-        ()
-      }
-    }
-  }
-  let result = String._fromCodeUnitSequenceWithRepair(UTF8.self,
-    input: UnsafeMutableBufferPointer(
-      start: UnsafeMutablePointer<UTF8.CodeUnit>(linePtr),
-      count: readBytes)).0
-  _swift_stdlib_free(linePtr)
   return result
 }
+
+#endif

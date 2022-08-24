@@ -1,9 +1,13 @@
-// RUN: rm -rf %t  &&  mkdir %t
+// RUN: %empty-directory(%t)
 // RUN: %target-build-swift -module-name MangleTest %s -o %t/a.out
-// RUN: %target-run %t/a.out | FileCheck %s
+// RUN: %target-codesign %t/a.out
+// RUN: %target-run %t/a.out | %FileCheck %s
 // REQUIRES: executable_test
 
 // REQUIRES: objc_interop
+
+// rdar://problem/56959761
+// UNSUPPORTED: OS=watchos
 
 import Foundation
 
@@ -17,22 +21,22 @@ var anyBar: AnyObject = Bar()
 print(anyBar.description())
 */
 
-func checkClassName(cls: AnyClass, _ name: String, _ mangled: String)
+func checkClassName(_ cls: AnyClass, _ name: String, _ mangled: String)
 {
   // Class's name should appear unmangled.
   assert(NSStringFromClass(cls) == name)
-  assert(NSStringFromClass(object_getClass(cls)) == name)
+  assert(NSStringFromClass(object_getClass(cls)!) == name)
 
   // Look up by unmangled name should work.
   // Look up by mangled name should also work.
   for query in [name, mangled] {
-    let cls2 = NSClassFromString(query)
+    let cls2 = NSClassFromString(query)!
     assert(cls === cls2)
     assert(object_getClass(cls) === object_getClass(cls2))
   }
 }
 
-func checkProtocolName(proto: Protocol, _ name: String, _ mangled: String)
+func checkProtocolName(_ proto: Protocol, _ name: String, _ mangled: String)
 {
   // Protocol's name should appear unmangled.
   assert(NSStringFromProtocol(proto) == name)
@@ -45,10 +49,10 @@ func checkProtocolName(proto: Protocol, _ name: String, _ mangled: String)
   }
 }
 
-func checkIvarName(cls: AnyClass, _ name: String)
+func checkIvarName(_ cls: AnyClass, _ name: String)
 {
-  let ivarName = ivar_getName(class_getInstanceVariable(cls, name))
-  let s = ivarName != nil ? String(cString: ivarName) : Optional.none
+  let ivarName = ivar_getName(class_getInstanceVariable(cls, name)!)
+  let s = ivarName != nil ? String(cString: ivarName!) : Optional.none
   assert(name == s)
 }
 

@@ -1,17 +1,12 @@
-// RUN: %target-resilience-test --no-backward-deployment
+// RUN: %target-resilience-test
 // REQUIRES: executable_test
+
+// SR-10913
+// UNSUPPORTED: OS=windows-msvc
 
 import StdlibUnittest
 import protocol_add_requirements
 
-// Also import modules which are used by StdlibUnittest internally. This
-// workaround is needed to link all required libraries in case we compile
-// StdlibUnittest with -sil-serialize-all.
-import SwiftPrivate
-import SwiftPrivatePthreadExtras
-#if _runtime(_ObjC)
-import ObjectiveC
-#endif
 
 var ProtocolAddRequirementsTest = TestSuite("ProtocolAddRequirements")
 
@@ -47,8 +42,6 @@ ProtocolAddRequirementsTest.test("AddMethodRequirements") {
 #else
   let expected = [0, 10, 11].map(Halogen.init)
 #endif
-
-  expectEqual(result, expected)
 }
 
 
@@ -149,6 +142,30 @@ ProtocolAddRequirementsTest.test("AddSubscriptRequirements") {
   t.set(key: "B", value: 20)
   doSomething(&t, k1: "A", k2: "B")
   expectEqual(t.get(key: "A"), 20)
+}
+
+struct AddAssociatedType<T> : AddAssocTypesProtocol { }
+
+ProtocolAddRequirementsTest.test("AddAssociatedTypeRequirements") {
+  let addString = AddAssociatedType<String>()
+  let stringResult = doSomethingWithAssocTypes(addString)
+
+  if getVersion() == 0 {
+    expectEqual("there are no associated types yet", stringResult)
+  } else {
+    expectEqual("Wrapper<AddAssociatedType<String>>", stringResult)
+  }
+}
+
+ProtocolAddRequirementsTest.test("AddAssociatedConformanceRequirements") {
+  let addString = AddAssociatedType<String>()
+  let stringResult = doSomethingWithAssocConformances(addString)
+
+  if getVersion() == 0 {
+    expectEqual("there are no associated conformances yet", stringResult)
+  } else {
+    expectEqual("I am a wrapper for AddAssociatedType<String>", stringResult)
+  }
 }
 
 runAllTests()

@@ -1,10 +1,10 @@
-// RUN: rm -rf %t
-// RUN: mkdir %t
+// RUN: %empty-directory(%t)
 // RUN: %target-swift-frontend -emit-module -o %t %S/Inputs/def_operator.swift
-// RUN: llvm-bcanalyzer %t/def_operator.swiftmodule | FileCheck %s
-// RUN: %target-swift-frontend -parse -I%t %s
-// RUN: %target-swift-frontend -interpret -I %t -DINTERP %s | FileCheck --check-prefix=OUTPUT %s
-
+// RUN: llvm-bcanalyzer %t/def_operator.swiftmodule | %FileCheck %s
+// RUN: %target-swift-frontend -typecheck -I%t %s
+//
+// Run with the interpreter using the proper filecheck pattern.
+// RUN: %target-jit-run -I %t -DINTERP %s | %FileCheck --check-prefix=OUTPUT %s
 // REQUIRES: swift_interpreter
 
 // FIXME: iOS doesn't work because this test needs the interpreter to handle 

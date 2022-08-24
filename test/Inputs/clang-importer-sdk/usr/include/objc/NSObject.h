@@ -6,6 +6,7 @@
 @class NSString;
 
 @protocol NSObject
+- (instancetype)self;
 @property (readonly, copy) NSString *description;
 - (instancetype)retain OBJC_ARC_UNAVAILABLE;
 - (Class)class;
@@ -25,6 +26,10 @@
 - (BOOL)allowsWeakReference __attribute__((unavailable));
 - (BOOL)isEqual:(NSObject *)other;
 @property (readonly) NSInteger hash;
+@end
+
+@interface NSObject (Coding)
+- (Class)classForCoder;
 @end
 
 @interface A : NSObject
@@ -61,6 +66,7 @@
 - performMultiplyWithValue:(int)x value:(int)y;
 - moveFor:(int)x;
 @property (readonly) int readCounter;
+@property (class) int sharedCounter;
 
 @property int informalMadeFormal;
 
@@ -131,6 +137,7 @@
 
 @interface A(BoolStuff)
 - setEnabled:(BOOL)enabled;
++ (void)setGlobal:(BOOL)global;
 @end
 
 @interface AlmostSubscriptable

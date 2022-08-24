@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -39,11 +39,9 @@ struct ARCPairingContext {
 
   ARCPairingContext(SILFunction &F, RCIdentityFunctionInfo *RCIA)
       : F(F), DecToIncStateMap(), IncToDecStateMap(), RCIA(RCIA) {}
-  bool performMatching(llvm::SmallVectorImpl<SILInstruction *> &NewInsts,
-                       llvm::SmallVectorImpl<SILInstruction *> &DeadInsts);
+  bool performMatching(llvm::SmallVectorImpl<SILInstruction *> &DeadInsts);
 
   void optimizeMatchingSet(ARCMatchingSet &MatchSet,
-                           llvm::SmallVectorImpl<SILInstruction *> &NewInsts,
                            llvm::SmallVectorImpl<SILInstruction *> &DeadInsts);
 };
 
@@ -58,19 +56,18 @@ struct BlockARCPairingContext {
 
   BlockARCPairingContext(SILFunction &F, AliasAnalysis *AA,
                          PostOrderAnalysis *POTA, RCIdentityFunctionInfo *RCFI,
+                         EpilogueARCFunctionInfo *EAFI,
                          ProgramTerminationFunctionInfo *PTFI)
       : Context(F, RCFI),
-        Evaluator(F, AA, POTA, RCFI, PTFI, Context.DecToIncStateMap,
+        Evaluator(F, AA, POTA, RCFI, EAFI, PTFI, Context.DecToIncStateMap,
                   Context.IncToDecStateMap) {}
 
   bool run(bool FreezePostDomReleases) {
     bool NestingDetected = Evaluator.run(FreezePostDomReleases);
     Evaluator.clear();
 
-    llvm::SmallVector<SILInstruction *, 8> NewInsts;
     llvm::SmallVector<SILInstruction *, 8> DeadInsts;
-    bool MatchedPair = Context.performMatching(NewInsts, DeadInsts);
-    NewInsts.clear();
+    bool MatchedPair = Context.performMatching(DeadInsts);
     while (!DeadInsts.empty())
       DeadInsts.pop_back_val()->eraseFromParent();
     return NestingDetected && MatchedPair;
@@ -92,9 +89,10 @@ struct LoopARCPairingContext : SILLoopVisitor {
   LoopARCPairingContext(SILFunction &F, AliasAnalysis *AA,
                         LoopRegionFunctionInfo *LRFI, SILLoopInfo *SLI,
                         RCIdentityFunctionInfo *RCFI,
+                        EpilogueARCFunctionInfo *EAFI,
                         ProgramTerminationFunctionInfo *PTFI)
       : SILLoopVisitor(&F, SLI), Context(F, RCFI),
-        Evaluator(F, AA, LRFI, SLI, RCFI, PTFI, Context.DecToIncStateMap,
+        Evaluator(F, AA, LRFI, SLI, RCFI, EAFI, PTFI, Context.DecToIncStateMap,
                   Context.IncToDecStateMap),
         LRFI(LRFI), SLI(SLI) {}
 

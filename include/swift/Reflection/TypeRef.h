@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -18,21 +18,16 @@
 #ifndef SWIFT_REFLECTION_TYPEREF_H
 #define SWIFT_REFLECTION_TYPEREF_H
 
-#include "swift/Basic/Demangle.h"
+#include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Casting.h"
-
-#include <iostream>
-
-class NodePointer;
-
+#include "llvm/Support/Compiler.h"
+#include "swift/ABI/MetadataValues.h"
+#include "swift/Remote/MetadataReader.h"
+#include "swift/Basic/Unreachable.h"
+#include <ostream>
 namespace swift {
 namespace reflection {
-
-template <typename Runtime>
-class ReflectionContext;
-
-struct ReflectionInfo;
 
 using llvm::cast;
 using llvm::dyn_cast;
@@ -43,15 +38,126 @@ enum class TypeRefKind {
 #undef TYPEREF
 };
 
-class TypeRef;
-using TypeRefPointer = std::shared_ptr<TypeRef>;
-using ConstTypeRefPointer = std::shared_ptr<const TypeRef>;
-using TypeRefVector = std::vector<TypeRefPointer>;
-using ConstTypeRefVector = const std::vector<TypeRefPointer>;
-using DepthAndIndex = std::pair<unsigned, unsigned>;
-using GenericArgumentMap = llvm::DenseMap<DepthAndIndex, TypeRefPointer>;
+#define FIND_OR_CREATE_TYPEREF(Allocator, TypeRefTy, ...)                      \
+  auto ID = Profile(__VA_ARGS__);                                              \
+  const auto Entry = Allocator.TypeRefTy##s.find(ID);                          \
+  if (Entry != Allocator.TypeRefTy##s.end())                                   \
+    return Entry->second;                                                      \
+  const auto TR = Allocator.template makeTypeRef<TypeRefTy>(__VA_ARGS__);      \
+  Allocator.TypeRefTy##s.insert({ID, TR});                                     \
+  return TR;
 
-class TypeRef : public std::enable_shared_from_this<TypeRef> {
+/// An identifier containing the unique bit pattern made up of all of the
+/// instance data needed to uniquely identify a TypeRef.
+///
+/// This allows for uniquing (via Equal) and for keying into a dictionary for
+/// caching.
+///
+/// TypeRefs should be comparable by pointers, so if the TypeRefBuilder
+/// gets a request to build a TypeRef with the same constructor arguments,
+/// it should return the one already created with those arguments, not a fresh
+/// copy. This allows for fast identity comparisons and substitutions, for
+/// example. We use a similar strategy for Types in the full AST.
+class TypeRefID {
+
+  std::vector<uint32_t> Bits;
+
+public:
+  TypeRefID() = default;
+
+  template <typename T>
+  void addPointer(const T *Pointer) {
+    auto Raw = reinterpret_cast<uint32_t *>(&Pointer);
+    Bits.push_back(Raw[0]);
+    if (sizeof(const T *) > 4) {
+      Bits.push_back(Raw[1]);
+    }
+  }
+
+  void addInteger(uint32_t Integer) {
+    Bits.push_back(Integer);
+  }
+
+  void addInteger(uint64_t Integer) {
+    Bits.push_back((uint32_t)Integer);
+    Bits.push_back(Integer >> 32);
+  }
+
+  void addString(const std::string &String) {
+    if (String.empty()) {
+      Bits.push_back(0);
+    } else {
+      size_t i = 0;
+      size_t chunks = String.size() / 4;
+      for (size_t chunk = 0; chunk < chunks; ++chunk, i+=4) {
+        uint32_t entry = ((uint32_t) String[i]) +
+                         (((uint32_t) String[i+1]) << 8) +
+                         (((uint32_t) String[i+2]) << 16) +
+                         (((uint32_t) String[i+3]) << 24);
+        Bits.push_back(entry);
+      }
+      for (; i < String.size(); ++i) {
+        Bits.push_back(String[i]);
+      }
+    }
+  }
+
+  struct Hash {
+    std::size_t operator()(TypeRefID const &ID) const {
+      size_t Hash = 0;
+      std::hash<uint32_t> h;
+      for (auto x : ID.Bits) {
+        Hash ^= h(x) + 0x9e3779b9 + (Hash << 6) + (Hash >> 2);
+      }
+      return Hash;
+    }
+  };
+
+  struct Equal {
+    bool operator()(const TypeRefID &lhs, const TypeRefID &rhs) const {
+      return lhs.Bits == rhs.Bits;
+    }
+  };
+
+
+  bool operator==(const TypeRefID &Other) {
+    return Bits == Other.Bits;
+  }
+};
+
+class TypeRef;
+class TypeRefBuilder;
+using DepthAndIndex = std::pair<unsigned, unsigned>;
+using GenericArgumentMap = llvm::DenseMap<DepthAndIndex, const TypeRef *>;
+
+/// FIXME: Implement me!
+struct TypeRefLayoutConstraint {
+  friend llvm::hash_code hash_value(const TypeRefLayoutConstraint &layout) {
+    return llvm::hash_value(0);
+  }
+  operator bool() const { return true; }
+  bool operator==(TypeRefLayoutConstraint rhs) const {
+    return true;
+  }
+};
+
+class TypeRefRequirement
+    : public RequirementBase<
+          const TypeRef *,
+          llvm::PointerIntPair<const TypeRef *, 3, RequirementKind>,
+          TypeRefLayoutConstraint> {
+public:
+  TypeRefRequirement(RequirementKind kind, const TypeRef *first,
+                     const TypeRef *second)
+      : RequirementBase(kind, first, second) {}
+  TypeRefRequirement(RequirementKind kind, const TypeRef *first,
+                     TypeRefLayoutConstraint second)
+      : RequirementBase(kind, first, second) {}
+};
+
+// On 32-bit systems this needs more than just pointer alignment to fit the
+// extra bits needed by TypeRefRequirement.
+class alignas(8) TypeRef {
   TypeRefKind Kind;
 
 public:
@@ -62,28 +168,49 @@ public:
   }
 
   void dump() const;
-  void dump(std::ostream &OS, unsigned Indent = 0) const;
+  void dump(std::ostream &stream, unsigned Indent = 0) const;
+
+  /// Build a demangle tree from this TypeRef.
+  Demangle::NodePointer getDemangling(Demangle::Demangler &Dem) const;
 
   bool isConcrete() const;
+  bool isConcreteAfterSubstitutions(const GenericArgumentMap &Subs) const;
 
-  template <typename Runtime>
-  TypeRefPointer
-  subst(ReflectionContext<Runtime> &RC, GenericArgumentMap Subs);
+  const TypeRef *subst(TypeRefBuilder &Builder,
+                       const GenericArgumentMap &Subs) const;
 
-  GenericArgumentMap getSubstMap() const;
+  llvm::Optional<GenericArgumentMap> getSubstMap() const;
 
-  static TypeRefPointer fromDemangleNode(Demangle::NodePointer Node);
+  virtual ~TypeRef() = default;
+
+  /// Given an original type and substituted type, decompose them in
+  /// parallel to derive substitutions that produced the substituted
+  /// type.
+  ///
+  /// This will fail if the resulting substitutions contradict already
+  /// known substitutions, or if the original and substituted types
+  /// have a structural mismatch.
+  static bool deriveSubstitutions(GenericArgumentMap &Subs,
+                                  const TypeRef *OrigTR,
+                                  const TypeRef *SubstTR);
 };
 
 class BuiltinTypeRef final : public TypeRef {
   std::string MangledName;
 
+  static TypeRefID Profile(const std::string &MangledName) {
+    TypeRefID ID;
+    ID.addString(MangledName);
+    return ID;
+  }
+
 public:
-  BuiltinTypeRef(std::string MangledName)
+  BuiltinTypeRef(const std::string &MangledName)
     : TypeRef(TypeRefKind::Builtin), MangledName(MangledName) {}
 
-  static std::shared_ptr<BuiltinTypeRef> create(std::string MangledName) {
-    return std::make_shared<BuiltinTypeRef>(MangledName);
+  template <typename Allocator>
+  static const BuiltinTypeRef *create(Allocator &A, std::string MangledName) {
+    FIND_OR_CREATE_TYPEREF(A, BuiltinTypeRef, MangledName);
   }
 
   const std::string &getMangledName() const {
@@ -97,10 +224,21 @@ public:
 
 class NominalTypeTrait {
   std::string MangledName;
+  const TypeRef *Parent;
+
+protected:
+  static TypeRefID Profile(const std::string &MangledName,
+                           const TypeRef *Parent) {
+    TypeRefID ID;
+    ID.addPointer(Parent);
+    ID.addString(MangledName);
+    return ID;
+  }
+
+  NominalTypeTrait(const std::string &MangledName, const TypeRef *Parent)
+    : MangledName(MangledName), Parent(Parent) {}
 
 public:
-  NominalTypeTrait(std::string MangledName) : MangledName(MangledName) {}
-
   const std::string &getMangledName() const {
     return MangledName;
   }
@@ -108,34 +246,34 @@ public:
   bool isStruct() const;
   bool isEnum() const;
   bool isClass() const;
-};
+  bool isProtocol() const;
+  bool isAlias() const;
 
-class NominalTypeRef final : public TypeRef, public NominalTypeTrait {
-  TypeRefPointer Parent;
-
-public:
-  NominalTypeRef(std::string MangledName, TypeRefPointer Parent = nullptr)
-    : TypeRef(TypeRefKind::Nominal), NominalTypeTrait(MangledName),
-      Parent(Parent) {}
-
-  static std::shared_ptr<NominalTypeRef>
-  create(std::string MangledName, TypeRefPointer Parent = nullptr) {
-    return std::make_shared<NominalTypeRef>(MangledName, Parent);
+  bool isErrorProtocol() const {
+    return MangledName == "s5ErrorP";
   }
 
-  ConstTypeRefPointer getParent() const {
+  const TypeRef *getParent() const {
     return Parent;
-  }
-
-  TypeRefPointer getParent() {
-    return Parent;
-  }
-
-  void setParent(TypeRefPointer P) {
-    Parent = P;
   }
 
   unsigned getDepth() const;
+
+};
+
+class NominalTypeRef final : public TypeRef, public NominalTypeTrait {
+  using NominalTypeTrait::Profile;
+public:
+  NominalTypeRef(const std::string &MangledName,
+                 const TypeRef *Parent = nullptr)
+    : TypeRef(TypeRefKind::Nominal), NominalTypeTrait(MangledName, Parent) {}
+
+  template <typename Allocator>
+  static const NominalTypeRef *create(Allocator &A,
+                                      const std::string &MangledName,
+                                      const TypeRef *Parent = nullptr) {
+    FIND_OR_CREATE_TYPEREF(A, NominalTypeRef, MangledName, Parent);
+  }
 
   static bool classof(const TypeRef *TR) {
     return TR->getKind() == TypeRefKind::Nominal;
@@ -143,40 +281,39 @@ public:
 };
 
 class BoundGenericTypeRef final : public TypeRef, public NominalTypeTrait {
-  TypeRefVector GenericParams;
-  TypeRefPointer Parent;
+  std::vector<const TypeRef *> GenericParams;
+
+  static TypeRefID Profile(const std::string &MangledName,
+                           const std::vector<const TypeRef *> &GenericParams,
+                           const TypeRef *Parent) {
+    TypeRefID ID;
+    ID.addPointer(Parent);
+    ID.addString(MangledName);
+    for (auto Param : GenericParams)
+      ID.addPointer(Param);
+    return ID;
+  }
 
 public:
-  BoundGenericTypeRef(std::string MangledName, TypeRefVector GenericParams,
-                      TypeRefPointer Parent = nullptr)
+  BoundGenericTypeRef(const std::string &MangledName,
+                      std::vector<const TypeRef *> GenericParams,
+                      const TypeRef *Parent = nullptr)
     : TypeRef(TypeRefKind::BoundGeneric),
-      NominalTypeTrait(MangledName),
-      GenericParams(GenericParams),
-      Parent(Parent) {}
+      NominalTypeTrait(MangledName, Parent),
+      GenericParams(GenericParams) {}
 
-  static std::shared_ptr<BoundGenericTypeRef>
-  create(std::string MangledName, TypeRefVector GenericParams,
-         TypeRefPointer Parent = nullptr) {
-    return std::make_shared<BoundGenericTypeRef>(MangledName, GenericParams,
-                                                 Parent);
+  template <typename Allocator>
+  static const BoundGenericTypeRef *
+  create(Allocator &A, const std::string &MangledName,
+         std::vector<const TypeRef *> GenericParams,
+         const TypeRef *Parent = nullptr) {
+    FIND_OR_CREATE_TYPEREF(A, BoundGenericTypeRef, MangledName, GenericParams,
+                           Parent);
   }
 
-  const TypeRefVector &getGenericParams() const {
+  const std::vector<const TypeRef *> &getGenericParams() const {
     return GenericParams;
   }
-  ConstTypeRefPointer getParent() const {
-    return Parent;
-  }
-
-  TypeRefPointer getParent() {
-    return Parent;
-  }
-
-  void setParent(TypeRefPointer P) {
-    Parent = P;
-  }
-
-  unsigned getDepth() const;
 
   static bool classof(const TypeRef *TR) {
     return TR->getKind() == TypeRefKind::BoundGeneric;
@@ -184,22 +321,48 @@ public:
 };
 
 class TupleTypeRef final : public TypeRef {
-  TypeRefVector Elements;
+protected:
+  std::vector<const TypeRef *> Elements;
+  std::string Labels;
 
-public:
-  TupleTypeRef(TypeRefVector Elements)
-    : TypeRef(TypeRefKind::Tuple), Elements(Elements) {}
-
-  static std::shared_ptr<TupleTypeRef> create(TypeRefVector Elements) {
-    return std::make_shared<TupleTypeRef>(Elements);
+  static TypeRefID Profile(const std::vector<const TypeRef *> &Elements,
+                           const std::string &Labels) {
+    TypeRefID ID;
+    for (auto Element : Elements)
+      ID.addPointer(Element);
+    ID.addString(Labels);
+    return ID;
   }
 
-  TypeRefVector getElements() {
-    return Elements;
-  };
+public:
+  TupleTypeRef(std::vector<const TypeRef *> Elements, std::string &&Labels)
+      : TypeRef(TypeRefKind::Tuple), Elements(std::move(Elements)),
+        Labels(Labels) {}
 
-  ConstTypeRefVector getElements() const {
-    return Elements;
+  template <typename Allocator>
+  static const TupleTypeRef *create(Allocator &A,
+                                    std::vector<const TypeRef *> Elements,
+                                    std::string &&Labels) {
+    FIND_OR_CREATE_TYPEREF(A, TupleTypeRef, Elements, Labels);
+  }
+
+  const std::vector<const TypeRef *> &getElements() const { return Elements; };
+  const std::string &getLabelString() const { return Labels; };
+  std::vector<llvm::StringRef> getLabels() const {
+    std::vector<llvm::StringRef> Vec;
+    std::string::size_type End, Start = 0;
+    while (true) {
+      End = Labels.find(' ', Start);
+      if (End == std::string::npos)
+        break;
+      Vec.push_back(llvm::StringRef(Labels.data() + Start, End - Start));
+      Start = End + 1;
+    }
+    // A canonicalized TypeRef has an empty label string.
+    // Pad the vector with empty labels.
+    for (unsigned N = Vec.size(); N < Elements.size(); ++N)
+      Vec.push_back({});
+    return Vec;
   };
 
   static bool classof(const TypeRef *TR) {
@@ -207,33 +370,143 @@ public:
   }
 };
 
-class FunctionTypeRef final : public TypeRef {
-  TypeRefVector Arguments;
-  TypeRefPointer Result;
+class OpaqueArchetypeTypeRef final : public TypeRef {
+  std::string ID;
+  std::string Description;
+  unsigned Ordinal;
+  // Each ArrayRef in ArgumentLists references into the buffer owned by this
+  // vector, which must not be modified after construction.
+  std::vector<const TypeRef *> AllArgumentsBuf;
+  std::vector<llvm::ArrayRef<const TypeRef *>> ArgumentLists;
+
+  static TypeRefID
+  Profile(StringRef idString, StringRef description, unsigned ordinal,
+          llvm::ArrayRef<llvm::ArrayRef<const TypeRef *>> argumentLists) {
+    TypeRefID ID;
+    ID.addString(idString.str());
+    ID.addInteger(ordinal);
+    for (auto argList : argumentLists) {
+      ID.addInteger(0u);
+      for (auto arg : argList)
+        ID.addPointer(arg);
+    }
+    
+    return ID;
+  }
 
 public:
-  FunctionTypeRef(TypeRefVector Arguments, TypeRefPointer Result)
-    : TypeRef(TypeRefKind::Function), Arguments(Arguments), Result(Result) {}
-
-  static std::shared_ptr<FunctionTypeRef> create(TypeRefVector Arguments,
-                                                 TypeRefPointer Result) {
-    return std::make_shared<FunctionTypeRef>(Arguments, Result);
+  OpaqueArchetypeTypeRef(
+      StringRef id, StringRef description, unsigned ordinal,
+      llvm::ArrayRef<llvm::ArrayRef<const TypeRef *>> argumentLists)
+      : TypeRef(TypeRefKind::OpaqueArchetype), ID(id), Description(description),
+        Ordinal(ordinal) {
+    std::vector<unsigned> argumentListLengths;
+    
+    for (auto argList : argumentLists) {
+      argumentListLengths.push_back(argList.size());
+      AllArgumentsBuf.insert(AllArgumentsBuf.end(),
+                             argList.begin(), argList.end());
+    }
+    auto *data = AllArgumentsBuf.data();
+    for (auto length : argumentListLengths) {
+      ArgumentLists.push_back(llvm::ArrayRef<const TypeRef *>(data, length));
+      data += length;
+    }
+    assert(data == AllArgumentsBuf.data() + AllArgumentsBuf.size());
   }
 
-  TypeRefVector getArguments() {
-    return Arguments;
-  };
+  template <typename Allocator>
+  static const OpaqueArchetypeTypeRef *
+  create(Allocator &A, StringRef id, StringRef description, unsigned ordinal,
+         llvm::ArrayRef<llvm::ArrayRef<const TypeRef *>> arguments) {
+    FIND_OR_CREATE_TYPEREF(A, OpaqueArchetypeTypeRef,
+                           id, description, ordinal, arguments);
+  }
 
-  ConstTypeRefVector getArguments() const {
-    return Arguments;
-  };
+  llvm::ArrayRef<llvm::ArrayRef<const TypeRef *>> getArgumentLists() const {
+    return ArgumentLists;
+  }
 
-  TypeRefPointer getResult() {
+  unsigned getOrdinal() const {
+    return Ordinal;
+  }
+  
+  /// A stable identifier for the opaque type.
+  StringRef getID() const {
+    return ID;
+  }
+  
+  /// A human-digestible, but not necessarily stable, description of the opaque type.
+  StringRef getDescription() const {
+    return Description;
+  }
+  
+  static bool classof(const TypeRef *T) {
+    return T->getKind() == TypeRefKind::OpaqueArchetype;
+  }
+};
+
+class FunctionTypeRef final : public TypeRef {
+  using Param = remote::FunctionParam<const TypeRef *>;
+
+  std::vector<Param> Parameters;
+  const TypeRef *Result;
+  FunctionTypeFlags Flags;
+  FunctionMetadataDifferentiabilityKind DifferentiabilityKind;
+  const TypeRef *GlobalActor;
+
+  static TypeRefID Profile(const std::vector<Param> &Parameters,
+                           const TypeRef *Result, FunctionTypeFlags Flags,
+                           FunctionMetadataDifferentiabilityKind DiffKind,
+                           const TypeRef *GlobalActor) {
+    TypeRefID ID;
+    for (const auto &Param : Parameters) {
+      ID.addString(Param.getLabel().str());
+      ID.addPointer(Param.getType());
+      ID.addInteger(static_cast<uint32_t>(Param.getFlags().getIntValue()));
+    }
+    ID.addPointer(Result);
+    ID.addInteger(static_cast<uint64_t>(Flags.getIntValue()));
+    ID.addInteger(static_cast<uint64_t>(DiffKind.getIntValue()));
+    ID.addPointer(GlobalActor);
+
+    return ID;
+  }
+
+public:
+  FunctionTypeRef(std::vector<Param> Params, const TypeRef *Result,
+                  FunctionTypeFlags Flags,
+                  FunctionMetadataDifferentiabilityKind DiffKind,
+                  const TypeRef *GlobalActor)
+      : TypeRef(TypeRefKind::Function), Parameters(Params), Result(Result),
+        Flags(Flags), DifferentiabilityKind(DiffKind),
+        GlobalActor(GlobalActor) {}
+
+  template <typename Allocator>
+  static const FunctionTypeRef *create(
+      Allocator &A, std::vector<Param> Params, const TypeRef *Result,
+      FunctionTypeFlags Flags, FunctionMetadataDifferentiabilityKind DiffKind,
+      const TypeRef *GlobalActor) {
+    FIND_OR_CREATE_TYPEREF(
+        A, FunctionTypeRef, Params, Result, Flags, DiffKind, GlobalActor);
+  }
+
+  const std::vector<Param> &getParameters() const { return Parameters; };
+
+  const TypeRef *getResult() const {
     return Result;
   }
 
-  ConstTypeRefPointer getResult() const {
-    return Result;
+  FunctionTypeFlags getFlags() const {
+    return Flags;
+  }
+
+  FunctionMetadataDifferentiabilityKind getDifferentiabilityKind() const {
+    return DifferentiabilityKind;
+  }
+
+  const TypeRef *getGlobalActor() const {
+    return GlobalActor;
   }
 
   static bool classof(const TypeRef *TR) {
@@ -241,58 +514,48 @@ public:
   }
 };
 
-class ProtocolTypeRef final : public TypeRef {
-  std::string ModuleName;
-  std::string Name;
-
-public:
-  ProtocolTypeRef(std::string ModuleName, std::string Name)
-    : TypeRef(TypeRefKind::Protocol), ModuleName(ModuleName), Name(Name) {}
-
-  static std::shared_ptr<ProtocolTypeRef>
-  create(std::string ModuleName, std::string Name) {
-    return std::make_shared<ProtocolTypeRef>(ModuleName, Name);
-  }
-
-  const std::string &getName() const {
-    return Name;
-  }
-
-  const std::string &getModuleName() const {
-    return ModuleName;
-  }
-
-  static bool classof(const TypeRef *TR) {
-    return TR->getKind() == TypeRefKind::Protocol;
-  }
-
-  bool operator==(const ProtocolTypeRef &Other) {
-    return ModuleName.compare(Other.ModuleName) == 0 &&
-           Name.compare(Other.Name) == 0;
-  }
-  bool operator!=(const ProtocolTypeRef &Other) {
-    return !(*this == Other);
-  }
-};
-
 class ProtocolCompositionTypeRef final : public TypeRef {
-  TypeRefVector Protocols;
+  std::vector<const TypeRef *> Protocols;
+  const TypeRef *Superclass;
+  bool HasExplicitAnyObject;
+
+  static TypeRefID Profile(std::vector<const TypeRef *> Protocols,
+                           const TypeRef *Superclass,
+                           bool HasExplicitAnyObject) {
+    TypeRefID ID;
+    ID.addInteger((uint32_t)HasExplicitAnyObject);
+    for (auto Protocol : Protocols) {
+      ID.addPointer(Protocol);
+    }
+    ID.addPointer(Superclass);
+    return ID;
+  }
 
 public:
-  ProtocolCompositionTypeRef(TypeRefVector Protocols)
-    : TypeRef(TypeRefKind::ProtocolComposition), Protocols(Protocols) {}
+  ProtocolCompositionTypeRef(std::vector<const TypeRef *> Protocols,
+                             const TypeRef *Superclass,
+                             bool HasExplicitAnyObject)
+    : TypeRef(TypeRefKind::ProtocolComposition),
+      Protocols(Protocols), Superclass(Superclass),
+      HasExplicitAnyObject(HasExplicitAnyObject) {}
 
-  static std::shared_ptr<ProtocolCompositionTypeRef>
-  create(TypeRefVector Protocols) {
-    return std::make_shared<ProtocolCompositionTypeRef>(Protocols);
+  template <typename Allocator>
+  static const ProtocolCompositionTypeRef *
+  create(Allocator &A, std::vector<const TypeRef *> Protocols,
+         const TypeRef *Superclass, bool HasExplicitAnyObject) {
+    FIND_OR_CREATE_TYPEREF(A, ProtocolCompositionTypeRef, Protocols,
+                           Superclass, HasExplicitAnyObject);
   }
 
-  TypeRefVector getProtocols() {
+  // These are either NominalTypeRef or ObjCProtocolTypeRef.
+  const std::vector<const TypeRef *> &getProtocols() const {
     return Protocols;
   }
 
-  ConstTypeRefVector getProtocols() const {
-    return Protocols;
+  const TypeRef *getSuperclass() const { return Superclass; }
+
+  bool hasExplicitAnyObject() const {
+    return HasExplicitAnyObject;
   }
 
   static bool classof(const TypeRef *TR) {
@@ -300,22 +563,78 @@ public:
   }
 };
 
-class MetatypeTypeRef final : public TypeRef {
-  TypeRefPointer InstanceType;
+class ConstrainedExistentialTypeRef final : public TypeRef {
+  const ProtocolCompositionTypeRef *Base;
+  std::vector<TypeRefRequirement> Requirements;
+
+  static TypeRefID Profile(const ProtocolCompositionTypeRef *Protocol,
+                           std::vector<TypeRefRequirement> Requirements) {
+    TypeRefID ID;
+    ID.addPointer(Protocol);
+    for (auto reqt : Requirements) {
+      ID.addPointer(reqt.getFirstType());
+      if (reqt.getKind() != RequirementKind::Layout)
+        ID.addPointer(reqt.getSecondType());
+      else
+        ID.addInteger(
+            unsigned(0)); // FIXME: Layout constraints aren't implemented yet
+      ID.addInteger(unsigned(reqt.getKind()));
+    }
+    return ID;
+  }
 
 public:
-  MetatypeTypeRef(TypeRefPointer InstanceType)
-    : TypeRef(TypeRefKind::Metatype), InstanceType(InstanceType) {}
+  ConstrainedExistentialTypeRef(const ProtocolCompositionTypeRef *Protocol,
+                                std::vector<TypeRefRequirement> Requirements)
+      : TypeRef(TypeRefKind::ConstrainedExistential), Base(Protocol),
+        Requirements(Requirements) {}
 
-  static std::shared_ptr<MetatypeTypeRef> create(TypeRefPointer InstanceType) {
-    return std::make_shared<MetatypeTypeRef>(InstanceType);
+  template <typename Allocator>
+  static const ConstrainedExistentialTypeRef *
+  create(Allocator &A, const ProtocolCompositionTypeRef *Protocol,
+         std::vector<TypeRefRequirement> Requirements) {
+    FIND_OR_CREATE_TYPEREF(A, ConstrainedExistentialTypeRef, Protocol,
+                           Requirements);
   }
 
-  TypeRefPointer getInstanceType() {
-    return InstanceType;
+  const ProtocolCompositionTypeRef *getBase() const { return Base; }
+
+  const std::vector<TypeRefRequirement> &getRequirements() const {
+    return Requirements;
   }
 
-  ConstTypeRefPointer getInstanceType() const {
+  static bool classof(const TypeRef *TR) {
+    return TR->getKind() == TypeRefKind::ConstrainedExistential;
+  }
+};
+
+class MetatypeTypeRef final : public TypeRef {
+  const TypeRef *InstanceType;
+  bool WasAbstract;
+
+  static TypeRefID Profile(const TypeRef *InstanceType, bool WasAbstract) {
+    TypeRefID ID;
+    ID.addPointer(InstanceType);
+    ID.addInteger(static_cast<uint32_t>(WasAbstract));
+    return ID;
+  }
+public:
+  MetatypeTypeRef(const TypeRef *InstanceType, bool WasAbstract)
+    : TypeRef(TypeRefKind::Metatype), InstanceType(InstanceType),
+      WasAbstract(WasAbstract) {}
+
+  template <typename Allocator>
+  static const MetatypeTypeRef *create(Allocator &A,
+                                       const TypeRef *InstanceType,
+                                       bool WasAbstract = false) {
+    FIND_OR_CREATE_TYPEREF(A, MetatypeTypeRef, InstanceType, WasAbstract);
+  }
+
+  bool wasAbstract() const {
+    return WasAbstract;
+  }
+
+  const TypeRef *getInstanceType() const {
     return InstanceType;
   }
 
@@ -325,21 +644,25 @@ public:
 };
 
 class ExistentialMetatypeTypeRef final : public TypeRef {
-  TypeRefPointer InstanceType;
+  const TypeRef *InstanceType;
+
+  static TypeRefID Profile(const TypeRef *InstanceType) {
+    TypeRefID ID;
+    ID.addPointer(InstanceType);
+    return ID;
+  }
 
 public:
-  ExistentialMetatypeTypeRef(TypeRefPointer InstanceType)
+  ExistentialMetatypeTypeRef(const TypeRef *InstanceType)
     : TypeRef(TypeRefKind::ExistentialMetatype), InstanceType(InstanceType) {}
-  static std::shared_ptr<ExistentialMetatypeTypeRef>
-  create(TypeRefPointer InstanceType) {
-    return std::make_shared<ExistentialMetatypeTypeRef>(InstanceType);
+
+  template <typename Allocator>
+  static const ExistentialMetatypeTypeRef *
+  create(Allocator &A, const TypeRef *InstanceType) {
+    FIND_OR_CREATE_TYPEREF(A, ExistentialMetatypeTypeRef, InstanceType);
   }
 
-  TypeRefPointer getInstanceType() {
-    return InstanceType;
-  }
-
-  ConstTypeRefPointer getInstanceType() const {
+  const TypeRef *getInstanceType() const {
     return InstanceType;
   }
 
@@ -352,13 +675,21 @@ class GenericTypeParameterTypeRef final : public TypeRef {
   const uint32_t Depth;
   const uint32_t Index;
 
+  static TypeRefID Profile(uint32_t Depth, uint32_t Index) {
+    TypeRefID ID;
+    ID.addInteger(Depth);
+    ID.addInteger(Index);
+    return ID;
+  }
+
 public:
   GenericTypeParameterTypeRef(uint32_t Depth, uint32_t Index)
     : TypeRef(TypeRefKind::GenericTypeParameter), Depth(Depth), Index(Index) {}
 
-  static std::shared_ptr<GenericTypeParameterTypeRef>
-  create(uint32_t Depth, uint32_t Index) {
-    return std::make_shared<GenericTypeParameterTypeRef>(Depth, Index);
+  template <typename Allocator>
+  static const GenericTypeParameterTypeRef *
+  create(Allocator &A, uint32_t Depth, uint32_t Index) {
+    FIND_OR_CREATE_TYPEREF(A, GenericTypeParameterTypeRef, Depth, Index);
   }
 
   uint32_t getDepth() const {
@@ -376,33 +707,42 @@ public:
 
 class DependentMemberTypeRef final : public TypeRef {
   std::string Member;
-  TypeRefPointer Base;
-  TypeRefPointer Protocol;
+  const TypeRef *Base;
+  std::string Protocol;
+
+  static TypeRefID Profile(const std::string &Member, const TypeRef *Base,
+                           const std::string &Protocol) {
+    TypeRefID ID;
+    ID.addString(Member);
+    ID.addPointer(Base);
+    ID.addString(Protocol);
+    return ID;
+  }
 
 public:
-  DependentMemberTypeRef(std::string Member, TypeRefPointer Base,
-                         TypeRefPointer Protocol)
+
+  DependentMemberTypeRef(const std::string &Member, const TypeRef *Base,
+                         const std::string &Protocol)
     : TypeRef(TypeRefKind::DependentMember), Member(Member), Base(Base),
       Protocol(Protocol) {}
-  static std::shared_ptr<DependentMemberTypeRef>
-  create(std::string Member, TypeRefPointer Base, TypeRefPointer Protocol) {
-    return std::make_shared<DependentMemberTypeRef>(Member, Base, Protocol);
+
+  template <typename Allocator>
+  static const DependentMemberTypeRef *
+  create(Allocator &A, const std::string &Member,
+         const TypeRef *Base, const std::string &Protocol) {
+    FIND_OR_CREATE_TYPEREF(A, DependentMemberTypeRef, Member, Base, Protocol);
   }
 
   const std::string &getMember() const {
     return Member;
   }
 
-  TypeRefPointer getBase() {
+  const TypeRef *getBase() const {
     return Base;
   }
 
-  ConstTypeRefPointer getBase() const {
-    return Base;
-  }
-
-  const ProtocolTypeRef *getProtocol() const {
-    return cast<ProtocolTypeRef>(Protocol.get());
+  const std::string &getProtocol() const {
+    return Protocol;
   }
 
   static bool classof(const TypeRef *TR) {
@@ -410,16 +750,60 @@ public:
   }
 };
 
+/// A representation of a dynamically-constructed generic signature.
+///
+/// \note This class is not a \c TypeRef.
+class GenericSignatureRef final {
+  std::vector<const GenericTypeParameterTypeRef *> Params;
+  std::vector<TypeRefRequirement> Requirements;
+
+public:
+  GenericSignatureRef(
+      llvm::ArrayRef<const GenericTypeParameterTypeRef *> Params,
+      llvm::ArrayRef<TypeRefRequirement> Requirements)
+      : Params(Params.begin(), Params.end()),
+        Requirements(Requirements.begin(), Requirements.end()) {}
+
+  template <typename Allocator>
+  static const GenericSignatureRef *
+  create(Allocator &A,
+         llvm::ArrayRef<const GenericTypeParameterTypeRef *> Params,
+         llvm::ArrayRef<TypeRefRequirement> Requirements) {
+    return A.makeGenericSignatureRef(Params, Requirements);
+  }
+
+  const llvm::ArrayRef<const GenericTypeParameterTypeRef *> getParams() const {
+    return Params;
+  }
+
+  const llvm::ArrayRef<TypeRefRequirement> getRequirements() const {
+    return Requirements;
+  }
+};
+
 class ForeignClassTypeRef final : public TypeRef {
   std::string Name;
+
+  static TypeRefID Profile(const std::string &Name) {
+    TypeRefID ID;
+    ID.addString(Name);
+    return ID;
+  }
+
 public:
-  ForeignClassTypeRef(std::string Name)
+  ForeignClassTypeRef(const std::string &Name)
     : TypeRef(TypeRefKind::ForeignClass), Name(Name) {}
-  static const std::shared_ptr<ForeignClassTypeRef> Unnamed;
+
+  template <typename Allocator>
+  static const ForeignClassTypeRef *create(Allocator &A,
+                                           const std::string &Name) {
+    FIND_OR_CREATE_TYPEREF(A, ForeignClassTypeRef, Name);
+  }
 
   const std::string &getName() const {
     return Name;
   }
+
 
   static bool classof(const TypeRef *TR) {
     return TR->getKind() == TypeRefKind::ForeignClass;
@@ -428,10 +812,23 @@ public:
 
 class ObjCClassTypeRef final : public TypeRef {
   std::string Name;
+  static const ObjCClassTypeRef *UnnamedSingleton;
+
+  static TypeRefID Profile(const std::string &Name) {
+    TypeRefID ID;
+    ID.addString(Name);
+    return ID;
+  }
 public:
-  ObjCClassTypeRef(std::string Name)
+  ObjCClassTypeRef(const std::string &Name)
     : TypeRef(TypeRefKind::ObjCClass), Name(Name) {}
-  static const std::shared_ptr<ObjCClassTypeRef> Unnamed;
+
+  static const ObjCClassTypeRef *getUnnamed();
+
+  template <typename Allocator>
+  static const ObjCClassTypeRef *create(Allocator &A, const std::string &Name) {
+    FIND_OR_CREATE_TYPEREF(A, ObjCClassTypeRef, Name);
+  }
 
   const std::string &getName() const {
     return Name;
@@ -442,12 +839,183 @@ public:
   }
 };
 
-class OpaqueTypeRef final : public TypeRef {
+class ObjCProtocolTypeRef final : public TypeRef {
+  std::string Name;
+  static const ObjCProtocolTypeRef *UnnamedSingleton;
+
+  static TypeRefID Profile(const std::string &Name) {
+    TypeRefID ID;
+    ID.addString(Name);
+    return ID;
+  }
 public:
+  ObjCProtocolTypeRef(const std::string &Name)
+    : TypeRef(TypeRefKind::ObjCProtocol), Name(Name) {}
+
+  static const ObjCProtocolTypeRef *getUnnamed();
+
+  template <typename Allocator>
+  static const ObjCProtocolTypeRef *create(Allocator &A,
+                                           const std::string &Name) {
+    FIND_OR_CREATE_TYPEREF(A, ObjCProtocolTypeRef, Name);
+  }
+
+  const std::string &getName() const {
+    return Name;
+  }
+
+  static bool classof(const TypeRef *TR) {
+    return TR->getKind() == TypeRefKind::ObjCProtocol;
+  }
+};
+
+class OpaqueTypeRef final : public TypeRef {
+  static const OpaqueTypeRef *Singleton;
+
   OpaqueTypeRef() : TypeRef(TypeRefKind::Opaque) {}
-  static const std::shared_ptr<OpaqueTypeRef> Opaque;
+
+  static TypeRefID Profile() {
+    return TypeRefID();
+  }
+public:
+  static const OpaqueTypeRef *get();
+
   static bool classof(const TypeRef *TR) {
     return TR->getKind() == TypeRefKind::Opaque;
+  }
+};
+
+class ReferenceStorageTypeRef : public TypeRef {
+  const TypeRef *Type;
+
+protected:
+  ReferenceStorageTypeRef(TypeRefKind Kind, const TypeRef *Type)
+    : TypeRef(Kind), Type(Type) {}
+
+  static TypeRefID Profile(const TypeRef *Type) {
+    TypeRefID ID;
+    ID.addPointer(Type);
+    return ID;
+  }
+public:
+  const TypeRef *getType() const {
+    return Type;
+  }
+
+  static bool classof(const TypeRef *TR) {
+    switch (TR->getKind()) {
+#define REF_STORAGE(Name, ...) \
+    case TypeRefKind::Name##Storage:
+#include "swift/AST/ReferenceStorage.def"
+      return true;
+    default:
+      return false;
+    }
+  }
+};
+
+#define REF_STORAGE(Name, ...) \
+  class Name##StorageTypeRef final : public ReferenceStorageTypeRef { \
+    using ReferenceStorageTypeRef::Profile; \
+  public: \
+    Name##StorageTypeRef(const TypeRef *Type) \
+      : ReferenceStorageTypeRef(TypeRefKind::Name##Storage, Type) {} \
+    template <typename Allocator> \
+    static const Name##StorageTypeRef *create(Allocator &A, \
+                                              const TypeRef *Type) { \
+      FIND_OR_CREATE_TYPEREF(A, Name##StorageTypeRef, Type); \
+    } \
+    static bool classof(const TypeRef *TR) { \
+      return TR->getKind() == TypeRefKind::Name##Storage; \
+    } \
+  };
+#include "swift/AST/ReferenceStorage.def"
+
+class SILBoxTypeRef final : public TypeRef {
+  const TypeRef *BoxedType;
+
+  static TypeRefID Profile(const TypeRef *BoxedType) {
+    TypeRefID ID;
+    ID.addPointer(BoxedType);
+    return ID;
+  }
+public:
+  SILBoxTypeRef(const TypeRef *BoxedType)
+    : TypeRef(TypeRefKind::SILBox), BoxedType(BoxedType) {}
+
+  template <typename Allocator>
+  static const SILBoxTypeRef *create(Allocator &A,
+                                     const TypeRef *BoxedType) {
+    FIND_OR_CREATE_TYPEREF(A, SILBoxTypeRef, BoxedType);
+  }
+
+  const TypeRef *getBoxedType() const {
+    return BoxedType;
+  }
+
+  static bool classof(const TypeRef *TR) {
+    return TR->getKind() == TypeRefKind::SILBox;
+  }
+};
+
+class SILBoxTypeWithLayoutTypeRef final : public TypeRef {
+public:
+  struct Field : public llvm::PointerIntPair<const TypeRef *, 1> {
+    Field(const TypeRef *Type, bool Mutable)
+        : llvm::PointerIntPair<const TypeRef *, 1>(Type, (unsigned)Mutable) {}
+    const TypeRef *getType() const { return getPointer(); }
+    bool isMutable() const { return getInt() == 1; }
+  };
+  using Substitution = std::pair<const TypeRef *, const TypeRef *>;
+
+  const std::vector<Field> &getFields() const { return Fields; }
+  const std::vector<Substitution> &getSubstitutions() const {
+    return Substitutions;
+  }
+  const std::vector<TypeRefRequirement> &getRequirements() const {
+    return Requirements;
+  }
+protected:
+  std::vector<Field> Fields;
+  std::vector<Substitution> Substitutions;
+  std::vector<TypeRefRequirement> Requirements;
+
+  static TypeRefID
+  Profile(const std::vector<Field> &Fields,
+          const std::vector<Substitution> &Substitutions,
+          const std::vector<TypeRefRequirement> &Requirements) {
+    TypeRefID ID;
+    for (auto &f : Fields)
+      ID.addPointer(f.getOpaqueValue());
+    for (auto &s : Substitutions) {
+      ID.addPointer(s.first);
+      ID.addPointer(s.second);
+    }
+    for (auto &r : Requirements)
+      ID.addInteger((uint64_t)(size_t)hash_value(hash_value(r)));
+    return ID;
+  }
+
+public:
+  SILBoxTypeWithLayoutTypeRef(llvm::ArrayRef<Field> Fields,
+                              llvm::ArrayRef<Substitution> Substitutions,
+                              llvm::ArrayRef<TypeRefRequirement> Requirements)
+      : TypeRef(TypeRefKind::SILBoxTypeWithLayout),
+        Fields(Fields.begin(), Fields.end()),
+        Substitutions(Substitutions.begin(), Substitutions.end()),
+        Requirements(Requirements.begin(), Requirements.end()) {}
+
+  template <typename Allocator>
+  static const SILBoxTypeWithLayoutTypeRef *
+  create(Allocator &A, llvm::ArrayRef<Field> Fields,
+         llvm::ArrayRef<Substitution> Substitutions,
+         llvm::ArrayRef<TypeRefRequirement> Requirements) {
+    FIND_OR_CREATE_TYPEREF(A, SILBoxTypeWithLayoutTypeRef, Fields,
+                           Substitutions, Requirements);
+  }
+
+  static bool classof(const TypeRef *TR) {
+    return TR->getKind() == TypeRefKind::SILBoxTypeWithLayout;
   }
 };
 
@@ -464,142 +1032,10 @@ public:
                            ::std::forward<Args>(args)...);
 #include "swift/Reflection/TypeRefs.def"
     }
+
+    swift_unreachable("Unhandled TypeRefKind in switch.");
   }
 };
-
-template <typename Runtime>
-class TypeRefSubstitution
-  : public TypeRefVisitor<TypeRefSubstitution<Runtime>, TypeRefPointer> {
-  using StoredPointer = typename Runtime::StoredPointer;
-  ReflectionContext<Runtime> &RC;
-  GenericArgumentMap Substitutions;
-public:
-  using TypeRefVisitor<TypeRefSubstitution<Runtime>, TypeRefPointer>::visit;
-  TypeRefSubstitution(ReflectionContext<Runtime> &RC,
-                      GenericArgumentMap Substitutions)
-  : RC(RC),
-    Substitutions(Substitutions) {}
-
-  TypeRefPointer visitBuiltinTypeRef(const BuiltinTypeRef *B) {
-    return std::make_shared<BuiltinTypeRef>(*B);
-  }
-
-  TypeRefPointer visitNominalTypeRef(const NominalTypeRef *N) {
-    return std::make_shared<NominalTypeRef>(*N);
-  }
-
-  TypeRefPointer visitBoundGenericTypeRef(const BoundGenericTypeRef *BG) {
-    TypeRefVector GenericParams;
-    for (auto Param : BG->getGenericParams())
-      if (auto Substituted = visit(Param.get()))
-        GenericParams.push_back(Substituted);
-      else return nullptr;
-    return std::make_shared<BoundGenericTypeRef>(BG->getMangledName(),
-                                                 GenericParams);
-  }
-
-  TypeRefPointer visitTupleTypeRef(const TupleTypeRef *T) {
-    TypeRefVector Elements;
-    for (auto Element : T->getElements()) {
-      if (auto SubstitutedElement = visit(Element.get()))
-        Elements.push_back(SubstitutedElement);
-      else
-        return nullptr;
-    }
-    return std::make_shared<TupleTypeRef>(Elements);
-  }
-
-  TypeRefPointer visitFunctionTypeRef(const FunctionTypeRef *F) {
-    TypeRefVector SubstitutedArguments;
-    for (auto Argument : F->getArguments())
-      if (auto SubstitutedArgument = visit(Argument.get()))
-        SubstitutedArguments.push_back(SubstitutedArgument);
-      else
-        return nullptr;
-
-    auto SubstitutedResult = visit(F->getResult().get());
-    if (!SubstitutedResult)
-      return nullptr;
-
-    return std::make_shared<FunctionTypeRef>(SubstitutedArguments,
-                                             SubstitutedResult);
-  }
-
-  TypeRefPointer visitProtocolTypeRef(const ProtocolTypeRef *P) {
-    return std::make_shared<ProtocolTypeRef>(*P);
-  }
-
-  TypeRefPointer
-  visitProtocolCompositionTypeRef(const ProtocolCompositionTypeRef *PC) {
-    return std::make_shared<ProtocolCompositionTypeRef>(*PC);
-  }
-
-  TypeRefPointer visitMetatypeTypeRef(const MetatypeTypeRef *M) {
-    if (auto SubstitutedInstance = visit(M->getInstanceType().get()))
-      return std::make_shared<MetatypeTypeRef>(SubstitutedInstance);
-    else
-      return nullptr;
-  }
-
-  TypeRefPointer
-  visitExistentialMetatypeTypeRef(const ExistentialMetatypeTypeRef *EM) {
-    if (auto SubstitutedInstance = visit(EM->getInstanceType().get()))
-      return std::make_shared<MetatypeTypeRef>(SubstitutedInstance);
-    else
-      return nullptr;
-  }
-
-  TypeRefPointer
-  visitGenericTypeParameterTypeRef(const GenericTypeParameterTypeRef *GTP){
-    return Substitutions[{GTP->getDepth(), GTP->getIndex()}];
-  }
-
-  TypeRefPointer
-  visitDependentMemberTypeRef(const DependentMemberTypeRef *DM) {
-    auto SubstBase = visit(DM->getBase().get());
-    if (!SubstBase || !SubstBase->isConcrete())
-      return nullptr;
-
-    TypeRefPointer TypeWitness;
-
-    switch (SubstBase->getKind()) {
-    case TypeRefKind::Nominal: {
-      auto Nominal = cast<NominalTypeRef>(SubstBase.get());
-      TypeWitness = RC.getDependentMemberTypeRef(Nominal->getMangledName(), DM);
-      break;
-    }
-    case TypeRefKind::BoundGeneric: {
-      auto BG = cast<BoundGenericTypeRef>(SubstBase.get());
-      TypeWitness = RC.getDependentMemberTypeRef(BG->getMangledName(), DM);
-      break;
-    }
-    default:
-      return nullptr;
-    }
-    if (!TypeWitness)
-      return nullptr;
-
-    return visit(TypeWitness.get());
-  }
-
-  TypeRefPointer visitForeignClassTypeRef(const ForeignClassTypeRef *F) {
-    return std::make_shared<ForeignClassTypeRef>(*F);
-  }
-
-  TypeRefPointer visitObjCClassTypeRef(const ObjCClassTypeRef *OC) {
-    return std::make_shared<ObjCClassTypeRef>(*OC);
-  }
-  
-  TypeRefPointer visitOpaqueTypeRef(const OpaqueTypeRef *Op) {
-    return std::make_shared<OpaqueTypeRef>(*Op);
-  }
-};
-
-template <typename Runtime>
-TypeRefPointer
-TypeRef::subst(ReflectionContext<Runtime> &RC, GenericArgumentMap Subs) {
-  return TypeRefSubstitution<Runtime>(RC, Subs).visit(this);
-}
 
 } // end namespace reflection
 } // end namespace swift

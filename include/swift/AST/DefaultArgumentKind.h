@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -17,6 +17,10 @@
 #ifndef SWIFT_DEFAULTARGUMENTKIND_H
 #define SWIFT_DEFAULTARGUMENTKIND_H
 
+#include "llvm/ADT/StringRef.h"
+#include <cstdint>
+#include <string>
+
 namespace llvm {
 class StringRef;
 }
@@ -26,7 +30,7 @@ namespace swift {
 class Expr;
 
 /// Describes the kind of default argument a tuple pattern element has.
-enum class DefaultArgumentKind : unsigned {
+enum class DefaultArgumentKind : uint8_t {
   /// No default argument.
   None,
   /// A normal default argument.
@@ -34,31 +38,55 @@ enum class DefaultArgumentKind : unsigned {
   /// The default argument is inherited from the corresponding argument of the
   /// overridden declaration.
   Inherited,
-  /// The #file default argument, which is expanded at the call site.
-  File,
-  /// The #line default argument, which is expanded at the call site.
-  Line,
-  /// The #column default argument, which is expanded at the call site.
-  Column,
-  /// The #function default argument, which is expanded at the call site.
-  Function,
-  /// The #dsohandle default argument, which is expanded at the call site.
-  DSOHandle,
   /// The "nil" literal.
-  Nil,
+  NilLiteral,
   /// An empty array literal.
   EmptyArray,
   /// An empty dictionary literal.
   EmptyDictionary,
+  /// A reference to the stored property. This is a special default argument
+  /// kind for the synthesized memberwise constructor to emit a call to the
+  /// property's initializer.
+  StoredProperty,
+  // Magic identifier literals expanded at the call site:
+#define MAGIC_IDENTIFIER(NAME, STRING, SYNTAX_KIND) NAME,
+#include "swift/AST/MagicIdentifierKinds.def"
 };
+enum { NumDefaultArgumentKindBits = 4 };
 
-/// Retrieve the spelling of this default argument in source code, or
-/// an empty string if it has none.
-llvm::StringRef getDefaultArgumentSpelling(DefaultArgumentKind kind);
+struct ArgumentAttrs {
+  DefaultArgumentKind argumentKind;
+  bool isUnavailableInSwift = false;
+  llvm::StringRef CXXOptionsEnumName = "";
 
-/// Infer a default argument kind from an expression, if the
-/// expression is the canonical way to spell that default argument.
-DefaultArgumentKind inferDefaultArgumentKind(Expr *expr);
+  ArgumentAttrs(DefaultArgumentKind argumentKind,
+                bool isUnavailableInSwift = false,
+                llvm::StringRef CXXOptionsEnumName = "")
+      : argumentKind(argumentKind), isUnavailableInSwift(isUnavailableInSwift),
+        CXXOptionsEnumName(CXXOptionsEnumName) {}
+
+  bool operator !=(const DefaultArgumentKind &rhs) const {
+    return argumentKind != rhs;
+  }
+
+  bool operator==(const DefaultArgumentKind &rhs) const {
+    return argumentKind == rhs;
+  }
+
+  bool hasDefaultArg() const {
+    return argumentKind != DefaultArgumentKind::None;
+  }
+
+  bool hasAlternateCXXOptionsEnumName() const {
+    return !CXXOptionsEnumName.empty() && isUnavailableInSwift;
+  }
+
+  llvm::StringRef getAlternateCXXOptionsEnumName() const {
+    assert(hasAlternateCXXOptionsEnumName() &&
+           "Expected a C++ Options type for C++-Interop but found none.");
+    return CXXOptionsEnumName;
+  }
+};
 
 } // end namespace swift
 

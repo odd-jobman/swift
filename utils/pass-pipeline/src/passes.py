@@ -5,6 +5,7 @@ from pass_pipeline import Pass
 # how to dump the passes and the pipelines themselves.
 AADumper = Pass('AADumper')
 ABCOpt = Pass('ABCOpt')
+AddressLowering = Pass('AddressLowering')
 AllocBoxToStack = Pass('AllocBoxToStack')
 CFGPrinter = Pass('CFGPrinter')
 COWArrayOpts = Pass('COWArrayOpts')
@@ -27,7 +28,6 @@ GlobalARCOpts = Pass('GlobalARCOpts')
 GlobalLoadStoreOpts = Pass('GlobalLoadStoreOpts')
 GlobalOpt = Pass('GlobalOpt')
 IVInfoPrinter = Pass('IVInfoPrinter')
-InOutDeshadowing = Pass('InOutDeshadowing')
 InstCount = Pass('InstCount')
 LICM = Pass('LICM')
 LateInliner = Pass('LateInliner')
@@ -40,7 +40,7 @@ NoReturnFolding = Pass('NoReturnFolding')
 PerfInliner = Pass('PerfInliner')
 PerformanceConstantPropagation = Pass('PerformanceConstantPropagation')
 PredictableMemoryOptimizations = Pass('PredictableMemoryOptimizations')
-SILCleanup = Pass('SILCleanup')
+IRGenPrepare = Pass('IRGenPrepare')
 SILCombine = Pass('SILCombine')
 SILLinker = Pass('SILLinker')
 SROA = Pass('SROA')
@@ -54,6 +54,7 @@ SwiftArrayOpts = Pass('SwiftArrayOpts')
 PASSES = [
     AADumper,
     ABCOpt,
+    AddressLowering,
     AllocBoxToStack,
     CFGPrinter,
     COWArrayOpts,
@@ -76,7 +77,6 @@ PASSES = [
     GlobalLoadStoreOpts,
     GlobalOpt,
     IVInfoPrinter,
-    InOutDeshadowing,
     InstCount,
     LICM,
     LateInliner,
@@ -89,7 +89,7 @@ PASSES = [
     PerfInliner,
     PerformanceConstantPropagation,
     PredictableMemoryOptimizations,
-    SILCleanup,
+    IRGenPrepare,
     SILCombine,
     SILLinker,
     SROA,

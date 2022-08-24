@@ -1,4 +1,4 @@
-// RUN: %target-sil-opt %s -side-effects-dump -o /dev/null | FileCheck %s
+// RUN: %target-sil-opt %s -parse-serialized-sil -module-name Swift -side-effects-dump -o /dev/null | %FileCheck %s
 
 // REQUIRES: asserts
 
@@ -7,6 +7,8 @@ import Builtin
 //////////////////
 // Declarations //
 //////////////////
+
+enum Never {}
 
 struct Int32 {
   var _value : Builtin.Int32
@@ -25,14 +27,15 @@ struct UnsafeMutablePointer<T> {
 }
 
 class X {
-  @sil_stored var a: Int32
-  @sil_stored var x: X
+  @_hasStorage var a: Int32
+  @_hasStorage var x: X
 
   init()
 }
 
-sil @exitfunc : $@convention(thin) @noreturn () -> ()
+sil [_semantics "programtermination_point"] @exitfunc : $@convention(thin) () -> Never
 sil [readnone] @pure_func : $@convention(thin) () -> ()
+sil [releasenone] @releasenone_func : $@convention(thin) () -> ()
 sil [readonly] @readonly_owned : $@convention(thin) (@owned X) -> ()
 sil [readonly] @readonly_guaranteed : $@convention(thin) (@guaranteed X) -> ()
 
@@ -40,7 +43,7 @@ sil @unknown_func : $@convention(thin) () -> ()
 
 
 struct SP {
-  var value: Builtin.BridgeObject
+  var value: X
 }
 
 enum EP {
@@ -107,7 +110,7 @@ bb0(%0 : $X, %1 : $*Int32):
 // CHECK-LABEL: sil @partial_apply_load_store_to_args
 // The apply may call deinit of the callee_owned thick function. Therefore the
 // function effects are conservative.
-// CHECK: <func=rw+-,param0=,param1=,param2=;alloc;trap;readrc>
+// CHECK: <func=rw+-,param0=,param1=r,param2=;alloc;trap;readrc>
 sil @partial_apply_load_store_to_args : $@convention(thin) (@inout Int32, @inout Int32, @guaranteed X) -> () {
 bb0(%0 : $*Int32, %1 : $*Int32, %2 : $X):
   %f = function_ref @load_store_to_args : $@convention(thin) (@inout Int32, @inout Int32, @guaranteed X) -> ()
@@ -145,7 +148,7 @@ bb0(%0 : $*X, %1 : $X):
 }
 
 // CHECK-LABEL: sil @release_owned
-// CHECK: <func=rw+-,param0=-;alloc;trap;readrc>
+// CHECK: <func=,param0=->
 sil @release_owned : $@convention(thin) (@owned X) -> () {
 bb0(%0 : $X):
   strong_release %0 : $X
@@ -174,11 +177,11 @@ bb0(%0 : $Int32):
   store %0 to %a : $*Int32
   %l1 = load %a : $*Int32
 
-  %b = alloc_box $Int32
-  %ba = project_box %b : $@box Int32
+  %b = alloc_box $<τ_0_0> { var τ_0_0 } <Int32>
+  %ba = project_box %b : $<τ_0_0> { var τ_0_0 } <Int32>, 0
   store %0 to %ba : $*Int32
   %l2 = load %ba : $*Int32
- 
+
   %s = alloc_stack $Int32
   store %0 to %s : $*Int32
   %l3 = load %s : $*Int32
@@ -199,14 +202,22 @@ bb0(%0 : $Builtin.Int1):
 }
 
 // CHECK-LABEL: sil @checkedcast
-// CHECK: <func=,param0=;trap>
+// CHECK: <func=,param0=r;trap>
 sil @checkedcast : $@convention(thin) (Builtin.NativeObject) -> () {
 bb0(%0 : $Builtin.NativeObject):
-  unconditional_checked_cast %0 : $Builtin.NativeObject to $X
+  unconditional_checked_cast %0 : $Builtin.NativeObject to X
   %r = tuple ()
   return %r : $()
 }
 
+// CHECK-LABEL: sil @checkedaddr
+// CHECK: <func=rw+-,param0=,param1=;alloc;trap;readrc>
+sil @checkedaddr : $@convention(thin) (Builtin.NativeObject, X) -> () {
+bb0(%0 : $Builtin.NativeObject, %1 : $X):
+  unconditional_checked_cast_addr Builtin.NativeObject in %0 : $Builtin.NativeObject to X in %1 : $X
+  %r = tuple ()
+  return %r : $()
+}
 
 sil_global public @sil_global1 : $Int32
 
@@ -275,9 +286,9 @@ bb0(%0 : $Int32):
 
 // CHECK-LABEL: sil @test_project_box
 // CHECK: <func=,param0=r>
-sil @test_project_box : $@convention(thin) (@box Builtin.Int32) -> Builtin.Int32 {
-bb0(%0 : $@box Builtin.Int32):
-  %a = project_box %0 : $@box Builtin.Int32
+sil @test_project_box : $@convention(thin) (<τ_0_0> { var τ_0_0 } <Builtin.Int32>) -> Builtin.Int32 {
+bb0(%0 : $<τ_0_0> { var τ_0_0 } <Builtin.Int32>):
+  %a = project_box %0 : $<τ_0_0> { var τ_0_0 } <Builtin.Int32>, 0
   %l = load %a : $*Builtin.Int32
   return %l : $Builtin.Int32
 }
@@ -286,13 +297,14 @@ bb0(%0 : $@box Builtin.Int32):
 // CHECK: <func=,param0=r>
 sil @projections : $@convention(thin) (EP) -> Builtin.Int32 {
 bb0(%0 : $EP):
-  %ee = unchecked_enum_data %0 : $EP, #EP.data!enumelt.1
+  %ee = unchecked_enum_data %0 : $EP, #EP.data!enumelt
   %te = tuple_extract %ee : $(SP, Builtin.Int1), 0
   %se = struct_extract %te : $SP, #SP.value
-  %utbc = unchecked_trivial_bit_cast %se : $Builtin.BridgeObject to $Builtin.RawPointer
+  %urc = unchecked_ref_cast %se : $X to $Builtin.BridgeObject
+  %utbc = unchecked_trivial_bit_cast %urc : $Builtin.BridgeObject to $Builtin.RawPointer
   %idx = integer_literal $Builtin.Int32, 0
   %irp = index_raw_pointer %utbc : $Builtin.RawPointer, %idx : $Builtin.Int32
-  %pta = pointer_to_address %irp : $Builtin.RawPointer to $*Int32
+  %pta = pointer_to_address %irp : $Builtin.RawPointer to [strict] $*Int32
   %sea = struct_element_addr %pta : $*Int32, #Int32._value
   %l = load %sea : $*Builtin.Int32
   return %l : $Builtin.Int32
@@ -425,8 +437,10 @@ bb0:
   cond_br undef, bb1, bb2
 
 bb1:
-  %u = function_ref @exitfunc : $@convention(thin) @noreturn () -> ()
-  %a = apply %u() : $@convention(thin) @noreturn () -> ()
+  %t = builtin "int_trap"() : $()
+  %b = builtin "conditionallyUnreachable"() : $()
+  %u = function_ref @exitfunc : $@convention(thin) () -> Never
+  %a = apply %u() : $@convention(thin) () -> Never
   unreachable
 
 bb2:
@@ -443,6 +457,17 @@ bb0:
   %r = tuple ()
   return %r : $()
 }
+
+// CHECK-LABEL: sil @call_releasenone
+// CHECK: <func=rw>
+sil @call_releasenone : $@convention(thin) () -> () {
+bb0:
+  %u = function_ref @releasenone_func : $@convention(thin) () -> ()
+  %a = apply %u() : $@convention(thin) () -> ()
+  %r = tuple ()
+  return %r : $()
+}
+
 
 // CHECK-LABEL: sil @call_readonly_owned
 // CHECK: <func=rw+-,param0=;alloc;trap;readrc>
@@ -472,3 +497,32 @@ bb0(%0 : $X):
   %3 = tuple()
   return %3 : $()
 }
+
+// CHECK-LABEL: sil @indirect_parameter_to_partial_apply
+// CHECK-NEXT: <func=,param0=r;alloc>
+
+sil @indirect_parameter_to_partial_apply : $@convention(thin) (@in Int32) ->  @owned @callee_owned (Bool) -> Int32 {
+bb0(%0 : $*Int32):
+  %2 = function_ref @closure : $@convention(thin) (Bool, @in Int32) -> Int32
+  %3 = partial_apply %2(%0) : $@convention(thin) (Bool, @in Int32) -> Int32
+  return %3 : $@callee_owned (Bool) -> Int32
+}
+
+sil @closure : $@convention(thin) (Bool, @in Int32) -> Int32
+
+sil public_external @public_external_func : $@convention(thin) () -> () {
+bb0:
+  %r = tuple ()
+  return %r : $()
+}
+
+// CHECK-LABEL: sil @call_public_external_func
+// CHECK-NEXT: <func=rw+-;alloc;trap;readrc>
+sil @call_public_external_func : $@convention(thin) () -> () {
+bb0:
+  %u = function_ref @public_external_func : $@convention(thin) () -> ()
+  %a = apply %u() : $@convention(thin) () -> ()
+  %r = tuple ()
+  return %r : $()
+}
+

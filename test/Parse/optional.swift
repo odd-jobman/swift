@@ -1,4 +1,4 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 struct A {
   func foo() {}
@@ -14,4 +14,4 @@ var e : (() -> A)?
 var f = e?()
 
 struct B<T> {}
-var g = B<A!>()
+var g = B<A?>()

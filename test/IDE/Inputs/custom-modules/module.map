@@ -11,6 +11,16 @@ module ImportedProtocols {
   }
 }
 
+module Newtype {
+  export *
+  header "Newtype.h"
+}
+
+module NewtypeObjC {
+  header "NewtypeObjC.h"
+  export *
+}
+
 module ImportAsMember {
   export *
 
@@ -25,20 +35,27 @@ module ImportAsMember {
   module C {
     requires objc
     header "ImportAsMemberC.h"
+    export *
   }
 
-  module Proto {
-    requires objc
-    header "ImportAsMemberProto.h"
+  module APINotes {
+    header "ImportAsMemberAPINotes.h"
   }
 
-  module ProtoErr {
+  module Class {
     requires objc
-    header "ImportAsMemberProto.h"
+    header "ImportAsMemberClass.h"
   }
 }
 
-module InferImportAsMember {
+module IAMError {
   export *
-  header "InferImportAsMember.h"
+  requires objc
+  header "ImportAsMemberError.h"
 }
+
+module CompatibilityAlias {
+  header "CompatibilityAlias.h"
+  export *
+}
+

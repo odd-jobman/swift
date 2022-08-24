@@ -1,17 +1,16 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # utils/apply-fixit-edits.py - Apply edits from .remap files -*- python -*-
 #
 # This source file is part of the Swift.org open source project
 #
-# Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+# Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 # Licensed under Apache License v2.0 with Runtime Library Exception
 #
-# See http://swift.org/LICENSE.txt for license information
-# See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
-
-from __future__ import print_function
+# See https://swift.org/LICENSE.txt for license information
+# See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 
 import argparse
+import collections
 import json
 import os
 import sys
@@ -31,7 +30,7 @@ def apply_edits(path):
         print("No remap files found")
         return 1
 
-    edits_set = set()
+    edits_per_file = collections.defaultdict(list)
     for remap_file in remap_files:
         with open(remap_file) as f:
             json_data = f.read()
@@ -43,24 +42,15 @@ def apply_edits(path):
             offset = ed["offset"]
             length = ed.get("remove", 0)
             text = ed.get("text", "")
-            edits_set.add((fname, offset, length, text))
+            edits_per_file[fname].append((offset, length, text))
 
-    edits_per_file = {}
-    for ed in edits_set:
-        fname = ed[0]
-        if fname not in edits_per_file:
-            edits_per_file[fname] = []
-        edits_per_file[fname].append((ed[1], ed[2], ed[3]))
-
-    for fname, edits in edits_per_file.iteritems():
+    for fname, edits in edits_per_file.items():
         print('Updating', fname)
         edits.sort(reverse=True)
         with open(fname) as f:
             file_data = f.read()
         for ed in edits:
-            offset = ed[0]
-            length = ed[1]
-            text = ed[2]
+            offset, length, text = ed
             file_data = file_data[:offset] + str(text) + \
                 file_data[offset + length:]
         with open(fname, 'w') as f:
@@ -78,6 +68,7 @@ edits to the source files.""")
 
     args = parser.parse_args()
     return apply_edits(args.build_dir_path)
+
 
 if __name__ == "__main__":
     sys.exit(main())

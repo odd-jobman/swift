@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 #define DEBUG_TYPE "array-count-propagation"
@@ -59,7 +59,7 @@ class ArrayAllocation {
 
   bool propagate();
   bool isInitializationWithKnownCount();
-  bool analyseArrayValueUses();
+  bool analyzeArrayValueUses();
   bool recursivelyCollectUses(ValueBase *Def);
   bool propagateCountToUsers();
 
@@ -69,7 +69,7 @@ public:
     return ArrayAllocation(Inst, DeadCalls).propagate();
   }
 };
-}
+} // end anonymous namespace
 
 /// Propagate the count of an array created to count method calls on the same
 /// array.
@@ -81,7 +81,7 @@ bool ArrayAllocation::propagate() {
     return false;
 
   // The array value was stored or has escaped.
-  if (!analyseArrayValueUses())
+  if (!analyzeArrayValueUses())
     return false;
 
   // No count users.
@@ -102,7 +102,7 @@ bool ArrayAllocation::isInitializationWithKnownCount() {
       (ArrayValue = Uninitialized.getArrayValue()))
     return true;
 
-  ArraySemanticsCall Init(Alloc, "array.init");
+  ArraySemanticsCall Init(Alloc, "array.init", /*matchPartialName*/true);
   if (Init &&
       (ArrayCount = Init.getInitializationCount()) &&
       (ArrayValue = Init.getArrayValue()))
@@ -113,7 +113,7 @@ bool ArrayAllocation::isInitializationWithKnownCount() {
 
 /// Collect all getCount users and check that there are no escapes or uses that
 /// could change the array value.
-bool ArrayAllocation::analyseArrayValueUses() {
+bool ArrayAllocation::analyzeArrayValueUses() {
   return recursivelyCollectUses(ArrayValue);
 }
 
@@ -123,7 +123,8 @@ bool ArrayAllocation::recursivelyCollectUses(ValueBase *Def) {
   for (auto *Opd : Def->getUses()) {
     auto *User = Opd->getUser();
     // Ignore reference counting and debug instructions.
-    if (isa<RefCountingInst>(User) || isa<DebugValueInst>(User))
+    if (isa<RefCountingInst>(User) || isa<DestroyValueInst>(User) ||
+        isa<DebugValueInst>(User))
       continue;
 
     // Array value projection.
@@ -134,10 +135,23 @@ bool ArrayAllocation::recursivelyCollectUses(ValueBase *Def) {
     }
 
     // Check array semantic calls.
-    ArraySemanticsCall ArrayOp(User);
-    if (ArrayOp && ArrayOp.doesNotChangeArray()) {
-      if (ArrayOp.getKind() == ArrayCallKind::kGetCount)
-        CountCalls.insert(ArrayOp);
+    if (auto *apply = dyn_cast<ApplyInst>(User)) {
+      ArraySemanticsCall ArrayOp(apply);
+      switch (ArrayOp.getKind()) {
+        case ArrayCallKind::kNone:
+          return false;
+        case ArrayCallKind::kGetCount:
+          CountCalls.insert(ArrayOp);
+          break;
+        case ArrayCallKind::kArrayFinalizeIntrinsic:
+          if (!recursivelyCollectUses(apply))
+            return false;
+          break;
+        default:
+          if (!ArrayOp.doesNotChangeArray())
+            return false;
+          break;
+      }
       continue;
     }
 
@@ -149,7 +163,7 @@ bool ArrayAllocation::recursivelyCollectUses(ValueBase *Def) {
 
 bool ArrayAllocation::propagateCountToUsers() {
   bool HasChanged = false;
-  DEBUG(llvm::dbgs() << "Propagating count from " << *Alloc);
+  LLVM_DEBUG(llvm::dbgs() << "Propagating count from " << *Alloc);
   for (auto *Count : CountCalls) {
     assert(ArraySemanticsCall(Count).getKind() == ArrayCallKind::kGetCount &&
            "Expecting a call to count");
@@ -162,7 +176,7 @@ bool ArrayAllocation::propagateCountToUsers() {
     }
 
     for (auto *Use : Uses) {
-      DEBUG(llvm::dbgs() << "  to user " << *Use->getUser());
+      LLVM_DEBUG(llvm::dbgs() << "  to user " << *Use->getUser());
       Use->set(ArrayCount);
       HasChanged = true;
     }
@@ -178,10 +192,6 @@ namespace {
 class ArrayCountPropagation : public SILFunctionTransform {
 public:
   ArrayCountPropagation() {}
-
-  StringRef getName() override {
-    return "Array Count Propagation";
-  }
 
   void run() override {
     auto &Fn = *getFunction();
@@ -209,7 +219,7 @@ public:
   }
 };
 
-} // anonymous namespace.
+} // end anonymous namespace
 
 SILTransform *swift::createArrayCountPropagation() {
   return new ArrayCountPropagation();

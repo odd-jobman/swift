@@ -1,12 +1,14 @@
-// RUN: %target-swift-frontend -I %S/../Inputs -enable-source-import -emit-silgen -enable-resilience %s | FileCheck %s
+// RUN: %empty-directory(%t)
+// RUN: %target-swift-frontend -emit-module -enable-library-evolution -emit-module-path=%t/resilient_struct.swiftmodule %S/../Inputs/resilient_struct.swift
+// RUN: %target-swift-emit-silgen -I %t -enable-library-evolution %s | %FileCheck %s
 
 import resilient_struct
 
-// Resilient structs are always address-only
+// Resilient structs from outside our resilience domain are always address-only
 
-// CHECK-LABEL: sil hidden @_TF17struct_resilience26functionWithResilientTypesFTV16resilient_struct4Size1fFS1_S1__S1_ : $@convention(thin) (@in Size, @owned @callee_owned (@in Size) -> @out Size) -> @out Size
-// CHECK:       bb0(%0 : $*Size, %1 : $*Size, %2 : $@callee_owned (@in Size) -> @out Size):
-func functionWithResilientTypes(s: Size, f: Size -> Size) -> Size {
+// CHECK-LABEL: sil hidden [ossa] @$s17struct_resilience26functionWithResilientTypes_1f010resilient_A04SizeVAF_A2FXEtF : $@convention(thin) (@in_guaranteed Size, @noescape @callee_guaranteed (@in_guaranteed Size) -> @out Size) -> @out Size
+// CHECK:       bb0(%0 : $*Size, %1 : $*Size, %2 : $@noescape @callee_guaranteed (@in_guaranteed Size) -> @out Size):
+func functionWithResilientTypes(_ s: Size, f: (Size) -> Size) -> Size {
 
   // Stored properties of resilient structs from outside our resilience
   // domain are accessed through accessors
@@ -15,34 +17,35 @@ func functionWithResilientTypes(s: Size, f: Size -> Size) -> Size {
   var s2 = s
 
 // CHECK:         copy_addr %1 to [initialization] [[SIZE_BOX:%.*]] : $*Size
-// CHECK:         [[FN:%.*]] = function_ref @_TFV16resilient_struct4Sizeg1wSi : $@convention(method) (@in_guaranteed Size) -> Int
-// CHECK:         [[RESULT:%.*]] = apply [[FN]]([[SIZE_BOX]])
-// CHECK:         [[FN:%.*]] = function_ref @_TFV16resilient_struct4Sizes1wSi : $@convention(method) (Int, @inout Size) -> ()
-// CHECK:         apply [[FN]]([[RESULT]], [[OTHER_SIZE_BOX]])
+// CHECK:         [[GETTER:%.*]] = function_ref @$s16resilient_struct4SizeV1wSivg : $@convention(method) (@in_guaranteed Size) -> Int
+// CHECK:         [[RESULT:%.*]] = apply [[GETTER]]([[SIZE_BOX]])
+// CHECK:         [[WRITE:%.*]] = begin_access [modify] [unknown] [[OTHER_SIZE_BOX]] : $*Size
+// CHECK:         [[SETTER:%.*]] = function_ref @$s16resilient_struct4SizeV1wSivs : $@convention(method) (Int, @inout Size) -> ()
+// CHECK:         apply [[SETTER]]([[RESULT]], [[WRITE]])
   s2.w = s.w
 
 // CHECK:         copy_addr %1 to [initialization] [[SIZE_BOX:%.*]] : $*Size
-// CHECK:         [[FN:%.*]] = function_ref @_TFV16resilient_struct4Sizeg1hSi : $@convention(method) (@in_guaranteed Size) -> Int
+// CHECK:         [[FN:%.*]] = function_ref @$s16resilient_struct4SizeV1hSivg : $@convention(method) (@in_guaranteed Size) -> Int
 // CHECK:         [[RESULT:%.*]] = apply [[FN]]([[SIZE_BOX]])
   _ = s.h
 
-// CHECK:         copy_addr %1 to [initialization] [[SIZE_BOX:%.*]] : $*Size
-// CHECK:         apply %2(%0, [[SIZE_BOX]])
+// CHECK:         apply %2(%0, %1)
+// CHECK-NOT:         destroy_value %2
 // CHECK:         return
   return f(s)
 }
 
-// Use materializeForSet for inout access of properties in resilient structs
+// Use modify for inout access of properties in resilient structs
 // from a different resilience domain
 
-func inoutFunc(x: inout Int) {}
+public func inoutFunc(_ x: inout Int) {}
 
-// CHECK-LABEL: sil hidden @_TF17struct_resilience18resilientInOutTestFRV16resilient_struct4SizeT_ : $@convention(thin) (@inout Size) -> ()
+// CHECK-LABEL: sil hidden [ossa] @$s17struct_resilience18resilientInOutTestyy0c1_A04SizeVzF : $@convention(thin) (@inout Size) -> ()
 
-func resilientInOutTest(s: inout Size) {
+func resilientInOutTest(_ s: inout Size) {
 
-// CHECK:         function_ref @_TF17struct_resilience9inoutFuncFRSiT_
-// CHECK:         function_ref @_TFV16resilient_struct4Sizem1wSi
+// CHECK:         function_ref @$s16resilient_struct4SizeV1wSivM
+// CHECK:         function_ref @$s17struct_resilience9inoutFuncyySizF
 
   inoutFunc(&s.w)
 
@@ -51,9 +54,9 @@ func resilientInOutTest(s: inout Size) {
 
 // Fixed-layout structs may be trivial or loadable
 
-// CHECK-LABEL: sil hidden @_TF17struct_resilience28functionWithFixedLayoutTypesFTV16resilient_struct5Point1fFS1_S1__S1_ : $@convention(thin) (Point, @owned @callee_owned (Point) -> Point) -> Point
-// CHECK:       bb0(%0 : $Point, %1 : $@callee_owned (Point) -> Point):
-func functionWithFixedLayoutTypes(p: Point, f: Point -> Point) -> Point {
+// CHECK-LABEL: sil hidden [ossa] @$s17struct_resilience28functionWithFixedLayoutTypes_1f010resilient_A05PointVAF_A2FXEtF : $@convention(thin) (Point, @noescape @callee_guaranteed (Point) -> Point) -> Point
+// CHECK:       bb0(%0 : $Point, %1 : $@noescape @callee_guaranteed (Point) -> Point):
+func functionWithFixedLayoutTypes(_ p: Point, f: (Point) -> Point) -> Point {
 
   // Stored properties of fixed layout structs are accessed directly
   var p2 = p
@@ -73,9 +76,9 @@ func functionWithFixedLayoutTypes(p: Point, f: Point -> Point) -> Point {
 
 // Fixed-layout struct with resilient stored properties is still address-only
 
-// CHECK-LABEL: sil hidden @_TF17struct_resilience39functionWithFixedLayoutOfResilientTypesFTV16resilient_struct9Rectangle1fFS1_S1__S1_ : $@convention(thin) (@in Rectangle, @owned @callee_owned (@in Rectangle) -> @out Rectangle) -> @out Rectangle
-// CHECK:        bb0(%0 : $*Rectangle, %1 : $*Rectangle, %2 : $@callee_owned (@in Rectangle) -> @out Rectangle):
-func functionWithFixedLayoutOfResilientTypes(r: Rectangle, f: Rectangle -> Rectangle) -> Rectangle {
+// CHECK-LABEL: sil hidden [ossa] @$s17struct_resilience39functionWithFixedLayoutOfResilientTypes_1f010resilient_A09RectangleVAF_A2FXEtF : $@convention(thin) (@in_guaranteed Rectangle, @noescape @callee_guaranteed (@in_guaranteed Rectangle) -> @out Rectangle) -> @out Rectangle
+// CHECK:        bb0(%0 : $*Rectangle, %1 : $*Rectangle, %2 : $@noescape @callee_guaranteed (@in_guaranteed Rectangle) -> @out Rectangle):
+func functionWithFixedLayoutOfResilientTypes(_ r: Rectangle, f: (Rectangle) -> Rectangle) -> Rectangle {
   return f(r)
 }
 
@@ -86,9 +89,9 @@ public struct MySize {
 
   // Static computed property
 
-// CHECK-LABEL: sil @_TZFV17struct_resilience6MySizeg10expirationSi : $@convention(thin) (@thin MySize.Type) -> Int
-// CHECK-LABEL: sil @_TZFV17struct_resilience6MySizes10expirationSi : $@convention(thin) (Int, @thin MySize.Type) -> ()
-// CHECK-LABEL: sil @_TZFV17struct_resilience6MySizem10expirationSi : $@convention(thin) (Builtin.RawPointer, @inout Builtin.UnsafeValueBuffer, @thin MySize.Type) -> (Builtin.RawPointer, Optional<Builtin.RawPointer>)
+// CHECK-LABEL: sil [ossa] @$s17struct_resilience6MySizeV10expirationSivgZ : $@convention(method) (@thin MySize.Type) -> Int
+// CHECK-LABEL: sil [ossa] @$s17struct_resilience6MySizeV10expirationSivsZ : $@convention(method) (Int, @thin MySize.Type) -> ()
+// CHECK-LABEL: sil [ossa] @$s17struct_resilience6MySizeV10expirationSivMZ : $@yield_once @convention(method) (@thin MySize.Type) -> @yields @inout Int
   public static var expiration: Int {
     get { return copyright + 70 }
     set { copyright = newValue - 70 }
@@ -96,9 +99,9 @@ public struct MySize {
 
   // Instance computed property
 
-// CHECK-LABEL: sil @_TFV17struct_resilience6MySizeg1dSi : $@convention(method) (@in_guaranteed MySize) -> Int
-// CHECK-LABEL: sil @_TFV17struct_resilience6MySizes1dSi : $@convention(method) (Int, @inout MySize) -> ()
-// CHECK-LABEL: sil @_TFV17struct_resilience6MySizem1dSi : $@convention(method) (Builtin.RawPointer, @inout Builtin.UnsafeValueBuffer, @inout MySize) -> (Builtin.RawPointer, Optional<Builtin.RawPointer>)
+// CHECK-LABEL: sil [ossa] @$s17struct_resilience6MySizeV1dSivg : $@convention(method) (@in_guaranteed MySize) -> Int
+// CHECK-LABEL: sil [ossa] @$s17struct_resilience6MySizeV1dSivs : $@convention(method) (Int, @inout MySize) -> ()
+// CHECK-LABEL: sil [ossa] @$s17struct_resilience6MySizeV1dSivM : $@yield_once @convention(method) (@inout MySize) -> @yields @inout Int
   public var d: Int {
     get { return 0 }
     set { }
@@ -106,26 +109,31 @@ public struct MySize {
 
   // Instance stored property
 
-// CHECK-LABEL: sil @_TFV17struct_resilience6MySizeg1wSi : $@convention(method) (@in_guaranteed MySize) -> Int
-// CHECK-LABEL: sil @_TFV17struct_resilience6MySizes1wSi : $@convention(method) (Int, @inout MySize) -> ()
-// CHECK-LABEL: sil @_TFV17struct_resilience6MySizem1wSi : $@convention(method) (Builtin.RawPointer, @inout Builtin.UnsafeValueBuffer, @inout MySize) -> (Builtin.RawPointer, Optional<Builtin.RawPointer>)
+// CHECK-LABEL: sil [ossa] @$s17struct_resilience6MySizeV1wSivg : $@convention(method) (@in_guaranteed MySize) -> Int
+// CHECK-LABEL: sil [ossa] @$s17struct_resilience6MySizeV1wSivs : $@convention(method) (Int, @inout MySize) -> ()
+// CHECK-LABEL: sil [ossa] @$s17struct_resilience6MySizeV1wSivM : $@yield_once @convention(method) (@inout MySize) -> @yields @inout Int
   public var w: Int
 
   // Read-only instance stored property
 
-// CHECK-LABEL: sil @_TFV17struct_resilience6MySizeg1hSi : $@convention(method) (@in_guaranteed MySize) -> Int
+// CHECK-LABEL: sil [ossa] @$s17struct_resilience6MySizeV1hSivg : $@convention(method) (@in_guaranteed MySize) -> Int
   public let h: Int
+
+  // Weak property
+
+// CHECK-LABEL: sil [ossa] @$s17struct_resilience6MySizeV1iyXlSgvg : $@convention(method) (@in_guaranteed MySize) -> @owned Optional<AnyObject>
+  public weak var i: AnyObject?
 
   // Static stored property
 
-// CHECK-LABEL: sil @_TZFV17struct_resilience6MySizeg9copyrightSi : $@convention(thin) (@thin MySize.Type) -> Int
-// CHECK-LABEL: sil @_TZFV17struct_resilience6MySizes9copyrightSi : $@convention(thin) (Int, @thin MySize.Type) -> ()
-// CHECK-LABEL: sil @_TZFV17struct_resilience6MySizem9copyrightSi : $@convention(thin) (Builtin.RawPointer, @inout Builtin.UnsafeValueBuffer, @thin MySize.Type) -> (Builtin.RawPointer, Optional<Builtin.RawPointer>)
+// CHECK-LABEL: sil [ossa] @$s17struct_resilience6MySizeV9copyrightSivgZ : $@convention(method) (@thin MySize.Type) -> Int
+// CHECK-LABEL: sil [ossa] @$s17struct_resilience6MySizeV9copyrightSivsZ : $@convention(method) (Int, @thin MySize.Type) -> ()
+// CHECK-LABEL: sil [ossa] @$s17struct_resilience6MySizeV9copyrightSivMZ : $@yield_once @convention(method) (@thin MySize.Type) -> @yields @inout Int
   public static var copyright: Int = 0
 }
 
-// CHECK-LABEL: sil @_TF17struct_resilience28functionWithMyResilientTypesFTVS_6MySize1fFS0_S0__S0_ : $@convention(thin) (@in MySize, @owned @callee_owned (@in MySize) -> @out MySize) -> @out MySize
-public func functionWithMyResilientTypes(s: MySize, f: MySize -> MySize) -> MySize {
+// CHECK-LABEL: sil [ossa] @$s17struct_resilience28functionWithMyResilientTypes_1fAA0E4SizeVAE_A2EXEtF : $@convention(thin) (@in_guaranteed MySize, @noescape @callee_guaranteed (@in_guaranteed MySize) -> @out MySize) -> @out MySize
+public func functionWithMyResilientTypes(_ s: MySize, f: (MySize) -> MySize) -> MySize {
 
   // Stored properties of resilient structs from inside our resilience
   // domain are accessed directly
@@ -134,23 +142,24 @@ public func functionWithMyResilientTypes(s: MySize, f: MySize -> MySize) -> MySi
   var s2 = s
 
 // CHECK:         [[SRC_ADDR:%.*]] = struct_element_addr %1 : $*MySize, #MySize.w
-// CHECK:         [[SRC:%.*]] = load [[SRC_ADDR]] : $*Int
-// CHECK:         [[DEST_ADDR:%.*]] = struct_element_addr [[SIZE_BOX]] : $*MySize, #MySize.w
+// CHECK:         [[SRC:%.*]] = load [trivial] [[SRC_ADDR]] : $*Int
+// CHECK:         [[WRITE:%.*]] = begin_access [modify] [unknown] [[SIZE_BOX]] : $*MySize
+// CHECK:         [[DEST_ADDR:%.*]] = struct_element_addr [[WRITE]] : $*MySize, #MySize.w
 // CHECK:         assign [[SRC]] to [[DEST_ADDR]] : $*Int
   s2.w = s.w
 
 // CHECK:         [[RESULT_ADDR:%.*]] = struct_element_addr %1 : $*MySize, #MySize.h
-// CHECK:         [[RESULT:%.*]] = load [[RESULT_ADDR]] : $*Int
+// CHECK:         [[RESULT:%.*]] = load [trivial] [[RESULT_ADDR]] : $*Int
   _ = s.h
 
-// CHECK:         copy_addr %1 to [initialization] [[SIZE_BOX:%.*]] : $*MySize
-// CHECK:         apply %2(%0, [[SIZE_BOX]])
+// CHECK:         apply %2(%0, %1)
+// CHECK-NOT:         destroy_value %2
 // CHECK:         return
   return f(s)
 }
 
-// CHECK-LABEL: sil [transparent] [fragile] @_TF17struct_resilience25publicTransparentFunctionFVS_6MySizeSi : $@convention(thin) (@in MySize) -> Int
-@_transparent public func publicTransparentFunction(s: MySize) -> Int {
+// CHECK-LABEL: sil [transparent] [serialized] [ossa] @$s17struct_resilience25publicTransparentFunctionySiAA6MySizeVF : $@convention(thin) (@in_guaranteed MySize) -> Int
+@_transparent public func publicTransparentFunction(_ s: MySize) -> Int {
 
   // Since the body of a public transparent function might be inlined into
   // other resilience domains, we have to use accessors
@@ -158,41 +167,40 @@ public func functionWithMyResilientTypes(s: MySize, f: MySize -> MySize) -> MySi
 // CHECK:         [[SELF:%.*]] = alloc_stack $MySize
 // CHECK-NEXT:    copy_addr %0 to [initialization] [[SELF]]
 
-// CHECK:         [[GETTER:%.*]] = function_ref @_TFV17struct_resilience6MySizeg1wSi
+// CHECK:         [[GETTER:%.*]] = function_ref @$s17struct_resilience6MySizeV1wSivg
 // CHECK-NEXT:    [[RESULT:%.*]] = apply [[GETTER]]([[SELF]])
 // CHECK-NEXT:    destroy_addr [[SELF]]
 // CHECK-NEXT:    dealloc_stack [[SELF]]
-// CHECK-NEXT:    destroy_addr %0
 // CHECK-NEXT:    return [[RESULT]]
   return s.w
 }
 
-// CHECK-LABEL: sil [transparent] [fragile] @_TF17struct_resilience30publicTransparentLocalFunctionFVS_6MySizeFT_Si : $@convention(thin) (@in MySize) -> @owned @callee_owned () -> Int
-@_transparent public func publicTransparentLocalFunction(s: MySize) -> () -> Int {
+// CHECK-LABEL: sil [transparent] [serialized] [ossa] @$s17struct_resilience30publicTransparentLocalFunctionySiycAA6MySizeVF : $@convention(thin) (@in_guaranteed MySize) -> @owned @callee_guaranteed () -> Int
+@_transparent public func publicTransparentLocalFunction(_ s: MySize) -> () -> Int {
 
-// CHECK-LABEL: sil shared [fragile] @_TFF17struct_resilience30publicTransparentLocalFunctionFVS_6MySizeFT_SiU_FT_Si : $@convention(thin) (@owned @box MySize) -> Int
-// CHECK: function_ref @_TFV17struct_resilience6MySizeg1wSi : $@convention(method) (@in_guaranteed MySize) -> Int
+// CHECK-LABEL: sil shared [serialized] [ossa] @$s17struct_resilience30publicTransparentLocalFunctionySiycAA6MySizeVFSiycfU_ : $@convention(thin) (@in_guaranteed MySize) -> Int
+// CHECK: function_ref @$s17struct_resilience6MySizeV1wSivg : $@convention(method) (@in_guaranteed MySize) -> Int
 // CHECK: return {{.*}} : $Int
 
   return { s.w }
 
 }
 
-// CHECK-LABEL: sil hidden [transparent] @_TF17struct_resilience27internalTransparentFunctionFVS_6MySizeSi : $@convention(thin) (@in MySize) -> Int
-@_transparent func internalTransparentFunction(s: MySize) -> Int {
+// CHECK-LABEL: sil hidden [transparent] [ossa] @$s17struct_resilience27internalTransparentFunctionySiAA6MySizeVF : $@convention(thin) (@in_guaranteed MySize) -> Int
+// CHECK: bb0([[ARG:%.*]] : $*MySize):
+@_transparent func internalTransparentFunction(_ s: MySize) -> Int {
 
   // The body of an internal transparent function will not be inlined into
   // other resilience domains, so we can access storage directly
 
-// CHECK:         [[W_ADDR:%.*]] = struct_element_addr %0 : $*MySize, #MySize.w
-// CHECK-NEXT:    [[RESULT:%.*]] = load [[W_ADDR]] : $*Int
-// CHECK-NEXT:    destroy_addr %0
+// CHECK:         [[W_ADDR:%.*]] = struct_element_addr [[ARG]] : $*MySize, #MySize.w
+// CHECK-NEXT:    [[RESULT:%.*]] = load [trivial] [[W_ADDR]] : $*Int
 // CHECK-NEXT:    return [[RESULT]]
   return s.w
 }
 
-// CHECK-LABEL: sil [fragile] [always_inline] @_TF17struct_resilience26publicInlineAlwaysFunctionFVS_6MySizeSi : $@convention(thin) (@in MySize) -> Int
-@inline(__always) public func publicInlineAlwaysFunction(s: MySize) -> Int {
+// CHECK-LABEL: sil [serialized] [ossa] @$s17struct_resilience23publicInlinableFunctionySiAA6MySizeVF : $@convention(thin) (@in_guaranteed MySize) -> Int
+@inlinable public func publicInlinableFunction(_ s: MySize) -> Int {
 
   // Since the body of a public transparent function might be inlined into
   // other resilience domains, we have to use accessors
@@ -200,12 +208,81 @@ public func functionWithMyResilientTypes(s: MySize, f: MySize -> MySize) -> MySi
 // CHECK:         [[SELF:%.*]] = alloc_stack $MySize
 // CHECK-NEXT:    copy_addr %0 to [initialization] [[SELF]]
 
-// CHECK:         [[GETTER:%.*]] = function_ref @_TFV17struct_resilience6MySizeg1wSi
+// CHECK:         [[GETTER:%.*]] = function_ref @$s17struct_resilience6MySizeV1wSivg
 // CHECK-NEXT:    [[RESULT:%.*]] = apply [[GETTER]]([[SELF]])
 // CHECK-NEXT:    destroy_addr [[SELF]]
 // CHECK-NEXT:    dealloc_stack [[SELF]]
-// CHECK-NEXT:    destroy_addr %0
 // CHECK-NEXT:    return [[RESULT]]
   return s.w
 
+}
+
+// Make sure that @usableFromInline entities can be resilient
+
+@usableFromInline struct VersionedResilientStruct {
+  @usableFromInline let x: Int
+  @usableFromInline let y: Int
+
+  @usableFromInline init(x: Int, y: Int) {
+    self.x = x
+    self.y = y
+  }
+
+  // Non-inlinable initializer, assigns to self -- treated as a root initializer
+
+  // CHECK-LABEL: sil [ossa] @$s17struct_resilience24VersionedResilientStructV5otherA2C_tcfC : $@convention(method) (@in VersionedResilientStruct, @thin VersionedResilientStruct.Type) -> @out VersionedResilientStruct
+  // CHECK:      [[SELF_BOX:%.*]] = alloc_box ${ var VersionedResilientStruct }
+  // CHECK-NEXT: [[SELF_UNINIT:%.*]] = mark_uninitialized [rootself] [[SELF_BOX]]
+  // CHECK:      return
+  @usableFromInline init(other: VersionedResilientStruct) {
+    self = other
+  }
+
+  // Inlinable initializer, assigns to self -- treated as a delegating initializer
+
+  // CHECK-LABEL: sil [serialized] [ossa] @$s17struct_resilience24VersionedResilientStructV6other2A2C_tcfC : $@convention(method) (@in VersionedResilientStruct, @thin VersionedResilientStruct.Type) -> @out VersionedResilientStruct
+  // CHECK:      [[SELF_BOX:%.*]] = alloc_box ${ var VersionedResilientStruct }
+  // CHECK-NEXT: [[SELF_UNINIT:%.*]] = mark_uninitialized [delegatingself] [[SELF_BOX]]
+  // CHECK:      return
+  @usableFromInline @inlinable init(other2: VersionedResilientStruct) {
+    self = other2
+  }
+}
+
+// CHECK-LABEL: sil [transparent] [serialized] [ossa] @$s17struct_resilience27useVersionedResilientStructyAA0deF0VADF : $@convention(thin) (@in_guaranteed VersionedResilientStruct) -> @out VersionedResilientStruct
+@usableFromInline
+@_transparent func useVersionedResilientStruct(_ s: VersionedResilientStruct)
+    -> VersionedResilientStruct {
+  // CHECK:       function_ref @$s17struct_resilience24VersionedResilientStructV1ySivg
+  // CHECK:       function_ref @$s17struct_resilience24VersionedResilientStructV1xSivg
+  // CHECK:       function_ref @$s17struct_resilience24VersionedResilientStructV1x1yACSi_SitcfC
+
+  return VersionedResilientStruct(x: s.y, y: s.x)
+
+  // CHECK:       return
+}
+
+// CHECK-LABEL: sil [serialized] [ossa] @$s17struct_resilience18inlinableInoutTestyyAA6MySizeVzF : $@convention(thin) (@inout MySize) -> ()
+@inlinable public func inlinableInoutTest(_ s: inout MySize) {
+  // Inlinable functions can be inlined in other resiliene domains.
+  //
+  // Make sure we use modify for an inout access of a resilient struct
+  // property inside an inlinable function.
+
+  // CHECK:       function_ref @$s17struct_resilience6MySizeV1wSivM
+  inoutFunc(&s.w)
+
+  // CHECK:       return
+}
+
+// Initializers for resilient structs
+extension Size {
+
+  // CHECK-LABEL: sil hidden [ossa] @$s16resilient_struct4SizeV0B11_resilienceE5otherA2C_tcfC : $@convention(method) (@in Size, @thin Size.Type) -> @out Size
+  // CHECK:      [[SELF_BOX:%.*]] = alloc_box ${ var Size }
+  // CHECK-NEXT: [[SELF_UNINIT:%.*]] = mark_uninitialized [delegatingself] [[SELF_BOX]] : ${ var Size }
+  // CHECK:      return
+  init(other: Size) {
+    self = other
+  }
 }

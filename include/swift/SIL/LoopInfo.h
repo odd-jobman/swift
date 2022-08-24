@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -50,6 +50,18 @@ public:
   /// this loop by unrolling or versioning.
   bool canDuplicate(SILInstruction *Inst) const;
 
+  void getExitingAndLatchBlocks(
+    SmallVectorImpl<SILBasicBlock *> &ExitingAndLatchBlocks) const {
+    this->getExitingBlocks(ExitingAndLatchBlocks);
+    SILBasicBlock *header = getHeader();
+    for (auto *predBB : header->getPredecessorBlocks()) {
+      if (contains(predBB) && !this->isLoopExiting(predBB))
+        ExitingAndLatchBlocks.push_back(predBB);
+    }
+  }
+
+  SILFunction *getFunction() const { return getHeader()->getParent(); }
+
 private:
   friend class llvm::LoopInfoBase<SILBasicBlock, SILLoop>;
 
@@ -63,6 +75,7 @@ class SILLoopInfo {
   using SILLoopInfoBase = llvm::LoopInfoBase<SILBasicBlock, SILLoop>;
 
   SILLoopInfoBase LI;
+  DominanceInfo *Dominance;
 
   void operator=(const SILLoopInfo &) = delete;
   SILLoopInfo(const SILLoopInfo &) = delete;

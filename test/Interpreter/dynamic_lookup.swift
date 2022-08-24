@@ -1,9 +1,13 @@
-// RUN: %target-run-simple-swift | FileCheck %s
+// RUN: %target-run-simple-swift | %FileCheck %s
 // REQUIRES: executable_test
 
 // REQUIRES: objc_interop
 
 import Foundation
+
+@objc protocol P {
+  @objc optional func e()
+}
 
 class X {
   init() {}
@@ -15,11 +19,15 @@ class X {
     return 17
   }
 }
+extension X: P {
+  @objc func e() { print("X.e()") }
+}
 
 class Y { 
   init() {}
   @objc class func g() { print("Y.g()") }
 }
+extension Y: P {}
 
 class Z {
    init() {}
@@ -30,7 +38,7 @@ extension Z {
 }
 
 
-func test_dynamic_lookup_f(obj: AnyObject) {
+func test_dynamic_lookup_f(_ obj: AnyObject) {
   var of = obj.f
   if of != nil {
     of!()
@@ -39,8 +47,26 @@ func test_dynamic_lookup_f(obj: AnyObject) {
   }
 }
 
-func test_dynamic_lookup_g(obj: AnyObject) {
-  var og = obj.dynamicType.g
+func test_dynamic_lookup_f_unbound(_ obj: AnyObject) {
+  var of = AnyObject.f(obj)
+  if of != nil {
+    of!()
+  } else {
+    print("\(type(of: obj)) does not respond to the selector \"f\"")
+  }
+}
+
+func test_dynamic_lookup_e_unbound(_ obj: AnyObject) {
+  var oe = AnyObject.e(obj)
+  if oe != nil {
+    oe!()
+  } else {
+    print("\(type(of: obj)) does not respond to the selector \"e\"")
+  }
+}
+
+func test_dynamic_lookup_g(_ obj: AnyObject) {
+  var og = type(of: obj).g
   if og != nil {
     og!()
   } else {
@@ -48,7 +74,7 @@ func test_dynamic_lookup_g(obj: AnyObject) {
   }
 }
 
-func test_dynamic_lookup_myValue(obj: AnyObject) {
+func test_dynamic_lookup_myValue(_ obj: AnyObject) {
   var ov = obj.myValue
   if ov != nil {
     print("myValue = \(ov!)")
@@ -63,6 +89,24 @@ test_dynamic_lookup_f(X())
 test_dynamic_lookup_f(Y())
 // CHECK: Z.f()
 test_dynamic_lookup_f(Z())
+
+// CHECK-NEXT: (AnyObject) -> Optional<() -> ()>
+print(type(of: AnyObject.f))
+// CHECK-NEXT: X.f()
+test_dynamic_lookup_f_unbound(X())
+// CHECK-NEXT: Y does not respond to the selector "f"
+test_dynamic_lookup_f_unbound(Y())
+// CHECK-NEXT: Z.f()
+test_dynamic_lookup_f_unbound(Z())
+
+// CHECK-NEXT: (AnyObject) -> Optional<() -> ()>
+print(type(of: AnyObject.e))
+// CHECK-NEXT: X.e()
+test_dynamic_lookup_e_unbound(X())
+// CHECK-NEXT: Y does not respond to the selector "e"
+test_dynamic_lookup_e_unbound(Y())
+// CHECK-NEXT: Z does not respond to the selector "e"
+test_dynamic_lookup_e_unbound(Z())
 
 // CHECK: Class does not respond to the selector "g"
 test_dynamic_lookup_g(X())

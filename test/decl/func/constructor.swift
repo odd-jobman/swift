@@ -1,4 +1,4 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 // User-written default constructor
 struct X {
@@ -32,7 +32,7 @@ Z(a: 1, b: 2) // expected-warning{{unused}}
 struct A {
   var i, j : Int
   
-  init(x : Int) {
+  init(x : Int) { // expected-note {{'init(x:)' declared here}}
     i = x
     j = x
   }
@@ -57,7 +57,7 @@ B(x: 1) // expected-warning{{unused}}
 B(i: 1, j: 2.5) // expected-warning{{unused}}
 
 
-struct F {
+struct F {  // expected-note {{'init(d:b:c:)' declared here}}
   var d : D
   var b : B
   var c : C
@@ -65,7 +65,9 @@ struct F {
 
 struct C {
   var d : D
-  init(d : D) { } // suppress implicit constructors
+
+  // suppress implicit initializers
+  init(d : D) { } // expected-note {{'init(d:)' declared here}}
 }
 
 struct D {
@@ -77,13 +79,13 @@ extension D {
   init() { i = 17 }
 }
 
-F() // expected-error{{missing argument for parameter 'd'}}
+F() // expected-error{{missing arguments for parameters 'd', 'b', 'c' in call}}
 D() // okay // expected-warning{{unused}}
 B() // okay // expected-warning{{unused}}
 C() // expected-error{{missing argument for parameter 'd'}}
 
 struct E {
-  init(x : Wonka) { } // expected-error{{use of undeclared type 'Wonka'}}
+  init(x : Wonka) { } // expected-error{{cannot find type 'Wonka' in scope}}
 }
 
 var e : E
@@ -99,7 +101,7 @@ class ArgParamSep {
 // rdar://14082378
 
 struct NoCrash1a {
-  init(_: NoCrash1b) {} // expected-error {{use of undeclared type 'NoCrash1b'}}
+  init(_: NoCrash1b) {} // expected-error {{cannot find type 'NoCrash1b' in scope}}
 }
 var noCrash1c : NoCrash1a
 

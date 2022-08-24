@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -16,24 +16,29 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include "swift/AST/ASTContext.h"
 #include "swift/AST/Comment.h"
 #include "swift/AST/Decl.h"
+#include "swift/AST/FileUnit.h"
+#include "swift/AST/Types.h"
 #include "swift/AST/PrettyStackTrace.h"
 #include "swift/AST/RawComment.h"
 #include "swift/Markup/Markup.h"
+#include <queue>
 
 using namespace swift;
 
-void *DocComment::operator new(size_t Bytes, llvm::markup::MarkupContext &MC,
+void *DocComment::operator new(size_t Bytes, swift::markup::MarkupContext &MC,
                                unsigned Alignment) {
   return MC.allocate(Bytes, Alignment);
 }
 
-Optional<llvm::markup::ParamField *> extractParamOutlineItem(
-    llvm::markup::MarkupContext &MC,
-    llvm::markup::MarkupASTNode *Node) {
+namespace {
+Optional<swift::markup::ParamField *> extractParamOutlineItem(
+    swift::markup::MarkupContext &MC,
+    swift::markup::MarkupASTNode *Node) {
 
-  auto Item = dyn_cast<llvm::markup::Item>(Node);
+  auto Item = dyn_cast<swift::markup::Item>(Node);
   if (!Item)
     return None;
 
@@ -42,7 +47,7 @@ Optional<llvm::markup::ParamField *> extractParamOutlineItem(
     return None;
 
   auto FirstChild = Children.front();
-  auto FirstParagraph = dyn_cast<llvm::markup::Paragraph>(FirstChild);
+  auto FirstParagraph = dyn_cast<swift::markup::Paragraph>(FirstChild);
   if (!FirstParagraph)
     return None;
 
@@ -51,7 +56,7 @@ Optional<llvm::markup::ParamField *> extractParamOutlineItem(
     return None;
 
   auto ParagraphText =
-      dyn_cast<llvm::markup::Text>(FirstParagraphChildren.front());
+      dyn_cast<swift::markup::Text>(FirstParagraphChildren.front());
   if (!ParagraphText)
     return None;
 
@@ -65,19 +70,19 @@ Optional<llvm::markup::ParamField *> extractParamOutlineItem(
 
   ParagraphText->setLiteralContent(Remainder.ltrim());
 
-  return llvm::markup::ParamField::create(MC, Name, Children);
+  return swift::markup::ParamField::create(MC, Name, Children);
 }
 
 bool extractParameterOutline(
-    llvm::markup::MarkupContext &MC, llvm::markup::List *L,
-    SmallVectorImpl<const llvm::markup::ParamField *> &ParamFields) {
-  SmallVector<llvm::markup::MarkupASTNode *, 8> NormalItems;
+    swift::markup::MarkupContext &MC, swift::markup::List *L,
+    SmallVectorImpl<swift::markup::ParamField *> &ParamFields) {
+  SmallVector<swift::markup::MarkupASTNode *, 8> NormalItems;
   auto Children = L->getChildren();
   if (Children.empty())
     return false;
 
   for (auto Child : Children) {
-    auto I = dyn_cast<llvm::markup::Item>(Child);
+    auto I = dyn_cast<swift::markup::Item>(Child);
     if (!I) {
       NormalItems.push_back(Child);
       continue;
@@ -90,7 +95,7 @@ bool extractParameterOutline(
     }
 
     auto FirstChild = ItemChildren.front();
-    auto FirstParagraph = dyn_cast<llvm::markup::Paragraph>(FirstChild);
+    auto FirstParagraph = dyn_cast<swift::markup::Paragraph>(FirstChild);
     if (!FirstParagraph) {
       NormalItems.push_back(Child);
       continue;
@@ -103,19 +108,19 @@ bool extractParameterOutline(
     }
 
     auto HeadingText
-        = dyn_cast<llvm::markup::Text>(FirstParagraphChildren.front());
+        = dyn_cast<swift::markup::Text>(FirstParagraphChildren.front());
     if (!HeadingText) {
       NormalItems.push_back(Child);
       continue;
     }
 
     auto HeadingContent = HeadingText->getLiteralContent();
-    if (!HeadingContent.rtrim().equals_lower("parameters:")) {
+    if (!HeadingContent.rtrim().equals_insensitive("parameters:")) {
       NormalItems.push_back(Child);
       continue;
     }
 
-    auto Rest = ArrayRef<llvm::markup::MarkupASTNode *>(
+    auto Rest = ArrayRef<swift::markup::MarkupASTNode *>(
         ItemChildren.begin() + 1, ItemChildren.end());
     if (Rest.empty()) {
       NormalItems.push_back(Child);
@@ -123,7 +128,7 @@ bool extractParameterOutline(
     }
 
     for (auto Child : Rest) {
-      auto SubList = dyn_cast<llvm::markup::List>(Child);
+      auto SubList = dyn_cast<swift::markup::List>(Child);
       if (!SubList)
         continue;
 
@@ -140,17 +145,17 @@ bool extractParameterOutline(
     L->setChildren(NormalItems);
   }
 
-  return NormalItems.size() == 0;
+  return NormalItems.empty();
 }
 
 bool extractSeparatedParams(
-    llvm::markup::MarkupContext &MC, llvm::markup::List *L,
-    SmallVectorImpl<const llvm::markup::ParamField *> &ParamFields) {
-  SmallVector<llvm::markup::MarkupASTNode *, 8> NormalItems;
+    swift::markup::MarkupContext &MC, swift::markup::List *L,
+    SmallVectorImpl<swift::markup::ParamField *> &ParamFields) {
+  SmallVector<swift::markup::MarkupASTNode *, 8> NormalItems;
   auto Children = L->getChildren();
 
   for (auto Child : Children) {
-    auto I = dyn_cast<llvm::markup::Item>(Child);
+    auto I = dyn_cast<swift::markup::Item>(Child);
     if (!I) {
       NormalItems.push_back(Child);
       continue;
@@ -163,7 +168,7 @@ bool extractSeparatedParams(
     }
 
     auto FirstChild = ItemChildren.front();
-    auto FirstParagraph = dyn_cast<llvm::markup::Paragraph>(FirstChild);
+    auto FirstParagraph = dyn_cast<swift::markup::Paragraph>(FirstChild);
     if (!FirstParagraph) {
       NormalItems.push_back(Child);
       continue;
@@ -176,7 +181,7 @@ bool extractSeparatedParams(
     }
 
     auto ParagraphText
-        = dyn_cast<llvm::markup::Text>(FirstParagraphChildren.front());
+        = dyn_cast<swift::markup::Text>(FirstParagraphChildren.front());
     if (!ParagraphText) {
       NormalItems.push_back(Child);
       continue;
@@ -186,7 +191,7 @@ bool extractSeparatedParams(
     auto ParagraphContent = ParagraphText->getLiteralContent();
     auto PotentialMatch = ParagraphContent.substr(0, ParameterPrefix.size());
 
-    if (!PotentialMatch.startswith_lower(ParameterPrefix)) {
+    if (!PotentialMatch.startswith_insensitive(ParameterPrefix)) {
       NormalItems.push_back(Child);
       continue;
     }
@@ -204,17 +209,17 @@ bool extractSeparatedParams(
   if (NormalItems.size() != Children.size())
     L->setChildren(NormalItems);
 
-  return NormalItems.size() == 0;
+  return NormalItems.empty();
 }
 
 bool extractSimpleField(
-    llvm::markup::MarkupContext &MC, llvm::markup::List *L,
-    DocComment::CommentParts &Parts,
-    SmallVectorImpl<const llvm::markup::MarkupASTNode *> &BodyNodes) {
+    swift::markup::MarkupContext &MC, swift::markup::List *L,
+    swift::markup::CommentParts &Parts,
+    SmallVectorImpl<const swift::markup::MarkupASTNode *> &BodyNodes) {
   auto Children = L->getChildren();
-  SmallVector<llvm::markup::MarkupASTNode *, 8> NormalItems;
+  SmallVector<swift::markup::MarkupASTNode *, 8> NormalItems;
   for (auto Child : Children) {
-    auto I = dyn_cast<llvm::markup::Item>(Child);
+    auto I = dyn_cast<swift::markup::Item>(Child);
     if (!I) {
       NormalItems.push_back(Child);
       continue;
@@ -227,7 +232,7 @@ bool extractSimpleField(
     }
 
     auto FirstParagraph
-        = dyn_cast<llvm::markup::Paragraph>(ItemChildren.front());
+        = dyn_cast<swift::markup::Paragraph>(ItemChildren.front());
     if (!FirstParagraph) {
       NormalItems.push_back(Child);
       continue;
@@ -240,7 +245,7 @@ bool extractSimpleField(
     }
 
     auto ParagraphText
-        = dyn_cast<llvm::markup::Text>(ParagraphChildren.front());
+        = dyn_cast<swift::markup::Text>(ParagraphChildren.front());
     if (!ParagraphText) {
       NormalItems.push_back(Child);
       continue;
@@ -252,49 +257,72 @@ bool extractSimpleField(
     Tag = Tag.ltrim().rtrim();
     Remainder = Remainder.ltrim();
 
-    if (!llvm::markup::isAFieldTag(Tag)) {
+    if (!swift::markup::isAFieldTag(Tag)) {
       NormalItems.push_back(Child);
       continue;
     }
 
     ParagraphText->setLiteralContent(Remainder);
-    auto Field = llvm::markup::createSimpleField(MC, Tag, ItemChildren);
+    auto Field = swift::markup::createSimpleField(MC, Tag, ItemChildren);
 
-    if (auto RF = dyn_cast<llvm::markup::ReturnsField>(Field))
+    if (auto RF = dyn_cast<swift::markup::ReturnsField>(Field)) {
       Parts.ReturnsField = RF;
-    else if (auto TF = dyn_cast<llvm::markup::ThrowsField>(Field))
+    } else if (auto TF = dyn_cast<swift::markup::ThrowsField>(Field)) {
       Parts.ThrowsField = TF;
-    else
+    } else if (auto TF = dyn_cast<swift::markup::TagField>(Field)) {
+      llvm::SmallString<64> Scratch;
+      llvm::raw_svector_ostream OS(Scratch);
+      printInlinesUnder(TF, OS);
+      Parts.Tags.insert(MC.allocateCopy(OS.str()));
+    } else if (auto LKF = dyn_cast<markup::LocalizationKeyField>(Field)) {
+      Parts.LocalizationKeyField = LKF;
+    } else {
       BodyNodes.push_back(Field);
+    }
   }
 
   if (NormalItems.size() != Children.size())
     L->setChildren(NormalItems);
 
-  return NormalItems.size() == 0;
+  return NormalItems.empty();
+}
+} // namespace
+
+void swift::printBriefComment(RawComment RC, llvm::raw_ostream &OS) {
+  markup::MarkupContext MC;
+  markup::LineList LL = MC.getLineList(RC);
+  auto *markupDoc = markup::parseDocument(MC, LL);
+
+  auto children = markupDoc->getChildren();
+  if (children.empty())
+    return;
+  auto FirstParagraph = dyn_cast<swift::markup::Paragraph>(children.front());
+  if (!FirstParagraph)
+    return;
+  swift::markup::printInlinesUnder(FirstParagraph, OS);
 }
 
-static DocComment::CommentParts
-extractCommentParts(llvm::markup::MarkupContext &MC,
-                    llvm::markup::Document *Doc) {
+swift::markup::CommentParts
+swift::extractCommentParts(swift::markup::MarkupContext &MC,
+                    swift::markup::MarkupASTNode *Node) {
 
-  DocComment::CommentParts Parts;
-  auto Children = Doc->getChildren();
+  swift::markup::CommentParts Parts;
+  auto Children = Node->getChildren();
   if (Children.empty())
     return Parts;
 
   auto FirstParagraph
-      = dyn_cast<llvm::markup::Paragraph>(Doc->getChildren().front());
+      = dyn_cast<swift::markup::Paragraph>(Node->getChildren().front());
   if (FirstParagraph)
     Parts.Brief = FirstParagraph;
 
-  SmallVector<const llvm::markup::MarkupASTNode *, 4> BodyNodes;
-  SmallVector<const llvm::markup::ParamField *, 8> ParamFields;
+  SmallVector<const swift::markup::MarkupASTNode *, 4> BodyNodes;
+  SmallVector<swift::markup::ParamField *, 8> ParamFields;
 
   // Look for special top-level lists
   size_t StartOffset = FirstParagraph == nullptr ? 0 : 1;
   for (auto C = Children.begin() + StartOffset; C != Children.end(); ++C) {
-    if (auto L = dyn_cast<llvm::markup::List>(*C)) {
+    if (auto L = dyn_cast<swift::markup::List>(*C)) {
       // Could be one of the following:
       // 1. A parameter outline:
       //    - Parameters:
@@ -317,19 +345,198 @@ extractCommentParts(llvm::markup::MarkupContext &MC,
   Parts.BodyNodes = MC.allocateCopy(llvm::makeArrayRef(BodyNodes));
   Parts.ParamFields = MC.allocateCopy(llvm::makeArrayRef(ParamFields));
 
+  for (auto Param : Parts.ParamFields) {
+    auto ParamParts = extractCommentParts(MC, Param);
+    Param->setParts(ParamParts);
+  }
+
   return Parts;
 }
 
-Optional<DocComment *> swift::getDocComment(llvm::markup::MarkupContext &MC,
-                                            const Decl *D) {
-  auto RC = D->getRawComment();
-  if (RC.isEmpty())
-    return None;
-
-  PrettyStackTraceDecl StackTrace("parsing comment for", D);
-
-  llvm::markup::LineList LL = MC.getLineList(RC);
-  auto *Doc = llvm::markup::parseDocument(MC, LL);
+DocComment *DocComment::create(const Decl *D, markup::MarkupContext &MC,
+                               RawComment RC) {
+  assert(!RC.isEmpty());
+  swift::markup::LineList LL = MC.getLineList(RC);
+  auto *Doc = swift::markup::parseDocument(MC, LL);
   auto Parts = extractCommentParts(MC, Doc);
   return new (MC) DocComment(D, Doc, Parts);
+}
+
+void DocComment::addInheritanceNote(swift::markup::MarkupContext &MC,
+                                    TypeDecl *base) {
+  auto text = MC.allocateCopy("This documentation comment was inherited from ");
+  auto name = MC.allocateCopy(base->getNameStr());
+  auto period = MC.allocateCopy(".");
+  auto paragraph = markup::Paragraph::create(MC, {
+    markup::Text::create(MC, text),
+    markup::Code::create(MC, name),
+    markup::Text::create(MC, period)});
+
+  auto note = markup::NoteField::create(MC, {paragraph});
+
+  SmallVector<const markup::MarkupASTNode *, 8> BodyNodes{
+    Parts.BodyNodes.begin(), Parts.BodyNodes.end()};
+  BodyNodes.push_back(note);
+  Parts.BodyNodes = MC.allocateCopy(llvm::makeArrayRef(BodyNodes));
+}
+
+DocComment *swift::getSingleDocComment(swift::markup::MarkupContext &MC,
+                                       const Decl *D, bool AllowSerialized) {
+  PrettyStackTraceDecl StackTrace("parsing comment for", D);
+
+  auto RC = D->getRawComment(AllowSerialized);
+  if (RC.isEmpty())
+    return nullptr;
+  return DocComment::create(D, MC, RC);
+}
+
+namespace {
+const ValueDecl *findOverriddenDeclWithDocComment(const ValueDecl *VD,
+                                                  bool AllowSerialized = true) {
+  // Only applies to class member.
+  if (!VD->getDeclContext()->getSelfClassDecl())
+    return nullptr;
+
+  while (auto *baseDecl = VD->getOverriddenDecl()) {
+    if (!baseDecl->getRawComment(AllowSerialized).isEmpty())
+      return baseDecl;
+    VD = baseDecl;
+  }
+
+  return nullptr;
+}
+
+const ValueDecl *findDefaultProvidedDeclWithDocComment(const ValueDecl *VD,
+                                                       bool AllowSerialized = false) {
+  auto protocol = VD->getDeclContext()->getExtendedProtocolDecl();
+  // Only applies to protocol extension member.
+  if (!protocol)
+    return nullptr;
+
+  ValueDecl *requirement = nullptr;
+
+  SmallVector<ValueDecl *, 2> members;
+  protocol->lookupQualified(const_cast<ProtocolDecl *>(protocol),
+                            DeclNameRef(VD->getName()),
+                            NLOptions::NL_ProtocolMembers,
+                            members);
+
+  for (auto *member : members) {
+    if (!isa<ProtocolDecl>(member->getDeclContext()) ||
+        !member->isProtocolRequirement() ||
+        member->getRawComment(AllowSerialized).isEmpty())
+      continue;
+    if (requirement)
+      // Found two or more decls with doc-comment.
+      return nullptr;
+
+    requirement = member;
+  }
+  return requirement;
+}
+
+const ValueDecl *findRequirementDeclWithDocComment(const ValueDecl *VD,
+                                                   bool AllowSerialized = false) {
+  std::queue<const ValueDecl *> requirements;
+  while (true) {
+    for (auto *req : VD->getSatisfiedProtocolRequirements()) {
+      if (!req->getRawComment(AllowSerialized).isEmpty())
+        return req;
+      else
+        requirements.push(req);
+    }
+    if (requirements.empty())
+      return nullptr;
+    VD = requirements.front();
+    requirements.pop();
+  }
+}
+} // namespace
+
+const Decl *swift::getDocCommentProvidingDecl(const Decl *D,
+                                              bool AllowSerialized) {
+  if (!D->canHaveComment())
+    return nullptr;
+
+  if (!D->getRawComment(AllowSerialized).isEmpty())
+    return D;
+
+  auto *VD = dyn_cast<ValueDecl>(D);
+  if (!VD)
+    return nullptr;
+
+  if (auto *overridden = findOverriddenDeclWithDocComment(VD, AllowSerialized))
+    return overridden;
+
+  if (auto *requirement = findDefaultProvidedDeclWithDocComment(VD, AllowSerialized))
+    return requirement;
+
+  if (auto *requirement = findRequirementDeclWithDocComment(VD, AllowSerialized))
+    return requirement;
+
+  return nullptr;
+}
+
+DocComment *
+swift::getCascadingDocComment(swift::markup::MarkupContext &MC, const Decl *D,
+                              bool AllowSerialized) {
+  auto *docD = getDocCommentProvidingDecl(D, AllowSerialized);
+  if (!docD)
+    return nullptr;
+
+  auto *doc = getSingleDocComment(MC, docD, AllowSerialized);
+  assert(doc && "getDocCommentProvidingDecl() returned decl with no comment");
+
+  // If the doc-comment is inherited from other decl, add a note about it.
+  if (docD != D) {
+    doc->setDecl(D);
+    if (auto baseD = docD->getDeclContext()->getSelfNominalTypeDecl()) {
+      doc->addInheritanceNote(MC, baseD);
+
+      // If the doc is inherited from protocol requirement, associate the
+      // requirement with the doc-comment.
+      // FIXME: This is to keep the old behavior.
+      if (isa<ProtocolDecl>(baseD))
+        doc->setDecl(docD);
+    }
+  }
+
+  return doc;
+}
+
+StringRef Decl::getBriefComment() const {
+  if (!this->canHaveComment())
+    return StringRef();
+
+  // Check the cache in ASTContext.
+  auto &Context = getASTContext();
+  if (Optional<StringRef> Comment = Context.getBriefComment(this))
+    return Comment.getValue();
+
+  // Check if the serialized module may have the brief comment available.
+  if (auto *Unit =
+          dyn_cast<FileUnit>(this->getDeclContext()->getModuleScopeContext())) {
+    if (Optional<CommentInfo> C = Unit->getCommentForDecl(this)) {
+      Context.setBriefComment(this, C->Brief);
+      return C->Brief;
+    }
+  }
+
+  // Otherwise, parse the brief from the raw comment itself.
+  auto RC = getRawComment();
+
+  StringRef Result;
+  if (RC.isEmpty())
+    if (auto *docD = getDocCommentProvidingDecl(this))
+      RC = docD->getRawComment();
+  if (!RC.isEmpty()) {
+    SmallString<256> BriefStr;
+    llvm::raw_svector_ostream OS(BriefStr);
+    printBriefComment(RC, OS);
+    Result = Context.AllocateCopy(BriefStr.str());
+  }
+
+  // Cache it.
+  Context.setBriefComment(this, Result);
+  return Result;
 }

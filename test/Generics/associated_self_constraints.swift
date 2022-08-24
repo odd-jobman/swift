@@ -1,17 +1,17 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 protocol Observer {
     associatedtype Value
     
-    func onNext(item: Value) -> Void
+    func onNext(_ item: Value) -> Void
     func onCompleted() -> Void
-    func onError(error: String) -> Void
+    func onError(_ error: String) -> Void
 }
 
 protocol Observable {
     associatedtype Value
 
-    func subscribe<O: Observer where O.Value == Value>(observer: O) -> Any
+    func subscribe<O: Observer>(_ observer: O) -> Any where O.Value == Value
 }
 
 class Subject<T>: Observer, Observable {
@@ -19,11 +19,11 @@ class Subject<T>: Observer, Observable {
     
     // Observer implementation
     
-    var onNextFunc: ((T) -> Void)? = nil
-    var onCompletedFunc: (() -> Void)? = nil
-    var onErrorFunc: ((String) -> Void)? = nil
+    var onNextFunc: ((T) -> Void)?
+    var onCompletedFunc: (() -> Void)?
+    var onErrorFunc: ((String) -> Void)?
     
-    func onNext(item: T) -> Void {
+    func onNext(_ item: T) -> Void {
         onNextFunc?(item)
     }
     
@@ -31,13 +31,13 @@ class Subject<T>: Observer, Observable {
         onCompletedFunc?()
     }
     
-    func onError(error: String) -> Void {
+    func onError(_ error: String) -> Void {
         onErrorFunc?(error)
     }
     
     // Observable implementation
     
-    func subscribe<O: Observer where O.Value == T>(observer: O) -> Any {
+    func subscribe<O: Observer>(_ observer: O) -> Any where O.Value == T {
         self.onNextFunc = { (item: T) -> Void in
             observer.onNext(item)
         }
@@ -54,29 +54,20 @@ class Subject<T>: Observer, Observable {
     }
 }
 
-struct X<T> {
-
-  mutating func replace<C : Collection where C.Iterator.Element == T>(a: C) {
-    for i in a.startIndex..<a.endIndex {
-      _ = a[i] as T
-    }
-  }
-}
-
 protocol P {
     associatedtype A
     
-    func onNext(item: A) -> Void
+    func onNext(_ item: A) -> Void
 }
 
 struct IP<T> : P {
     typealias A = T
 
-    init<O:P where O.A == IP.A>(x:O) {
+    init<O:P>(x:O) where O.A == IP.A {
        _onNext = { (item: A) in x.onNext(item) }
     }
 
-    func onNext(item: A) { _onNext(item) }
+    func onNext(_ item: A) { _onNext(item) }
 
     var _onNext: (A) -> ()
 }

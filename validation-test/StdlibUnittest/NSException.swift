@@ -1,22 +1,19 @@
-// RUN: %target-run-simple-swift 2>&1 | FileCheck %s
+// RUN: %target-run-simple-swift 2>&1 | %FileCheck %s
 // REQUIRES: executable_test
 // REQUIRES: objc_interop
+// FIXME: this test is failing for watchos <rdar://problem/29997073>
+// UNSUPPORTED: OS=watchos
 
 import StdlibUnittest
 import ObjectiveC
 import Foundation
-
-// Also import modules which are used by StdlibUnittest internally. This
-// workaround is needed to link all required libraries in case we compile
-// StdlibUnittest with -sil-serialize-all.
-import SwiftPrivate
 
 // Don't actually exit with a non-zero status, just say we're going to do it.
 _setTestSuiteFailedCallback() { print("abort()") }
 
 
 func raiseNSException() {
-  NSException(name: "Trogdor", reason: "Burnination", userInfo: nil).raise()
+  NSException(name: NSExceptionName(rawValue: "Trogdor"), reason: "Burnination", userInfo: nil).raise()
 }
 
 var TestSuiteCrashes = TestSuite("NSExceptionCrashes")

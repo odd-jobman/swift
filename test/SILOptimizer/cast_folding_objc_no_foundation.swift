@@ -1,57 +1,60 @@
-// RUN: %target-swift-frontend -O -emit-sil %s | FileCheck %s
+
+// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -module-name cast_folding_objc_no_foundation -O -emit-sil %s | %FileCheck %s
 // REQUIRES: objc_interop
+
+// TODO: Update optimizer for id-as-Any changes.
 
 // Note: no 'import Foundation'
 
-struct DoesNotBridgeToObjC {}
+struct PlainStruct {}
 
-// CHECK-LABEL: sil hidden [noinline] @_TTSf4g___TF31cast_folding_objc_no_foundation23testAnyObjectToArrayIntFPs9AnyObject_Sb
+// CHECK-LABEL: sil hidden [noinline] @$s31cast_folding_objc_no_foundation23testAnyObjectToArrayIntySbyXlF : $@convention(thin) (@guaranteed AnyObject) -> Bool {
 // CHECK: bb0(%0 : $AnyObject):
 // CHECK: [[SOURCE:%.*]] = alloc_stack $AnyObject
 // CHECK: [[TARGET:%.*]] = alloc_stack $Array<Int>
 // CHECK: checked_cast_addr_br take_always AnyObject in [[SOURCE]] : $*AnyObject to Array<Int> in [[TARGET]] : $*Array<Int>, bb1, bb2
 @inline(never)
-func testAnyObjectToArrayInt(a: AnyObject) -> Bool {
+func testAnyObjectToArrayInt(_ a: AnyObject) -> Bool {
   return a is [Int]
 }
 
-// CHECK-LABEL: sil hidden [noinline] @_TTSf4g___TF31cast_folding_objc_no_foundation26testAnyObjectToArrayStringFPs9AnyObject_Sb
+// CHECK-LABEL: sil hidden [noinline] @$s31cast_folding_objc_no_foundation26testAnyObjectToArrayStringySbyXlF : $@convention(thin) (@guaranteed AnyObject) -> Bool {
 // CHECK: bb0(%0 : $AnyObject):
 // CHECK: [[SOURCE:%.*]] = alloc_stack $AnyObject
 // CHECK: [[TARGET:%.*]] = alloc_stack $Array<String>
 // CHECK: checked_cast_addr_br take_always AnyObject in [[SOURCE]] : $*AnyObject to Array<String> in [[TARGET]] : $*Array<String>, bb1, bb2
 @inline(never)
-func testAnyObjectToArrayString(a: AnyObject) -> Bool {
+func testAnyObjectToArrayString(_ a: AnyObject) -> Bool {
   return a is [String]
 }
 
-// CHECK-LABEL: sil hidden [noinline] @_TTSf4dg___TF31cast_folding_objc_no_foundation30testAnyObjectToArrayNotBridgedFPs9AnyObject_Sb
-// CHECK-NEXT: bb0:
-// CHECK: [[VALUE:%.*]] = integer_literal $Builtin.Int1, 0
-// CHECK: [[RESULT:%.*]] = struct $Bool ([[VALUE]] : $Builtin.Int1)
-// CHECK: return [[RESULT]]
+// CHECK-LABEL: sil hidden [noinline] @$s31cast_folding_objc_no_foundation30testAnyObjectToArrayNotBridgedySbyXlF : $@convention(thin) (@guaranteed AnyObject) -> Bool {
+// CHECK: bb0(%0 : $AnyObject):
+// CHECK: [[SOURCE:%.*]] = alloc_stack $AnyObject
+// CHECK: [[TARGET:%.*]] = alloc_stack $Array<PlainStruct>
+// CHECK: checked_cast_addr_br take_always AnyObject in [[SOURCE]] : $*AnyObject to Array<PlainStruct> in [[TARGET]] : $*Array<PlainStruct>, bb1, bb2
 @inline(never)
-func testAnyObjectToArrayNotBridged(a: AnyObject) -> Bool {
-  return a is [DoesNotBridgeToObjC]
+func testAnyObjectToArrayNotBridged(_ a: AnyObject) -> Bool {
+  return a is [PlainStruct]
 }
 
-// CHECK-LABEL: sil hidden [noinline] @_TTSf4g___TF31cast_folding_objc_no_foundation25testAnyObjectToDictionaryFPs9AnyObject_Sb
+// CHECK-LABEL: sil hidden [noinline] @$s31cast_folding_objc_no_foundation25testAnyObjectToDictionaryySbyXlF : $@convention(thin) (@guaranteed AnyObject) -> Bool {
 // CHECK: bb0(%0 : $AnyObject):
 // CHECK: [[SOURCE:%.*]] = alloc_stack $AnyObject
 // CHECK: [[TARGET:%.*]] = alloc_stack $Dictionary<Int, String>
 // CHECK: checked_cast_addr_br take_always AnyObject in [[SOURCE]] : $*AnyObject to Dictionary<Int, String> in [[TARGET]] : $*Dictionary<Int, String>, bb1, bb2
 @inline(never)
-func testAnyObjectToDictionary(a: AnyObject) -> Bool {
-  return a is [Int:String]
+func testAnyObjectToDictionary(_ a: AnyObject) -> Bool {
+  return a is [Int: String]
 }
 
-// CHECK-LABEL: sil hidden [noinline] @_TTSf4g___TF31cast_folding_objc_no_foundation21testAnyObjectToStringFPs9AnyObject_Sb
+// CHECK-LABEL: sil hidden [noinline] @$s31cast_folding_objc_no_foundation21testAnyObjectToStringySbyXlF : $@convention(thin) (@guaranteed AnyObject) -> Bool {
 // CHECK: bb0(%0 : $AnyObject):
 // CHECK: [[SOURCE:%.*]] = alloc_stack $AnyObject
 // CHECK: [[TARGET:%.*]] = alloc_stack $String
 // CHECK: checked_cast_addr_br take_always AnyObject in [[SOURCE]] : $*AnyObject to String in [[TARGET]] : $*String, bb1, bb2
 @inline(never)
-func testAnyObjectToString(a: AnyObject) -> Bool {
+func testAnyObjectToString(_ a: AnyObject) -> Bool {
   return a is String
 }
 

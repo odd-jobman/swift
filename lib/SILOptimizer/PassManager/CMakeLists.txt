@@ -1,5 +1,6 @@
-set(PASSMANAGER_SOURCES
-  PassManager/PassManager.cpp
-  PassManager/Passes.cpp
-  PassManager/PrettyStackTrace.cpp
-  PARENT_SCOPE)
+target_sources(swiftSILOptimizer PRIVATE
+  PassManager.cpp
+  Passes.cpp
+  PassPipeline.cpp
+  PrettyStackTrace.cpp
+  SILOptimizerRequests.cpp)

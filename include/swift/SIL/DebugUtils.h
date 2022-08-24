@@ -2,16 +2,16 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
 // This file contains utilities to work with debug-info related instructions:
-// debug_value and debug_value_addr.
+// debug_value, alloc_stack, and alloc_box.
 //
 // SIL optimizations should deal with debug-info related instructions when
 // looking at the uses of a value.
@@ -36,25 +36,28 @@
 #ifndef SWIFT_SIL_DEBUGUTILS_H
 #define SWIFT_SIL_DEBUGUTILS_H
 
-#include "swift/SIL/SILValue.h"
+#include "swift/SIL/SILBasicBlock.h"
+#include "swift/SIL/SILInstruction.h"
 
 namespace swift {
 
 class SILInstruction;
-  
-/// Returns true if the instruction \p Inst is an instruction which is only
-/// relevant for debug information and has no other impact on program semantics.
-inline bool isDebugInst(SILInstruction *Inst) {
-  return isa<DebugValueInst>(Inst) || isa<DebugValueAddrInst>(Inst);
+
+/// Deletes all of the debug instructions that use \p value.
+inline void deleteAllDebugUses(SILValue value) {
+  for (auto ui = value->use_begin(), ue = value->use_end(); ui != ue;) {
+    auto *inst = ui->getUser();
+    ++ui;
+    if (inst->isDebugInstruction()) {
+      inst->eraseFromParent();
+    }
+  }
 }
 
-/// Deletes all of the debug instructions that use \p Inst.
-inline void deleteAllDebugUses(ValueBase *Inst) {
-  for (auto UI = Inst->use_begin(), E = Inst->use_end(); UI != E;) {
-    auto *Inst = UI->getUser();
-    UI++;
-    if (isDebugInst(Inst))
-      Inst->eraseFromParent();
+/// Deletes all of the debug uses of any result of \p inst.
+inline void deleteAllDebugUses(SILInstruction *inst) {
+  for (SILValue v : inst->getResults()) {
+    deleteAllDebugUses(v);
   }
 }
 
@@ -75,7 +78,7 @@ template <bool nonDebugInsts> class DebugUseIterator
         return;
       
       SILInstruction *User = BaseIterator->getUser();
-      if (isDebugInst(User) != nonDebugInsts)
+      if (User->isDebugInstruction() != nonDebugInsts)
         return;
       
       BaseIterator++;
@@ -142,6 +145,16 @@ inline bool onlyHaveDebugUses(SILValue V) {
   return NonDebugUses.begin() == NonDebugUses.end();
 }
 
+/// Return true if all of the results of the given instruction have no uses
+/// except debug instructions.
+inline bool onlyHaveDebugUsesOfAllResults(SILInstruction *I) {
+  for (auto result : I->getResults()) {
+    if (!onlyHaveDebugUses(result))
+      return false;
+  }
+  return true;
+}
+
 /// Returns true if a value (e.g. SILInstruction) has exactly one use which is
 /// not a debug instruction.
 inline bool hasOneNonDebugUse(SILValue V) {
@@ -161,34 +174,259 @@ inline SILInstruction *getSingleNonDebugUser(SILValue V) {
   return I->getUser();
 }
 
-/// Erases the instruction \p I from it's parent block and deletes it, including
-/// all debug instructions which use \p I.
-/// Precondition: The instruction may only have debug instructions as uses.
-/// If the iterator \p InstIter references any deleted debug instruction, it is
-/// incremented.
-inline void eraseFromParentWithDebugInsts(SILInstruction *I,
-                                          SILBasicBlock::iterator &InstIter) {
-  while (!I->use_empty()) {
-    auto *User = I->use_begin()->getUser();
-    assert(isDebugInst(User));
-    if (InstIter != SILBasicBlock::iterator() &&
-        InstIter != I->getParent()->end() &&
-        &*InstIter == User) {
-      InstIter++;
-    }
-    User->eraseFromParent();
-  }
-  I->eraseFromParent();
+/// If \p value has a single debug user, return the operand associated with that
+/// use. Otherwise, returns nullptr.
+inline Operand *getSingleDebugUse(SILValue value) {
+  auto range = getDebugUses(value);
+  auto ii = range.begin(), ie = range.end();
+  if (ii == ie)
+    return nullptr;
+  if (std::next(ii) != ie)
+    return nullptr;
+  return *ii;
 }
 
 /// Erases the instruction \p I from it's parent block and deletes it, including
 /// all debug instructions which use \p I.
 /// Precondition: The instruction may only have debug instructions as uses.
-inline void eraseFromParentWithDebugInsts(SILInstruction *I) {
-  SILBasicBlock::iterator nullIter;
-  eraseFromParentWithDebugInsts(I, nullIter);
+/// If the iterator \p InstIter references any deleted instruction, it is
+/// incremented.
+///
+/// \p callBack will be invoked before each instruction is deleted. \p callBack
+/// is not responsible for deleting the instruction because this utility
+/// unconditionally deletes the \p I and its debug users.
+///
+/// Returns an iterator to the next non-deleted instruction after \p I.
+inline SILBasicBlock::iterator eraseFromParentWithDebugInsts(
+    SILInstruction *I, llvm::function_ref<void(SILInstruction *)> callBack =
+                           [](SILInstruction *) {}) {
+
+  auto nextII = std::next(I->getIterator());
+
+  auto results = I->getResults();
+
+  bool foundAny;
+  do {
+    foundAny = false;
+    for (auto result : results) {
+      while (!result->use_empty()) {
+        foundAny = true;
+        auto *User = result->use_begin()->getUser();
+        assert(User->isDebugInstruction());
+        if (nextII == User->getIterator())
+          nextII++;
+        callBack(User);
+        User->eraseFromParent();
+      }
+    }
+  } while (foundAny);
+
+  I->eraseFromParent();
+  return nextII;
+}
+
+/// Return true if the def-use graph rooted at \p V contains any non-debug,
+/// non-trivial users.
+bool hasNonTrivialNonDebugTransitiveUsers(
+    PointerUnion<SILInstruction *, SILArgument *> V);
+
+/// A light weight abstraction on top of an instruction that carries within it
+/// information about a debug variable. This allows one to write high level code
+/// over the set of such instructions with greater correctness by using
+/// exhaustive switches, methods, and keeping it light weight by using *, ->
+/// operators to access functionality from the underlying instruction when
+/// needed.
+struct DebugVarCarryingInst {
+  enum class Kind : uint8_t {
+    Invalid = 0,
+    DebugValue,
+    AllocStack,
+    AllocBox,
+  };
+
+  SILInstruction *inst;
+  Kind kind;
+  uintptr_t spareBits : (sizeof(uintptr_t) - sizeof(Kind)) * 8;
+
+  DebugVarCarryingInst() : inst(nullptr), kind(Kind::Invalid), spareBits(0) {}
+  DebugVarCarryingInst(DebugValueInst *dvi)
+      : inst(dvi), kind(Kind::DebugValue), spareBits(0) {}
+  DebugVarCarryingInst(AllocStackInst *asi)
+      : inst(asi), kind(Kind::AllocStack), spareBits(0) {}
+  DebugVarCarryingInst(AllocBoxInst *abi)
+      : inst(abi), kind(Kind::AllocBox), spareBits(0) {}
+  DebugVarCarryingInst(SILInstruction *newInst)
+      : inst(nullptr), kind(Kind::Invalid), spareBits(0) {
+    switch (newInst->getKind()) {
+    default:
+      return;
+    case SILInstructionKind::DebugValueInst:
+      kind = Kind::DebugValue;
+      break;
+    case SILInstructionKind::AllocStackInst:
+      kind = Kind::AllocStack;
+      break;
+    case SILInstructionKind::AllocBoxInst:
+      kind = Kind::AllocBox;
+      break;
+    }
+    inst = newInst;
+  }
+
+  /// Enable the composition struct to be used as an instruction easily. We use
+  /// a '*' so that in the source it is easily visible to the eye that something
+  /// is happening here.
+  SILInstruction *operator*() const { return inst; }
+
+  /// Enable one to access the methods of the wrapped instruction using
+  /// '->'. This keeps the wrapper light weight.
+  SILInstruction *operator->() const { return inst; }
+
+  bool operator==(const DebugVarCarryingInst &other) const {
+    return kind == other.kind && inst == other.inst &&
+           spareBits == other.spareBits;
+  }
+
+  bool operator!=(const DebugVarCarryingInst &other) const {
+    return !(*this == other);
+  }
+
+  /// Add support for this struct in `if` statement.
+  explicit operator bool() const { return bool(kind); }
+
+  VarDecl *getDecl() const {
+    switch (kind) {
+    case Kind::Invalid:
+      llvm_unreachable("Invalid?!");
+    case Kind::DebugValue:
+      return cast<DebugValueInst>(inst)->getDecl();
+    case Kind::AllocStack:
+      return cast<AllocStackInst>(inst)->getDecl();
+    case Kind::AllocBox:
+      return cast<AllocBoxInst>(inst)->getDecl();
+    }
+    llvm_unreachable("covered switch");
+  }
+
+  Optional<SILDebugVariable> getVarInfo() const {
+    switch (kind) {
+    case Kind::Invalid:
+      llvm_unreachable("Invalid?!");
+    case Kind::DebugValue:
+      return cast<DebugValueInst>(inst)->getVarInfo();
+    case Kind::AllocStack:
+      return cast<AllocStackInst>(inst)->getVarInfo();
+    case Kind::AllocBox:
+      return cast<AllocBoxInst>(inst)->getVarInfo();
+    }
+    llvm_unreachable("covered switch");
+  }
+
+  void setDebugVarScope(const SILDebugScope *NewDS) {
+    switch (kind) {
+    case Kind::Invalid:
+      llvm_unreachable("Invalid?!");
+    case Kind::DebugValue:
+      cast<DebugValueInst>(inst)->setDebugVarScope(NewDS);
+      break;
+    case Kind::AllocStack:
+      cast<AllocStackInst>(inst)->setDebugVarScope(NewDS);
+      break;
+    case Kind::AllocBox:
+      llvm_unreachable("Not implemented");
+    }
+  }
+
+  void markAsMoved() {
+    switch (kind) {
+    case Kind::Invalid:
+      llvm_unreachable("Invalid?!");
+    case Kind::DebugValue:
+      cast<DebugValueInst>(inst)->markAsMoved();
+      break;
+    case Kind::AllocStack:
+      cast<AllocStackInst>(inst)->markAsMoved();
+      break;
+    case Kind::AllocBox:
+      llvm_unreachable("Not implemented");
+    }
+  }
+
+  /// Returns true if this DebugVarCarryingInst was moved.
+  bool getWasMoved() const {
+    switch (kind) {
+    case Kind::Invalid:
+      llvm_unreachable("Invalid?!");
+    case Kind::DebugValue:
+      return cast<DebugValueInst>(inst)->getWasMoved();
+    case Kind::AllocStack:
+      return cast<AllocStackInst>(inst)->getWasMoved();
+    case Kind::AllocBox:
+      // We do not support moving alloc box today, so we always return false.
+      return false;
+    }
+  }
+
+  /// If we are attempting to create a "debug_value" clone of this debug var
+  /// carrying inst, return the appropriate SILValue to use as the operand of
+  /// that debug value.
+  ///
+  /// For a debug_value, we just return the actual operand, otherwise we return
+  /// the pointer address.
+  SILValue getOperandForDebugValueClone() const {
+    switch (kind) {
+    case Kind::Invalid:
+      llvm_unreachable("Invalid?!");
+    case Kind::DebugValue:
+      return cast<DebugValueInst>(inst)->getOperand();
+    case Kind::AllocStack:
+      return cast<AllocStackInst>(inst);
+    case Kind::AllocBox:
+      llvm_unreachable("Not implemented");
+    }
+  }
+
+  /// If \p value is an alloc_stack, alloc_box use that. Otherwise, see if \p
+  /// value has a single debug user, return that. Otherwise return the invalid
+  /// DebugVarCarryingInst.
+  static DebugVarCarryingInst getFromValue(SILValue value);
+
+  /// Take in \p inst, a potentially invalid DebugVarCarryingInst, and returns a
+  /// name for it. If we have an invalid value or don't find var info or a decl,
+  /// return "unknown".
+  ///
+  /// The reason this isn't a method is that in all the other parts of
+  /// DebugVarCarryingInst, we use Invalid to signal early error.
+  static StringRef getName(DebugVarCarryingInst inst) {
+    if (!inst)
+      return "unknown";
+    StringRef varName = "unknown";
+    if (auto varInfo = inst.getVarInfo()) {
+      varName = varInfo->Name;
+    } else if (auto *decl = inst.getDecl()) {
+      varName = decl->getBaseName().userFacingName();
+    }
+    return varName;
+  }
+};
+
+inline DebugVarCarryingInst DebugVarCarryingInst::getFromValue(SILValue value) {
+  if (isa<AllocStackInst>(value) || isa<AllocBoxInst>(value))
+    return DebugVarCarryingInst(cast<SingleValueInstruction>(value));
+
+  if (auto *use = getSingleDebugUse(value))
+    return DebugVarCarryingInst(use->getUser());
+
+  return DebugVarCarryingInst();
+}
+
+/// Attempt to discover a StringRef varName for the value \p value. If we fail,
+/// we return the name "unknown".
+inline StringRef getDebugVarName(SILValue value) {
+  auto inst = DebugVarCarryingInst::getFromValue(value);
+  return DebugVarCarryingInst::getName(inst);
 }
 
 } // end namespace swift
 
-#endif /* SWIFT_SIL_DEBUGUTILS_H */
+#endif // SWIFT_SIL_DEBUGUTILS_H

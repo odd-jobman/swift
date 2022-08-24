@@ -1,9 +1,9 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 class C {}
 var c = C()
-if c as C { // expected-error{{type 'C' does not conform to protocol 'Boolean'}}
+if c as C { // expected-error{{cannot convert value of type 'C' to expected condition type 'Bool'}}
 }
 
-if ({1} as () -> Int) { // expected-error{{type '() -> Int' does not conform to protocol 'Boolean'}}
+if ({1} as () -> Int) { // expected-error{{cannot convert value of type '() -> Int' to expected condition type 'Bool'}}
 }

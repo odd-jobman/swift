@@ -1,7 +1,5 @@
 :orphan:
 
-.. @raise litre.TestsAreMissing
-
 .. warning:: This document was used in planning Swift 1.0; it has not been kept
   up to date and does not describe the current or planned behavior of Swift.
 
@@ -30,7 +28,7 @@ below).
 This means that if you write code like this (optionally we could require an
 attribute to make it clear that the value is actor local)::
 
-  func foo(a : int) -> int { print(a) return 0 }
+  func foo(_ a : int) -> int { print(a) return 0 }
 
   var x = foo(1)
   var y = foo(2)
@@ -96,7 +94,7 @@ Having header files for public API is nice for a couple of reasons:
    headers but not the implementation of system classes.  This allows "jump to
    definition" to go to the declaration of an API in the header, which is
    conveniently co-located with headerdoc.
-    
+
 On the other hand, headers have a number of disadvantages including:
 
 1. It is plain code duplication, with all the negative effects of it.  It slows

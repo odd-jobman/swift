@@ -1,4 +1,4 @@
-// RUN: %target-run-simple-swift | FileCheck %s
+// RUN: %target-run-simple-swift | %FileCheck %s
 // REQUIRES: executable_test
 
 // REQUIRES: objc_interop
@@ -11,13 +11,13 @@ struct State {
   let abbrev: String
 }
 
-func stateFromPlistLame(plist: Dictionary<String, AnyObject>) -> State? {
+func stateFromPlistVerbose(_ plist: Dictionary<String, Any>) -> State? {
   if let name = plist["name"] as? NSString {
     if let population = plist["population"] as? NSNumber {
       if let abbrev = plist["abbrev"] as? NSString {
         if abbrev.length == 2 {
           return State(name: name as String,
-                       population: population.integerValue,
+                       population: population.intValue,
                        abbrev: abbrev as String)
         }
       }
@@ -26,10 +26,10 @@ func stateFromPlistLame(plist: Dictionary<String, AnyObject>) -> State? {
   return nil
 }
 
-func stateFromPlistCool(plist: Dictionary<String, AnyObject>) -> State? {
+func stateFromPlistCool(_ plist: Dictionary<String, Any>) -> State? {
   switch (plist["name"], plist["population"], plist["abbrev"]) {
   case let (name as String, pop as Int, abbr as String)
-  where abbr.characters.count == 2:
+  where abbr.count == 2:
     return State(name: name,
                  population: pop,
                  abbrev: abbr)
@@ -38,22 +38,22 @@ func stateFromPlistCool(plist: Dictionary<String, AnyObject>) -> State? {
   }
 }
 
-let goodStatePlist: Dictionary<String, AnyObject> = [
-  "name": "California",
-  "population": 38_040_000,
-  "abbrev": "CA",
+let goodStatePlist: Dictionary<String, Any> = [
+  "name" as String: "California",
+  "population" as String: 38_040_000,
+  "abbrev" as String: "CA",
 ]
-let invalidStatePlist1: Dictionary<String, AnyObject> = [
+let invalidStatePlist1: Dictionary<String, Any> = [
   "name": "California",
   "population": "hella",
   "abbrev": "CA",
 ]
-let invalidStatePlist2: Dictionary<String, AnyObject> = [
+let invalidStatePlist2: Dictionary<String, Any> = [
   "name": "California",
   "population": 38_040_000,
   "abbrev": "Cali",
 ]
-let invalidStatePlist3: Dictionary<String, AnyObject> = [
+let invalidStatePlist3: Dictionary<String, Any> = [
   "name": "California",
   "population": 38_040_000,
 ]
@@ -62,22 +62,22 @@ let invalidStatePlist3: Dictionary<String, AnyObject> = [
 // CHECK:         name: "California"
 // CHECK:         population: 38040000
 // CHECK:         abbrev: "CA"
-dump(stateFromPlistLame(goodStatePlist))
+dump(stateFromPlistVerbose(goodStatePlist))
 // CHECK-LABEL: some:
 // CHECK:         name: "California"
 // CHECK:         population: 38040000
 // CHECK:         abbrev: "CA"
 dump(stateFromPlistCool(goodStatePlist))
 // CHECK-LABEL: nil
-dump(stateFromPlistLame(invalidStatePlist1))
+dump(stateFromPlistVerbose(invalidStatePlist1))
 // CHECK-LABEL: nil
 dump(stateFromPlistCool(invalidStatePlist1))
 // CHECK-LABEL: nil
-dump(stateFromPlistLame(invalidStatePlist2))
+dump(stateFromPlistVerbose(invalidStatePlist2))
 // CHECK-LABEL: nil
 dump(stateFromPlistCool(invalidStatePlist2))
 // CHECK-LABEL: nil
-dump(stateFromPlistLame(invalidStatePlist3))
+dump(stateFromPlistVerbose(invalidStatePlist3))
 // CHECK-LABEL: nil
 dump(stateFromPlistCool(invalidStatePlist3))
 
@@ -102,10 +102,10 @@ enum Statistic : CustomReflectable {
   }
 }
 
-func statisticFromPlist(plist: Dictionary<String, AnyObject>) -> Statistic? {
+func statisticFromPlist(_ plist: Dictionary<String, Any>) -> Statistic? {
   switch (plist["kind"], plist["name"], plist["population"], plist["abbrev"]) {
   case let ("state" as String, name as String, population as Int, abbrev as String)
-  where abbrev.characters.count == 2:
+  where abbrev.count == 2:
     return Statistic.ForState(State(name: name,
                                     population: population,
                                     abbrev: abbrev))
@@ -117,29 +117,29 @@ func statisticFromPlist(plist: Dictionary<String, AnyObject>) -> Statistic? {
   }
 }
 
-let goodStatePlist2: Dictionary<String, AnyObject> = [
+let goodStatePlist2: Dictionary<String, Any> = [
   "kind": "state",
   "name": "California",
   "population": 38_040_000,
   "abbrev": "CA"
 ]
-let goodCountryPlist: Dictionary<String, AnyObject> = [
+let goodCountryPlist: Dictionary<String, Any> = [
   "kind": "country",
   "name": "India",
   "population": 1_23_70_00_000,
 ]
-let invalidCountryPlist1: Dictionary<String, AnyObject> = [
+let invalidCountryPlist1: Dictionary<String, Any> = [
   "kind": "country",
   "name": "India",
   "population": 1_23_70_00_000,
   "abbrev": "IN"
 ]
-let invalidCountryPlist2: Dictionary<String, AnyObject> = [
+let invalidCountryPlist2: Dictionary<String, Any> = [
   "kind": "country",
   "name": "India",
   "population": "123 crore",
 ]
-let invalidKindPlist: Dictionary<String, AnyObject> = [
+let invalidKindPlist: Dictionary<String, Any> = [
   "kind": "planet",
   "name": "Mercury",
   "population": 0

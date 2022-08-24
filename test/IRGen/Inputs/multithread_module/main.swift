@@ -1,22 +1,30 @@
 
 @inline(never)
-func incrementit(x: Int) -> Int {
+func incrementit(_ x: Int) -> Int {
 	return x + 1
 }
 
 class Derived : Base {
-	override func memberfunc(x: Int) -> Int {
+	override func memberfunc(_ x: Int) -> Int {
 		return x + 2
 	}
 }
 
-private struct MyStruct : MyProto {
+public struct MyStruct : MyProto {
 
 	var x: Int
 
 	func protofunc() -> Int {
 		return x
 	}
+}
+
+@_transparent public func transparentfunc(_ x: Int) -> Int {
+	return x + 3
+}
+
+public func mutateMyStructArray(_ arr: inout [MyStruct], _ x: MyStruct) {
+  arr.append(x)
 }
 
 public var g1 = 234

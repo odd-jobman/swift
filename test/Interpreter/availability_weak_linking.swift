@@ -1,9 +1,11 @@
-// RUN: rm -rf %t && mkdir -p %t
+// RUN: %empty-directory(%t)
 // RUN: cp -R %S/Inputs/FakeUnavailableObjCFramework.framework %t
 // RUN: %target-clang -dynamiclib %S/Inputs/FakeUnavailableObjCFramework.m -fmodules -F %t -framework Foundation -o %t/FakeUnavailableObjCFramework.framework/FakeUnavailableObjCFramework
-
-// RUN: %target-build-swift -F %t %s -o %t/UseWeaklinkedUnavailableObjCFramework
-// RUN: %target-build-swift -O -F %t %s -o %t/UseWeaklinkedUnavailableObjCFramework.opt
+// RUN: %target-codesign %t/FakeUnavailableObjCFramework.framework/FakeUnavailableObjCFramework
+// RUN: %target-build-swift-dylib(%t/%target-library-name(FakeUnavailableSwiftDylib)) -emit-module -emit-module-path %t/FakeUnavailableSwiftDylib.swiftmodule %S/Inputs/FakeUnavailableSwiftDylib.swift
+// RUN: %target-codesign %t/%target-library-name(FakeUnavailableSwiftDylib)
+// RUN: %target-build-swift %t/%target-library-name(FakeUnavailableSwiftDylib) -I %t -F %t %s -o %t/UseWeaklinkedUnavailableObjCFramework
+// RUN: %target-build-swift -O %t/%target-library-name(FakeUnavailableSwiftDylib) -I %t -F %t %s -o %t/UseWeaklinkedUnavailableObjCFramework.opt
 
 // These tests emulate deploying back to an older OS where newer APIs are not
 // available by linking to an Objective-C framework where APIs have been
@@ -11,24 +13,21 @@
 // platforms) and then moving the framework aside so that it can't be found
 // at run time.
 // RUN: mv %t/FakeUnavailableObjCFramework.framework %t/FakeUnavailableObjCFramework-MovedAside.framework
+// RUN: mv %t/%target-library-name(FakeUnavailableSwiftDylib) %t/%target-library-name(FakeUnavailableSwiftDylib)-MovedAside
 
-// RUN: %target-run %t/UseWeaklinkedUnavailableObjCFramework | FileCheck %s
-// RUN: %target-run %t/UseWeaklinkedUnavailableObjCFramework.opt | FileCheck %s
+// RUN: %target-codesign %t/UseWeaklinkedUnavailableObjCFramework
+// RUN: %target-codesign %t/UseWeaklinkedUnavailableObjCFramework.opt
+// RUN: %target-run %t/UseWeaklinkedUnavailableObjCFramework | %FileCheck %s
+// RUN: %target-run %t/UseWeaklinkedUnavailableObjCFramework.opt | %FileCheck %s
 
 // REQUIRES: objc_interop
 // REQUIRES: executable_test
 
 import StdlibUnittest
 
-// Also import modules which are used by StdlibUnittest internally. This
-// workaround is needed to link all required libraries in case we compile
-// StdlibUnittest with -sil-serialize-all.
-import SwiftPrivate
-#if _runtime(_ObjC)
-import ObjectiveC
-#endif
 
 import FakeUnavailableObjCFramework
+import FakeUnavailableSwiftDylib
 import Foundation
 
 // CHECK: Running
@@ -122,7 +121,7 @@ func useUnavailableObjCClass() {
     o.someMethod()
   }
 
-  for var i = 0; i < getInt(5); i += 1 {
+  for i in 0 ..< getInt(5) {
     if #available(OSX 1066.0, iOS 1066.0, watchOS 1066.0, tvOS 1066.0, *) {
       let o: UnavailableObjCClass = printClassMetadataViaGeneric()
       _blackHole(o)
@@ -132,19 +131,24 @@ func useUnavailableObjCClass() {
   class SomeClass { }
   let someObject: AnyObject = _opaqueIdentity(SomeClass() as AnyObject)
 
-  for var i = 0; i < getInt(5); i += 1 {
+  for i in 0 ..< getInt(5) {
     if #available(OSX 1066.0, iOS 1066.0, watchOS 1066.0, tvOS 1066.0, *) {
       let isUnavailable = someObject is UnavailableObjCClass
       _blackHole(isUnavailable)
     }
   }
 
-  for var i = 0; i < getInt(5); i += 1 {
+  for i in 0 ..< getInt(5) {
     if #available(OSX 1066.0, iOS 1066.0, watchOS 1066.0, tvOS 1066.0, *) {
       let asUnavailable = someObject as? UnavailableObjCClass
       _blackHole(asUnavailable)
     }
   }
+}
+
+@available(OSX 1066.0, iOS 1066.0, watchOS 1066.0, tvOS 1066.0, *)
+func wrapUnavailableFunction() {
+  someFunction()
 }
 
 useUnavailableObjCClass()
@@ -154,6 +158,59 @@ protocol SomeSwiftProtocol { }
 @available(OSX 1066.0, iOS 1066.0, watchOS 1066.0, tvOS 1066.0, *)
 extension UnavailableObjCClass : SomeSwiftProtocol {
 }
+@available(OSX 1066.0, iOS 1066.0, watchOS 1066.0, tvOS 1066.0, *)
+extension UnavailableSwiftClass : SomeSwiftProtocol {
+}
+
+func checkSwiftProtocolConformance() {
+  // Make sure the runtime doesn't crash in the presence of a conformance
+  // record for a class that doesn't exist at runtime.
+  let x: Any = 42
+  _blackHole(x as? SomeSwiftProtocol)
+}
+
+checkSwiftProtocolConformance()
+
+class ClassConformingToUnavailableSwiftProtocol : UnavailableSwiftProtocol {
+  func someMethod() {
+    print("Executed ClassConformingToUnavailableSwiftProtocol.someMethod()")
+  }
+}
+
+func useClassConformingToUnavailableSwiftProtocol() {
+  let o = ClassConformingToUnavailableSwiftProtocol()
+  o.someMethod()
+
+  if #available(OSX 1066.0, iOS 1066.0, watchOS 1066.0, tvOS 1066.0, *) {
+    let oAsUP: UnavailableSwiftProtocol = o as UnavailableSwiftProtocol
+    oAsUP.someMethod()
+  }
+}
+
+// CHECK-NEXT: Executed ClassConformingToUnavailableSwiftProtocol.someMethod()
+useClassConformingToUnavailableSwiftProtocol()
+
+class ClassThatWillBeExtendedToConformToUnavailableSwiftProtocol {
+}
+
+extension ClassThatWillBeExtendedToConformToUnavailableSwiftProtocol : UnavailableSwiftProtocol {
+  func someMethod() {
+    print("Executed ClassThatWillBeExtendedToConformToUnavailableSwiftProtocol.someMethod()")
+  }
+}
+
+func useClassThatWillBeExtendedToConformToUnavailableSwiftProtocol() {
+  let o = ClassThatWillBeExtendedToConformToUnavailableSwiftProtocol()
+  o.someMethod()
+
+  if #available(OSX 1066.0, iOS 1066.0, watchOS 1066.0, tvOS 1066.0, *) {
+    let oAsUP: UnavailableSwiftProtocol = o as UnavailableSwiftProtocol
+    oAsUP.someMethod()
+  }
+}
+
+// CHECK-NEXT: Executed ClassThatWillBeExtendedToConformToUnavailableSwiftProtocol.someMethod()
+useClassThatWillBeExtendedToConformToUnavailableSwiftProtocol()
 
 // CHECK-NEXT: Done
 print("Done")

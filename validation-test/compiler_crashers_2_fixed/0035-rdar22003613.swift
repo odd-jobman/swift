@@ -1,9 +1,9 @@
-// RUN: not %target-swift-frontend %s -parse
+// RUN: not %target-swift-frontend %s -typecheck
 
 class CFArray {}
 struct U<T> {}
 
-func yyy<T, Result>(arg: inout T, @noescape _ body: U<T> -> Result) -> Result {
+func yyy<T, Result>(arg: inout T, _ body: U<T> -> Result) -> Result {
   return body(U<T>())
 }
 

@@ -2,22 +2,28 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2021 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 // This test checks performance of Swift hanoi tower.
 // <rdar://problem/22151932>
-import Foundation
 import TestsUtils
+
+public let benchmarks =
+  BenchmarkInfo(
+    name: "Hanoi",
+    runFunction: run_Hanoi,
+    tags: [.validation, .algorithm],
+    legacyFactor: 10)
 
 struct Move {
    var from: String
-   var to  : String
+   var to: String
    init(from:String, to:String) {
       self.from = from
       self.to = to
@@ -28,7 +34,7 @@ class TowersOfHanoi {
   // Record all moves made.
   var moves : [Move] = [Move]()
 
-  func solve(n: Int,  start: String,  auxiliary: String,  end: String) {
+  func solve(_ n: Int, start: String, auxiliary: String, end: String) {
     if (n == 1) {
       moves.append(Move(from:start, to:end))
     } else {
@@ -40,8 +46,8 @@ class TowersOfHanoi {
 }
 
 @inline(never)
-public func run_Hanoi(N: Int) {
-  for _ in 1...100*N {
+public func run_Hanoi(_ n: Int) {
+  for _ in 1...10*n {
     let hanoi: TowersOfHanoi = TowersOfHanoi()
     hanoi.solve(10, start: "A", auxiliary: "B", end: "C")
   }

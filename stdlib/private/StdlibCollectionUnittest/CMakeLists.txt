@@ -1,30 +1,31 @@
 set(swift_stdlib_unittest_compile_flags)
-if(SWIFT_SERIALIZE_STDLIB_UNITTEST)
-  list(APPEND swift_stdlib_unittest_compile_flags "-Xfrontend" "-sil-serialize-all")
-endif()
 
-set(swift_stdlib_unittest_framework_depends)
-if(SWIFT_HOST_VARIANT MATCHES "${SWIFT_DARWIN_VARIANTS}")
-  list(APPEND swift_stdlib_unittest_framework_depends
-    Foundation)
-endif()
-
-add_swift_library(swiftStdlibCollectionUnittest SHARED IS_STDLIB
+add_swift_target_library(swiftStdlibCollectionUnittest ${SWIFT_STDLIB_LIBRARY_BUILD_TYPES} IS_STDLIB
   # This file should be listed the first.  Module name is inferred from the
   # filename.
   StdlibCollectionUnittest.swift
 
+  CheckCollectionInstance.swift
   CheckCollectionType.swift
-  CheckMutableCollectionType.swift.gyb
+  CheckMutableCollectionType.swift
   CheckRangeReplaceableCollectionType.swift
   CheckRangeReplaceableSliceType.swift
+  CheckSequenceInstance.swift
   CheckSequenceType.swift
-  LoggingWrappers.swift.gyb
-  MinimalCollections.swift.gyb
+  COWLoggingArray.swift
+  LoggingWrappers.swift
+  MinimalCollections.swift
+  RangeSelection.swift
+  WriteBackMutableSlice.swift
 
-  PRIVATE_LINK_LIBRARIES ${swift_stdlib_unittest_private_link_libraries}
   SWIFT_MODULE_DEPENDS StdlibUnittest
-  SWIFT_COMPILE_FLAGS ${swift_stdlib_unittest_compile_flags}
-  FRAMEWORK_DEPENDS ${swift_stdlib_unittest_framework_depends}
-  INSTALL_IN_COMPONENT stdlib-experimental)
+  SWIFT_MODULE_DEPENDS_LINUX Glibc
+  SWIFT_MODULE_DEPENDS_FREEBSD Glibc
+  SWIFT_MODULE_DEPENDS_OPENBSD Glibc
+  SWIFT_MODULE_DEPENDS_CYGWIN Glibc
+  SWIFT_MODULE_DEPENDS_HAIKU Glibc
+  SWIFT_MODULE_DEPENDS_WINDOWS CRT
+  SWIFT_COMPILE_FLAGS ${swift_stdlib_unittest_compile_flags} ${SWIFT_STANDARD_LIBRARY_SWIFT_FLAGS}
+  INSTALL_IN_COMPONENT stdlib-experimental
+  DARWIN_INSTALL_NAME_DIR "${SWIFT_DARWIN_STDLIB_PRIVATE_INSTALL_NAME_DIR}")
 

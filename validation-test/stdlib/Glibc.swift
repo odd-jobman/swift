@@ -1,18 +1,16 @@
-// RUN: %target-run-stdlib-swift
+// RUN: %target-run-simple-swift
 // REQUIRES: executable_test
+//
+// UNSUPPORTED: OS=macosx
+// UNSUPPORTED: OS=ios
+// UNSUPPORTED: OS=tvos
+// UNSUPPORTED: OS=watchos
 
-// REQUIRES: OS=linux-gnu
+// REQUIRES: OS=linux-gnu || OS=linux-androideabi || OS=linux-android
 
 import Swift
 import StdlibUnittest
 
-// Also import modules which are used by StdlibUnittest internally. This
-// workaround is needed to link all required libraries in case we compile
-// StdlibUnittest with -sil-serialize-all.
-import SwiftPrivate
-#if _runtime(_ObjC)
-import ObjectiveC
-#endif
 
 import Glibc
 
@@ -23,6 +21,17 @@ GlibcTestSuite.test("errno") {
   expectEqual(0, errno)
   close(-1)
   expectEqual(EBADF, errno)
+}
+
+GlibcTestSuite.test("sendfile") {
+  // Check that `sendfile` is available.  Don't actually call it, because doing that is non-trivial.
+  _ = sendfile
+}
+
+var GlibcIoctlConstants = TestSuite("GlibcIoctlConstants")
+
+GlibcIoctlConstants.test("tty ioctl constants availability") {
+  let aConstant = TIOCSTI
 }
 
 runAllTests()

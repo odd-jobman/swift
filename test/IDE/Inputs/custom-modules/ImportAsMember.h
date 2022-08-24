@@ -11,6 +11,9 @@ extern double IAMStruct1GlobalVar
 extern struct IAMStruct1 IAMStruct1CreateSimple(double value)
     __attribute__((swift_name("Struct1.init(value:)")));
 
+extern struct IAMStruct1 IAMStruct1CreateSpecialLabel(void)
+    __attribute__((swift_name("Struct1.init(specialLabel:)")));
+
 extern struct IAMStruct1 IAMStruct1Invert(struct IAMStruct1 s)
     __attribute__((swift_name("Struct1.inverted(self:)")));
 
@@ -46,7 +49,7 @@ extern int IAMStruct1StaticGetProperty(void)
     __attribute__((swift_name("getter:Struct1.property()")));
 extern int IAMStruct1StaticSetProperty(int i)
     __attribute__((swift_name("setter:Struct1.property(i:)")));
-extern int IAMStruct1StaticGetOnlyProperty()
+extern int IAMStruct1StaticGetOnlyProperty(void)
     __attribute__((swift_name("getter:Struct1.getOnlyProperty()")));
 
 extern void IAMStruct1SelfComesLast(double x, struct IAMStruct1 s)

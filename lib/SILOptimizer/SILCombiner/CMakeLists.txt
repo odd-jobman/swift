@@ -1,7 +1,6 @@
-set(SILCOMBINER_SOURCES
-  SILCombiner/SILCombine.cpp
-  SILCombiner/SILCombinerApplyVisitors.cpp
-  SILCombiner/SILCombinerBuiltinVisitors.cpp
-  SILCombiner/SILCombinerCastVisitors.cpp
-  SILCombiner/SILCombinerMiscVisitors.cpp
-  PARENT_SCOPE)
+target_sources(swiftSILOptimizer PRIVATE
+  SILCombine.cpp
+  SILCombinerApplyVisitors.cpp
+  SILCombinerBuiltinVisitors.cpp
+  SILCombinerCastVisitors.cpp
+  SILCombinerMiscVisitors.cpp)

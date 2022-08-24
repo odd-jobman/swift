@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -33,14 +33,14 @@ class LoopCanonicalizer : public SILFunctionTransform {
   void run() override {
     SILFunction *F = getFunction();
 
-    DEBUG(llvm::dbgs() << "Attempt to canonicalize loops in " << F->getName()
-                       << "\n");
+    LLVM_DEBUG(llvm::dbgs() << "Attempt to canonicalize loops in "
+                            << F->getName() << "\n");
 
     auto *LA = PM->getAnalysis<SILLoopAnalysis>();
     auto *LI = LA->get(F);
 
     if (LI->empty()) {
-      DEBUG(llvm::dbgs() << "    No loops to canonicalize!\n");
+      LLVM_DEBUG(llvm::dbgs() << "    No loops to canonicalize!\n");
       return;
     }
 
@@ -56,7 +56,6 @@ class LoopCanonicalizer : public SILFunctionTransform {
     }
   }
 
-  StringRef getName() override { return "Loop Canonicalizer"; }
 };
 
 } // end anonymous namespace

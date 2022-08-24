@@ -1,4 +1,4 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 @_silgen_name("foo") // expected-note {{attribute already specified here}}
 @_silgen_name("bar") // expected-error {{duplicate attribute}}
@@ -10,7 +10,7 @@ func somethingThatShouldParseFine() {}
 
 func func_with_nested__silgen_name() {
    @_silgen_name("exit") // expected-error {{attribute '_silgen_name' can only be used in a non-local scope}}
-   func exit(code : UInt32) -> Void
+   func exit(_ code : UInt32) -> Void
    exit(0)
 }
 

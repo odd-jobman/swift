@@ -1,24 +1,30 @@
-// RUN: %target-swift-frontend -emit-silgen %s | FileCheck %s
 
-// CHECK-LABEL: sil hidden @_TF22downcast_reabstraction19condFunctionFromAnyFP_T_ 
-// CHECK:         checked_cast_addr_br take_always protocol<> in [[IN:%.*]] : $*protocol<> to () -> () in [[OUT:%.*]] : $*@callee_owned (@in ()) -> @out (), [[YES:bb[0-9]+]], [[NO:bb[0-9]+]]
+// RUN: %target-swift-emit-silgen -module-name downcast_reabstraction %s | %FileCheck %s
+
+// CHECK-LABEL: sil hidden [ossa] @$s22downcast_reabstraction19condFunctionFromAnyyyypF
+// CHECK:         checked_cast_addr_br take_always Any in [[IN:%.*]] : $*Any to () -> () in [[OUT:%.*]] : $*@callee_guaranteed @substituted <τ_0_0> () -> @out τ_0_0 for <()>, [[YES:bb[0-9]+]], [[NO:bb[0-9]+]]
 // CHECK:       [[YES]]:
-// CHECK:         [[ORIG_VAL:%.*]] = load [[OUT]]
-// CHECK:         [[REABSTRACT:%.*]] = function_ref @_TTRXFo_iT__iT__XFo___
-// CHECK:         [[SUBST_VAL:%.*]] = partial_apply [[REABSTRACT]]([[ORIG_VAL]])
+// CHECK:         [[ORIG_VAL:%.*]] = load [take] [[OUT]]
+// CHECK:         [[CONV_VAL:%.*]] = convert_function [[ORIG_VAL]]
+// CHECK:         [[REABSTRACT:%.*]] = function_ref @$sytIegr_Ieg_TR
+// CHECK:         [[SUBST_VAL:%.*]] = partial_apply [callee_guaranteed] [[REABSTRACT]]([[CONV_VAL]])
 
-func condFunctionFromAny(x: Any) {
+func condFunctionFromAny(_ x: Any) {
   if let f = x as? () -> () {
     f()
   }
 }
 
-// CHECK-LABEL: sil hidden @_TF22downcast_reabstraction21uncondFunctionFromAnyFP_T_ : $@convention(thin) (@in protocol<>) -> () {
-// CHECK:         unconditional_checked_cast_addr take_always protocol<> in [[IN:%.*]] : $*protocol<> to () -> () in [[OUT:%.*]] : $*@callee_owned (@in ()) -> @out ()
-// CHECK:         [[ORIG_VAL:%.*]] = load [[OUT]]
-// CHECK:         [[REABSTRACT:%.*]] = function_ref @_TTRXFo_iT__iT__XFo___
-// CHECK:         [[SUBST_VAL:%.*]] = partial_apply [[REABSTRACT]]([[ORIG_VAL]])
-// CHECK:         apply [[SUBST_VAL]]()
-func uncondFunctionFromAny(x: Any) {
+// CHECK-LABEL: sil hidden [ossa] @$s22downcast_reabstraction21uncondFunctionFromAnyyyypF : $@convention(thin) (@in_guaranteed Any) -> () {
+// CHECK:         unconditional_checked_cast_addr Any in [[IN:%.*]] : $*Any to () -> () in [[OUT:%.*]] : $*@callee_guaranteed @substituted <τ_0_0> () -> @out τ_0_0 for <()>
+// CHECK:         [[ORIG_VAL:%.*]] = load [take] [[OUT]]
+// CHECK:         [[CONV_VAL:%.*]] = convert_function [[ORIG_VAL]]
+// CHECK:         [[REABSTRACT:%.*]] = function_ref @$sytIegr_Ieg_TR
+// CHECK:         [[SUBST_VAL:%.*]] = partial_apply [callee_guaranteed] [[REABSTRACT]]([[CONV_VAL]])
+// CHECK:         [[BORROW:%.*]] = begin_borrow [[SUBST_VAL]]
+// CHECK:         apply [[BORROW]]()
+// CHECK:         end_borrow [[BORROW]]
+// CHECK:         destroy_value [[SUBST_VAL]]
+func uncondFunctionFromAny(_ x: Any) {
   (x as! () -> ())()
 }

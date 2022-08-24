@@ -1,214 +1,217 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift -verify-ignore-unknown
 
 import StdlibUnittest
 import StdlibCollectionUnittest
-
-// Also import modules which are used by StdlibUnittest internally. This
-// workaround is needed to link all required libraries in case we compile
-// StdlibUnittest with -sil-serialize-all.
-import SwiftPrivate
-#if _runtime(_ObjC)
-import ObjectiveC
-#endif
 
 //
 // Check that Collection.SubSequence is constrained to Collection.
 //
 
-// expected-error@+2 {{type 'CollectionWithBadSubSequence' does not conform to protocol 'Sequence'}}
 // expected-error@+1 {{type 'CollectionWithBadSubSequence' does not conform to protocol 'Collection'}}
 struct CollectionWithBadSubSequence : Collection {
-  var startIndex: MinimalForwardIndex {
+  var startIndex: MinimalIndex {
     fatalError("unreachable")
   }
 
-  var endIndex: MinimalForwardIndex {
+  var endIndex: MinimalIndex {
     fatalError("unreachable")
   }
 
-  subscript(i: MinimalForwardIndex) -> OpaqueValue<Int> {
+  subscript(i: MinimalIndex) -> OpaqueValue<Int> {
     fatalError("unreachable")
   }
 
-  // expected-note@+2 {{possibly intended match 'SubSequence' (aka 'OpaqueValue<Int8>') does not conform to 'Indexable'}}
   // expected-note@+1 {{possibly intended match}}
   typealias SubSequence = OpaqueValue<Int8>
 }
 
-func useCollectionTypeSubSequenceIndex<
-  C : Collection
-  where
-  C.SubSequence.Index : BidirectionalIndex
->(c: C) {}
+func useCollectionTypeSubSequenceIndex<C : Collection>(_ c: C) {}
 
-func useCollectionTypeSubSequenceGeneratorElement<
-  C : Collection
-  where
-  C.SubSequence.Iterator.Element == C.Iterator.Element
->(c: C) {}
+func useCollectionTypeSubSequenceGeneratorElement<C : Collection>(_ c: C) {}
 
 func sortResultIgnored<
-  S : Sequence, MC : MutableCollection
-  where
-  S.Iterator.Element : Comparable,
-  MC.Iterator.Element : Comparable
->(
-  sequence: S,
-  mutableCollection: MC,
-  array: [Int]
-) {
+  S : Sequence,
+  MC : MutableCollection
+>(_ sequence: S, mutableCollection: MC, array: [Int])
+  where S.Iterator.Element : Comparable, MC.Iterator.Element : Comparable {
   var sequence = sequence // expected-warning {{variable 'sequence' was never mutated; consider changing to 'let' constant}}
   var mutableCollection = mutableCollection // expected-warning {{variable 'mutableCollection' was never mutated; consider changing to 'let' constant}}
   var array = array // expected-warning {{variable 'array' was never mutated; consider changing to 'let' constant}}
 
   sequence.sorted() // expected-warning {{result of call to 'sorted()' is unused}}
-  sequence.sorted { $0 < $1 } // expected-warning {{result of call to 'sorted(isOrderedBefore:)' is unused}}
+  sequence.sorted { $0 < $1 } // expected-warning {{result of call to 'sorted(by:)' is unused}}
 
-  mutableCollection.sorted() // expected-warning {{result of call to non-mutating function 'sorted()' is unused; use 'sort()' to mutate in-place}} {{21-27=sort}}
-  mutableCollection.sorted { $0 < $1 } // expected-warning {{result of call to non-mutating function 'sorted(isOrderedBefore:)' is unused; use 'sort(isOrderedBefore:)' to mutate in-place}} {{21-27=sort}}
+  mutableCollection.sorted() // expected-warning {{result of call to 'sorted()' is unused}}
+  mutableCollection.sorted { $0 < $1 } // expected-warning {{result of call to 'sorted(by:)' is unused}}
 
-  array.sorted() // expected-warning {{result of call to non-mutating function 'sorted()' is unused; use 'sort()' to mutate in-place}} {{9-15=sort}}
-  array.sorted { $0 < $1 } // expected-warning {{result of call to non-mutating function 'sorted(isOrderedBefore:)' is unused; use 'sort(isOrderedBefore:)' to mutate in-place}} {{9-15=sort}}
+  array.sorted() // expected-warning {{result of call to 'sorted()' is unused}}
+  array.sorted { $0 < $1 } // expected-warning {{result of call to 'sorted(by:)' is unused}}
 }
 
-struct GoodForwardIndex1 : ForwardIndex {
-  func successor() -> GoodForwardIndex1 {
-    fatalError("not implemented")
-  }
-}
-func == (lhs: GoodForwardIndex1, rhs: GoodForwardIndex1) -> Bool {
-  fatalError("not implemented")
-}
+// expected-warning@+2 {{'Indexable' is deprecated: renamed to 'Collection'}}
+// expected-note@+1 {{use 'Collection' instead}}
+struct GoodIndexable : Indexable { 
+  func index(after i: Int) -> Int { return i + 1 }
+  var startIndex: Int { return 0 }
+  var endIndex: Int { return 0 }
 
-struct GoodForwardIndex2 : ForwardIndex {
-  func successor() -> GoodForwardIndex2 {
-    fatalError("not implemented")
-  }
-  typealias Distance = Int32
-}
-func == (lhs: GoodForwardIndex2, rhs: GoodForwardIndex2) -> Bool {
-  fatalError("not implemented")
+  subscript(pos: Int) -> Int { return 0 }
+  subscript(bounds: Range<Int>) -> ArraySlice<Int> { return [] }
 }
 
 
-struct GoodBidirectionalIndex1 : BidirectionalIndex {
-  func successor() -> GoodBidirectionalIndex1 {
-    fatalError("not implemented")
-  }
-  func predecessor() -> GoodBidirectionalIndex1 {
-    fatalError("not implemented")
-  }
-}
-func == (lhs: GoodBidirectionalIndex1, rhs: GoodBidirectionalIndex1) -> Bool {
-  fatalError("not implemented")
+// expected-warning@+2 {{'Indexable' is deprecated: renamed to 'Collection'}}
+// expected-note@+1 {{use 'Collection' instead}}
+struct AnotherGoodIndexable1 : Indexable {
+  func index(after i: Int) -> Int { return i + 1 }
+  var startIndex: Int { return 0 }
+  var endIndex: Int { return 0 }
+
+  subscript(pos: Int) -> Int { return 0 }
 }
 
-struct GoodBidirectionalIndex2 : BidirectionalIndex {
-  func successor() -> GoodBidirectionalIndex2 {
-    fatalError("not implemented")
-  }
-  func predecessor() -> GoodBidirectionalIndex2 {
-    fatalError("not implemented")
-  }
-  typealias Distance = Int32
-}
-func == (lhs: GoodBidirectionalIndex2, rhs: GoodBidirectionalIndex2) -> Bool {
-  fatalError("not implemented")
+// expected-warning@+3 {{'Indexable' is deprecated: renamed to 'Collection'}}
+// expected-error@+2 {{type 'BadIndexable2' does not conform to protocol 'Collection'}}
+// expected-note@+1 {{use 'Collection' instead}}
+struct BadIndexable2 : Indexable {
+  var startIndex: Int { return 0 }
+  var endIndex: Int { return 0 }
+
+  subscript(pos: Int) -> Int { return 0 }
+  subscript(bounds: Range<Int>) -> ArraySlice<Int> { return [] }
+  // Missing index(after:) -> Int
 }
 
-// expected-error@+1 {{type 'BadBidirectionalIndex1' does not conform to protocol 'BidirectionalIndex'}}
-struct BadBidirectionalIndex1 : BidirectionalIndex {
-  func successor() -> BadBidirectionalIndex1 {
-    fatalError("not implemented")
-  }
-  // Missing 'predecessor()'.
-}
-func == (lhs: BadBidirectionalIndex1, rhs: BadBidirectionalIndex1) -> Bool {
-  fatalError("not implemented")
+// expected-warning@+2 {{'BidirectionalIndexable' is deprecated: renamed to 'BidirectionalCollection'}}
+// expected-note@+1 {{use 'BidirectionalCollection' instead}}
+struct GoodBidirectionalIndexable1 : BidirectionalIndexable {
+  var startIndex: Int { return 0 }
+  var endIndex: Int { return 0 }
+  func index(after i: Int) -> Int { return i + 1 }
+  func index(before i: Int) -> Int { return i - 1 }
+
+  subscript(pos: Int) -> Int { return 0 }
+  subscript(bounds: Range<Int>) -> ArraySlice<Int> { return [] }
 }
 
-struct GoodRandomAccessIndex1 : RandomAccessIndex {
-  func successor() -> GoodRandomAccessIndex1 {
-    fatalError("not implemented")
-  }
-  func predecessor() -> GoodRandomAccessIndex1 {
-    fatalError("not implemented")
-  }
-  func distance(to other: GoodRandomAccessIndex1) -> Int {
-    fatalError("not implemented")
-  }
-  func advanced(by n: Int) -> GoodRandomAccessIndex1 {
-    fatalError("not implemented")
-  }
-}
-func == (lhs: GoodRandomAccessIndex1, rhs: GoodRandomAccessIndex1) -> Bool {
-  fatalError("not implemented")
+// We'd like to see: {{type 'BadBidirectionalIndexable' does not conform to protocol 'BidirectionalIndexable'}}
+// But the compiler doesn't generate that error.
+// expected-warning@+2 {{'BidirectionalIndexable' is deprecated: renamed to 'BidirectionalCollection'}}
+// expected-note@+1 {{use 'BidirectionalCollection' instead}}
+struct BadBidirectionalIndexable : BidirectionalIndexable {
+  var startIndex: Int { return 0 }
+  var endIndex: Int { return 0 }
+
+  subscript(pos: Int) -> Int { return 0 }
+  subscript(bounds: Range<Int>) -> ArraySlice<Int> { return [] }
+
+  // This is a poor error message; it would be better to get a message
+  // that index(before:) was missing.
+  //
+  // expected-error@+1 {{'index(after:)' has different argument labels from those required by protocol 'BidirectionalCollection' ('index(before:)'}}
+  func index(after i: Int) -> Int { return 0 }
 }
 
-struct GoodRandomAccessIndex2 : RandomAccessIndex {
-  func successor() -> GoodRandomAccessIndex2 {
-    fatalError("not implemented")
+//
+// Check that RangeReplaceableCollection.SubSequence is defaulted.
+//
+
+struct RangeReplaceableCollection_SubSequence_IsDefaulted : RangeReplaceableCollection {
+  var startIndex: Int { fatalError() }
+  var endIndex: Int { fatalError() }
+
+  subscript(pos: Int) -> Int { return 0 }
+
+  func index(after: Int) -> Int { fatalError() }
+  func index(before: Int) -> Int { fatalError() }
+  func index(_: Int, offsetBy: Int) -> Int { fatalError() }
+  func distance(from: Int, to: Int) -> Int { fatalError() }
+
+  mutating func replaceSubrange<C>(
+    _ subrange: Range<Int>,
+    with newElements: C
+  ) where C : Collection, C.Iterator.Element == Int {
+    fatalError()
   }
-  func predecessor() -> GoodRandomAccessIndex2 {
-    fatalError("not implemented")
-  }
-  func distance(to other: GoodRandomAccessIndex2) -> Int32 {
-    fatalError("not implemented")
-  }
-  func advanced(by n: Int32) -> GoodRandomAccessIndex2 {
-    fatalError("not implemented")
-  }
-  typealias Distance = Int32
-}
-func == (lhs: GoodRandomAccessIndex2, rhs: GoodRandomAccessIndex2) -> Bool {
-  fatalError("not implemented")
 }
 
-// expected-error@+2 {{type 'BadRandomAccessIndex1' does not conform to protocol 'RandomAccessIndex'}}
-// expected-error@+1 * {{}} // There are a lot of other errors we don't care about.
-struct BadRandomAccessIndex1 : RandomAccessIndex {
-  func successor() -> BadRandomAccessIndex1 {
-    fatalError("not implemented")
-  }
-  func predecessor() -> BadRandomAccessIndex1 {
-    fatalError("not implemented")
-  }
-}
-func == (lhs: BadRandomAccessIndex1, rhs: BadRandomAccessIndex1) -> Bool {
-  fatalError("not implemented")
+//
+// A Collection that does not use `Slice<Self>` as its SubSequence should
+// require its own implementation of the Range<Index> subscript getter.
+// The only valid default implementation of that Collection requirement
+// returns `Slice<Self>`.
+//
+
+// expected-error@+2 {{type 'CollectionWithNonDefaultSubSequence' does not conform to protocol 'Collection'}}
+// expected-error@+1 {{unavailable subscript 'subscript(_:)' was used to satisfy a requirement of protocol 'Collection'}}
+struct CollectionWithNonDefaultSubSequence: Collection {
+  public var startIndex: Int
+  public var endIndex: Int
+
+  public typealias SubSequence = Self
+
+  public func index(after i: Int) -> Int { i+1 }
+  public subscript(position: Int) -> Int { position }
 }
 
-// expected-error@+2 {{type 'BadRandomAccessIndex2' does not conform to protocol 'RandomAccessIndex'}}
-// expected-error@+1 * {{}} // There are a lot of other errors we don't care about.
-struct BadRandomAccessIndex2 : RandomAccessIndex {
-  func successor() -> BadRandomAccessIndex2 {
-    fatalError("not implemented")
+// expected-error@+2 {{type 'MutableCollectionWithNonDefaultSubSequence' does not conform to protocol 'MutableCollection'}}
+// expected-error@+1 {{unavailable subscript 'subscript(_:)' was used to satisfy a requirement of protocol 'MutableCollection'}}
+struct MutableCollectionWithNonDefaultSubSequence: MutableCollection {
+  public var startIndex: Int
+  public var endIndex: Int
+
+  public typealias SubSequence = Self
+
+  public func index(after i: Int) -> Int { i+1 }
+  public subscript(position: Int) -> Int {
+    get { position }
+    set { _ = newValue }
   }
-  func predecessor() -> BadRandomAccessIndex2 {
-    fatalError("not implemented")
+
+  public subscript(bounds: Range<Index>) -> Self {
+    Self(startIndex: bounds.startIndex, endIndex: bounds.endIndex)
   }
-  func distance(to other: GoodRandomAccessIndex1) -> Int {
-    fatalError("not implemented")
-  }
-}
-func == (lhs: BadRandomAccessIndex2, rhs: BadRandomAccessIndex2) -> Bool {
-  fatalError("not implemented")
 }
 
-// expected-error@+2 {{type 'BadRandomAccessIndex3' does not conform to protocol 'RandomAccessIndex'}}
-// expected-error@+1 * {{}} // There are a lot of other errors we don't care about.
-struct BadRandomAccessIndex3 : RandomAccessIndex {
-  func successor() -> BadRandomAccessIndex3 {
-    fatalError("not implemented")
+struct MutableCollectionWithDefaultSubSequence: MutableCollection {
+  public var startIndex: Int
+  public var endIndex: Int
+
+  public func index(after i: Int) -> Int { i+1 }
+  public subscript(position: Int) -> Int {
+    get { position }
+    set { _ = newValue }
   }
-  func predecessor() -> BadRandomAccessIndex3 {
-    fatalError("not implemented")
-  }
-  func advanced(by n: Int) -> GoodRandomAccessIndex1 {
-    fatalError("not implemented")
-  }
-}
-func == (lhs: BadRandomAccessIndex3, rhs: BadRandomAccessIndex3) -> Bool {
-  fatalError("not implemented")
 }
 
+func subscriptMutableCollectionIgnored() {
+  let cs: MutableCollectionWithNonDefaultSubSequence
+  cs = .init(startIndex: 0, endIndex: 10)
+
+  let badSlice: Slice<MutableCollectionWithNonDefaultSubSequence>
+  badSlice = cs[0..<2] // expected-error {{'subscript(_:)' is unavailable}}
+  cs[3..<5] = badSlice // expected-error {{'subscript(_:)' is unavailable}}
+
+  let ds: MutableCollectionWithDefaultSubSequence
+  ds = .init(startIndex: 0, endIndex: 10)
+
+  let goodSlice: Slice<MutableCollectionWithDefaultSubSequence>
+  goodSlice = ds[0..<2]
+  ds[3..<5] = goodSlice
+}
+
+// expected-error@+2 {{type 'IncompleteRangeReplaceableCollection' does not conform to protocol 'RangeReplaceableCollection'}}
+// expected-error@+1 {{unavailable instance method 'replaceSubrange(_:with:)' was used to satisfy a requirement of protocol 'RangeReplaceableCollection'}}
+struct IncompleteRangeReplaceableCollection: RangeReplaceableCollection {
+  var startIndex: Int
+  var endIndex: Int
+
+  func index(after i: Int) -> Int { i+1 }
+  subscript(position: Int) -> Int { position }
+
+  init() { startIndex = 0; endIndex = 0 }
+ }
+
+// FIXME: Remove -verify-ignore-unknown.
+// <unknown>:0: error: unexpected note produced: possibly intended match
+// <unknown>:0: error: unexpected note produced: possibly intended match

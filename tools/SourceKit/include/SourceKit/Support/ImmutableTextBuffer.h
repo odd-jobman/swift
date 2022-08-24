@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -66,7 +66,7 @@ private:
   ThreadSafeRefCntPtr<ImmutableTextUpdate> Next;
 
   friend class EditableTextBuffer;
-  virtual void anchor();
+  virtual void anchor() override;
 };
 
 class ImmutableTextBuffer : public ImmutableTextUpdate {
@@ -138,6 +138,8 @@ public:
 
   ImmutableTextBufferRef getBuffer() const;
 
+  size_t getSize() const;
+
   bool isFromSameBuffer(ImmutableTextSnapshotRef Other) const {
     return Other->EditableBuf.get() == EditableBuf.get();
   }
@@ -153,7 +155,7 @@ public:
 };
 
 class EditableTextBuffer : public ThreadSafeRefCountedBase<EditableTextBuffer> {
-  llvm::sys::Mutex EditMtx;
+  mutable llvm::sys::Mutex EditMtx;
   ImmutableTextBufferRef Root;
   ImmutableTextUpdateRef CurrUpd;
   std::string Filename;
@@ -169,6 +171,10 @@ public:
     return getSnapshot()->getBuffer();
   }
 
+  size_t getSize() const {
+    return getSnapshot()->getSize();
+  }
+
   ImmutableTextSnapshotRef insert(unsigned ByteOffset, StringRef Text);
   ImmutableTextSnapshotRef erase(unsigned ByteOffset, unsigned Length);
   ImmutableTextSnapshotRef replace(unsigned ByteOffset, unsigned Length,
@@ -178,6 +184,7 @@ private:
   ImmutableTextSnapshotRef addAtomicUpdate(ImmutableTextUpdateRef NewUpd);
   ImmutableTextBufferRef getBufferForSnapshot(
       const ImmutableTextSnapshot &Snap);
+  size_t getSizeForSnapshot(const ImmutableTextSnapshot &Snap) const;
   void refresh();
   friend class ImmutableTextSnapshot;
 };

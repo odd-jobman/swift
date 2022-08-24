@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -16,10 +16,16 @@
 
 #include "swift/Runtime/Metadata.h"
 #include "swift/Runtime/HeapObject.h"
+#include "swift/Runtime/Numeric.h"
 #include "MetadataImpl.h"
 #include "Private.h"
 #include <cstring>
 #include <climits>
+
+namespace swift {
+class AsyncTask;
+class Job;
+}
 
 using namespace swift;
 using namespace metadataimpl;
@@ -38,132 +44,241 @@ namespace {
     char data[16];
   };
 
-  struct alignas(32) int256_like {
+  static_assert(MaximumAlignment == 16, "max alignment was hardcoded");
+  struct alignas(16) int256_like {
     char data[32];
   };
+  struct alignas(16) int512_like {
+    char data[64];
+  };
+
+  struct alignas(16) float80_like {
+    char data[10];
+  };
+} // end anonymous namespace
+
+namespace ctypes {
+  namespace {
+    // Type definitions that map each names Swift builtin type to their
+    // C counterparts.
+    using Bi1_ = uint8_t;
+    using Bi7_ = uint8_t;
+    using Bi8_ = uint8_t;
+    using Bi16_ = uint16_t;
+    using Bi32_ = uint32_t;
+    using Bi63_ = uint64_t;
+    using Bi64_ = uint64_t;
+    using Bi128_ = int128_like;
+    using Bi256_ = int256_like;
+    using Bi512_ = int512_like;
+
+    using Bw = intptr_t;
+    using BL_ = IntegerLiteral;
+
+    using Bf16_ = uint16_t;
+    using Bf32_ = float;
+    using Bf64_ = double;
+    using Bf80_ = float80_like;
+    using Bf128_ = int128_like;
+
+    /// The value-witness table for UnsafeValueBuffer.  You can do layout
+    /// with this, but the type isn't copyable, so most of the value
+    /// operations are meaningless.
+    using BB = ValueBuffer;
+
+    // Types that are defined in the _Concurrency library
+
+    // Default actor storage type.
+    struct alignas(2 * alignof(void*)) BD {
+      void *storage[NumWords_DefaultActor];
+    };
+
+    // ExecutorRef type.
+    struct Be {
+      HeapObject *Identity;
+      uintptr_t Implementation;
+    };
+  }
 }
 
-// We use explicit sizes and alignments here just in case the C ABI
-// under-aligns any or all of them.
-const ValueWitnessTable swift::_TWVBi8_ =
-  ValueWitnessTableForBox<NativeBox<uint8_t, 1>>::table;
-const ValueWitnessTable swift::_TWVBi16_ =
-  ValueWitnessTableForBox<NativeBox<uint16_t, 2>>::table;
-const ValueWitnessTable swift::_TWVBi32_ =
-  ValueWitnessTableForBox<NativeBox<uint32_t, 4>>::table;
-const ValueWitnessTable swift::_TWVBi64_ =
-  ValueWitnessTableForBox<NativeBox<uint64_t, 8>>::table;
-const ValueWitnessTable swift::_TWVBi128_ =
-  ValueWitnessTableForBox<NativeBox<int128_like, 16>>::table;
-const ValueWitnessTable swift::_TWVBi256_ =
-  ValueWitnessTableForBox<NativeBox<int256_like, 32>>::table;
+namespace pointer_types {
+  namespace {
+    /// The basic value-witness table for Swift object pointers.
+    using Bo = SwiftRetainableBox;
 
-/// The basic value-witness table for Swift object pointers.
-const ExtraInhabitantsValueWitnessTable swift::_TWVBo =
-  ValueWitnessTableForBox<SwiftRetainableBox>::table;
+    /// The value-witness table for raw pointers.
+    using Bp = RawPointerBox;
 
-/// The basic value-witness table for Swift unowned pointers.
-const ExtraInhabitantsValueWitnessTable swift::_TWVXoBo =
-  ValueWitnessTableForBox<SwiftUnownedRetainableBox>::table;
+    /// The value-witness table for BridgeObject.
+    using Bb = BridgeObjectBox;
 
-/// The basic value-witness table for Swift weak pointers.
-const ValueWitnessTable swift::_TWVXwGSqBo_ =
-  ValueWitnessTableForBox<SwiftWeakRetainableBox>::table;
+    // RawUnsafeContinuation type.
+    using Bc = RawPointerBox;
 
-/// The value-witness table for pointer-aligned unmanaged pointer types.
-const ExtraInhabitantsValueWitnessTable swift::_TWVMBo =
-  ValueWitnessTableForBox<PointerPointerBox>::table;
-
-/// The value-witness table for BridgeObject.
-const ExtraInhabitantsValueWitnessTable swift::_TWVBb =
-  ValueWitnessTableForBox<BridgeObjectBox>::table;
-
-/// The value-witness table for UnsafeValueBuffer.  You can do layout
-/// with this, but the type isn't copyable, so most of the value
-/// operations are meaningless.
-static const ValueWitnessTable _TWVBB =
-  ValueWitnessTableForBox<NativeBox<ValueBuffer>>::table;
+    // Job type.
+    using Bj = RawPointerBox;
 
 #if SWIFT_OBJC_INTEROP
-/*** Objective-C pointers ****************************************************/
+    /*** Objective-C pointers *************************************************/
 
-// This section can reasonably be suppressed in builds that don't
-// need to support Objective-C.
+    // This section can reasonably be suppressed in builds that don't
+    // need to support Objective-C.
 
-/// The basic value-witness table for ObjC object pointers.
-const ExtraInhabitantsValueWitnessTable swift::_TWVBO =
-  ValueWitnessTableForBox<ObjCRetainableBox>::table;
-
-/// The basic value-witness table for ObjC unowned pointers.
-const ExtraInhabitantsValueWitnessTable swift::_TWVXoBO =
-  ValueWitnessTableForBox<ObjCUnownedRetainableBox>::table;
-
-/// The basic value-witness table for ObjC unowned pointers.
-const ValueWitnessTable swift::_TWVXwGSqBO_ =
-  ValueWitnessTableForBox<ObjCWeakRetainableBox>::table;
-
+    /// The basic value-witness table for ObjC object pointers.
+    using BO = ObjCRetainableBox;
+#else
+    using BO = UnknownObjectRetainableBox;
 #endif
+
+  }
+}
+
+namespace {
+  template <typename T>
+  struct BuiltinType {
+    static constexpr const size_t Alignment = alignof(T);
+  };
+
+#define SET_FIXED_ALIGNMENT(Type, Align)                                       \
+  template <>                                                                  \
+  struct BuiltinType<Type> {                                                   \
+    static constexpr const size_t Alignment = Align;                           \
+  };
+
+  SET_FIXED_ALIGNMENT(uint8_t, 1)
+  SET_FIXED_ALIGNMENT(uint16_t, 2)
+  SET_FIXED_ALIGNMENT(uint32_t, 4)
+  SET_FIXED_ALIGNMENT(uint64_t, 8)
+  SET_FIXED_ALIGNMENT(int128_like, 16)
+  static_assert(MaximumAlignment == 16, "max alignment was hardcoded");
+  SET_FIXED_ALIGNMENT(int256_like, 16)
+  SET_FIXED_ALIGNMENT(int512_like, 16)
+
+#undef SET_FIXED_ALIGNMENT
+
+  template <typename T, unsigned N>
+  struct SIMDVector {
+    using Type = T __attribute__((__ext_vector_type__(N)));
+  };
+
+  template <>
+  struct SIMDVector<float, 3> {
+    using Type = float __attribute__((__ext_vector_type__(4)));
+  };
+
+  template <>
+  struct SIMDVector<double, 3> {
+    using Type = double __attribute__((__ext_vector_type__(4)));
+  };
+
+  template <typename T, unsigned N>
+  using SIMDVectorType = typename SIMDVector<T, N>::Type;
+}
+
+#define BUILTIN_TYPE(Symbol, Name)                                             \
+const ValueWitnessTable swift::VALUE_WITNESS_SYM(Symbol) =                     \
+  ValueWitnessTableForBox<NativeBox<ctypes::Symbol,                            \
+                                    BuiltinType<ctypes::Symbol>::Alignment>>::table;
+
+#define BUILTIN_POINTER_TYPE(Symbol, Name)                 \
+const ValueWitnessTable swift::VALUE_WITNESS_SYM(Symbol) =     \
+  ValueWitnessTableForBox<pointer_types::Symbol>::table;
+
+#if SWIFT_STDLIB_ENABLE_VECTOR_TYPES
+#define BUILTIN_VECTOR_TYPE(ElementSymbol, _, Width)                           \
+  const ValueWitnessTable                                                      \
+  swift::VALUE_WITNESS_SYM(VECTOR_BUILTIN_SYMBOL_NAME(ElementSymbol,Width)) =  \
+  ValueWitnessTableForBox<NativeBox<SIMDVectorType<ctypes::ElementSymbol,      \
+                                                   Width>>>::table;
+#else
+#define BUILTIN_VECTOR_TYPE(ElementSymbol, ElementName, Width)
+#endif
+
+#include "swift/Runtime/BuiltinTypes.def"
+
+/// The value-witness table for pointer-aligned unmanaged pointer types.
+const ValueWitnessTable swift::METATYPE_VALUE_WITNESS_SYM(Bo) =
+  ValueWitnessTableForBox<PointerPointerBox>::table;
 
 /*** Functions ***************************************************************/
 
 namespace {
+  // @escaping function types.
   struct ThickFunctionBox
     : AggregateBox<FunctionPointerBox, SwiftRetainableBox> {
 
     static constexpr unsigned numExtraInhabitants =
       FunctionPointerBox::numExtraInhabitants;
 
-    static void storeExtraInhabitant(char *dest, int index) {
-      FunctionPointerBox::storeExtraInhabitant((void**) dest, index);
+    static void storeExtraInhabitantTag(char *dest, unsigned tag) {
+      FunctionPointerBox::storeExtraInhabitantTag((void**) dest, tag);
     }
 
-    static int getExtraInhabitantIndex(const char *src) {
-      return FunctionPointerBox::getExtraInhabitantIndex((void * const *) src);
+    static unsigned getExtraInhabitantTag(const char *src) {
+      return FunctionPointerBox::getExtraInhabitantTag((void * const *) src);
     }
   };
-}
+  /// @noescape function types.
+  struct TrivialThickFunctionBox
+      : AggregateBox<FunctionPointerBox, RawPointerBox> {
 
-/// The basic value-witness table for function types.
-const ExtraInhabitantsValueWitnessTable swift::_TWVFT_T_ =
-  ValueWitnessTableForBox<ThickFunctionBox>::table;
+    static constexpr unsigned numExtraInhabitants =
+        FunctionPointerBox::numExtraInhabitants;
+
+    static void storeExtraInhabitantTag(char *dest, unsigned tag) {
+      FunctionPointerBox::storeExtraInhabitantTag((void **)dest, tag);
+    }
+
+    static unsigned getExtraInhabitantTag(const char *src) {
+      return FunctionPointerBox::getExtraInhabitantTag((void *const *)src);
+    }
+  };
+} // end anonymous namespace
+
+/// The basic value-witness table for escaping function types.
+const ValueWitnessTable
+  swift::VALUE_WITNESS_SYM(FUNCTION_MANGLING) =
+    ValueWitnessTableForBox<ThickFunctionBox>::table;
+
+/// The basic value-witness table for @noescape function types.
+const ValueWitnessTable
+  swift::VALUE_WITNESS_SYM(NOESCAPE_FUNCTION_MANGLING) =
+    ValueWitnessTableForBox<TrivialThickFunctionBox>::table;
 
 /// The basic value-witness table for thin function types.
-const ExtraInhabitantsValueWitnessTable swift::_TWVXfT_T_ =
-  ValueWitnessTableForBox<FunctionPointerBox>::table;
+const ValueWitnessTable
+  swift::VALUE_WITNESS_SYM(THIN_FUNCTION_MANGLING) =
+    ValueWitnessTableForBox<FunctionPointerBox>::table;
 
 /*** Empty tuples ************************************************************/
 
 /// The basic value-witness table for empty types.
-const ValueWitnessTable swift::_TWVT_ =
+const ValueWitnessTable swift::VALUE_WITNESS_SYM(EMPTY_TUPLE_MANGLING) =
   ValueWitnessTableForBox<AggregateBox<>>::table;
 
 /*** Known metadata **********************************************************/
 
 // Define some builtin opaque metadata.
 #define OPAQUE_METADATA(TYPE) \
-  const FullOpaqueMetadata swift::_TM##TYPE = { \
-    { &_TWV##TYPE },                             \
+  const FullOpaqueMetadata swift::METADATA_SYM(TYPE) = { \
+    { &VALUE_WITNESS_SYM(TYPE) },                             \
     { { MetadataKind::Opaque } }                 \
   };
-OPAQUE_METADATA(Bi8_)
-OPAQUE_METADATA(Bi16_)
-OPAQUE_METADATA(Bi32_)
-OPAQUE_METADATA(Bi64_)
-OPAQUE_METADATA(Bi128_)
-OPAQUE_METADATA(Bi256_)
-OPAQUE_METADATA(Bo)
-OPAQUE_METADATA(Bb)
-OPAQUE_METADATA(BB)
-#if SWIFT_OBJC_INTEROP
-OPAQUE_METADATA(BO)
+#define BUILTIN_TYPE(Symbol, Name) \
+  OPAQUE_METADATA(Symbol)
+#if !SWIFT_STDLIB_ENABLE_VECTOR_TYPES
+#define BUILTIN_VECTOR_TYPE(ElementSymbol, ElementName, Width)
 #endif
+#include "swift/Runtime/BuiltinTypes.def"
 
 /// The standard metadata for the empty tuple.
-const FullMetadata<TupleTypeMetadata> swift::_TMT_ = {
-  { &_TWVT_ },                 // ValueWitnesses
+const FullMetadata<TupleTypeMetadata> swift::
+METADATA_SYM(EMPTY_TUPLE_MANGLING) = {
+  { &VALUE_WITNESS_SYM(EMPTY_TUPLE_MANGLING) },                 // ValueWitnesses
   {
     { MetadataKind::Tuple },   // Kind
     0,                         // NumElements
     nullptr                    // Labels
   }
 };
+

@@ -1,19 +1,15 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # GYB: Generate Your Boilerplate (improved names welcome; at least
 # this one's short).  See -h output for instructions
 
-from __future__ import print_function
-
+import io
 import os
 import re
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from io import StringIO
+import sys
 import textwrap
 import tokenize
-
 from bisect import bisect
+from io import StringIO
 
 
 def get_line_starts(s):
@@ -43,7 +39,8 @@ def split_lines(s):
     If the lines are later concatenated, the result is s, possibly
     with a single appended newline.
     """
-    return [l + '\n' for l in s.split('\n')]
+    return [line + '\n' for line in s.split('\n')]
+
 
 # text on a line up to the first '$$', '${', or '%%'
 literalText = r'(?: [^$\n%] | \$(?![${]) | %(?!%) )*'
@@ -65,7 +62,8 @@ tokenize_re = re.compile(
     ^
     (?:
       (?P<gybLines>
-        (?P<_indent> [\ \t]* % (?! [{%] ) [\ \t]* ) (?! [\ \t] | ''' + linesClose + r''' ) .*
+        (?P<_indent> [\ \t]* % (?! [{%] ) [\ \t]* ) (?! [\ \t] | ''' +
+    linesClose + r''' ) .*
         ( \n (?P=_indent) (?! ''' + linesClose + r''' ) .* ) *
       )
       | (?P<gybLinesClose> [\ \t]* % [ \t]* ''' + linesClose + r''' )
@@ -92,7 +90,7 @@ tokenize_re = re.compile(
   )
 ''', re.VERBOSE | re.MULTILINE)
 
-gyb_block_close = re.compile('\}%[ \t]*\n?')
+gyb_block_close = re.compile(r'\}%[ \t]*\n?')
 
 
 def token_pos_to_index(token_pos, start, line_starts):
@@ -152,7 +150,7 @@ def tokenize_python_to_unmatched_close_curly(source_text, start, line_starts):
 
 def tokenize_template(template_text):
     r"""Given the text of a template, returns an iterator over
-    (tokenType,token,match) tuples.
+    (tokenType, token, match) tuples.
 
     **Note**: this is template syntax tokenization, not Python
     tokenization.
@@ -165,13 +163,13 @@ def tokenize_template(template_text):
     then refined by ParseContext.token_generator.
 
     >>> from pprint import *
-    >>> pprint(list((kind, text) for kind,text,_ in tokenize_template(
+    >>> pprint(list((kind, text) for kind, text, _ in tokenize_template(
     ...   '%for x in range(10):\n%  print x\n%end\njuicebox')))
     [('gybLines', '%for x in range(10):\n%  print x'),
      ('gybLinesClose', '%end'),
      ('literal', 'juicebox')]
 
-    >>> pprint(list((kind, text) for kind,text,_ in tokenize_template(
+    >>> pprint(list((kind, text) for kind, text, _ in tokenize_template(
     ... '''Nothing
     ... % if x:
     ... %    for i in range(3):
@@ -208,7 +206,7 @@ def tokenize_template(template_text):
     ... %% first line
     ...   %% second line
     ... '''):
-    ...     print (kind, text.strip().split('\n',1)[0])
+    ...     print((kind, text.strip().split('\n',1)[0]))
     ('literal', 'This is $some$ literal stuff containing a')
     ('substitutionOpen', '${')
     ('literal', 'followed by a %{...} block:')
@@ -361,7 +359,7 @@ def code_starts_with_dedent_keyword(source_lines):
     >>> code_starts_with_dedent_keyword(split_lines('except ifSomethingElse:'))
     True
     >>> code_starts_with_dedent_keyword(
-            split_lines('\n# comment\nelse: # yes'))
+    ...     split_lines('\n# comment\nelse: # yes'))
     True
     """
     token_text = None
@@ -375,6 +373,7 @@ def code_starts_with_dedent_keyword(source_lines):
 
 
 class ParseContext(object):
+
     """State carried through a parse of a template"""
 
     filename = ''
@@ -387,8 +386,10 @@ class ParseContext(object):
 
     def __init__(self, filename, template=None):
         self.filename = os.path.abspath(filename)
+        if sys.platform == 'win32':
+            self.filename = '/'.join(self.filename.split(os.sep))
         if template is None:
-            with open(filename) as f:
+            with io.open(os.path.normpath(filename), encoding='utf-8') as f:
                 self.template = f.read()
         else:
             self.template = template
@@ -417,7 +418,7 @@ class ParseContext(object):
         ... literally
         ... ''')
         >>> while ctx.token_kind:
-        ...     print (ctx.token_kind, ctx.code_text or ctx.token_text)
+        ...     print((ctx.token_kind, ctx.code_text or ctx.token_text))
         ...     ignored = ctx.next_token()
         ('literal', '\n')
         ('gybLinesOpen', 'for x in y:\n')
@@ -435,7 +436,7 @@ class ParseContext(object):
         ... THIS SHOULD NOT APPEAR IN THE OUTPUT
         ... ''')
         >>> while ctx.token_kind:
-        ...     print (ctx.token_kind, ctx.code_text or ctx.token_text)
+        ...     print((ctx.token_kind, ctx.code_text or ctx.token_text))
         ...     ignored = ctx.next_token()
         ('literal', 'Nothing\n')
         ('gybLinesOpen', 'if x:\n')
@@ -450,7 +451,7 @@ class ParseContext(object):
         ... '''% for x in [1, 2, 3]:
         ... %   if x == 1:
         ... literal1
-        ... %   elif x > 1:  # add an output line after this line to fix bug
+        ... %   elif x > 1:  # add output line here to fix bug
         ... %     if x == 2:
         ... literal2
         ... %     end
@@ -458,12 +459,12 @@ class ParseContext(object):
         ... % end
         ... ''')
         >>> while ctx.token_kind:
-        ...     print (ctx.token_kind, ctx.code_text or ctx.token_text)
+        ...     print((ctx.token_kind, ctx.code_text or ctx.token_text))
         ...     ignored = ctx.next_token()
         ('gybLinesOpen', 'for x in [1, 2, 3]:\n')
         ('gybLinesOpen', '  if x == 1:\n')
         ('literal', 'literal1\n')
-        ('gybLinesOpen', 'elif x > 1: # add output line here to fix bug\n')
+        ('gybLinesOpen', 'elif x > 1:  # add output line here to fix bug\n')
         ('gybLinesOpen', '  if x == 2:\n')
         ('literal', 'literal2\n')
         ('gybLinesClose', '%     end')
@@ -542,10 +543,15 @@ class ParseContext(object):
         self.token_kind = None
 
 
+_default_line_directive = \
+    '// ###sourceLocation(file: "%(file)s", line: %(line)d)'
+
+
 class ExecutionContext(object):
+
     """State we pass around during execution of a template"""
 
-    def __init__(self, line_directive='// ###sourceLocation',
+    def __init__(self, line_directive=_default_line_directive,
                  **local_bindings):
         self.local_bindings = local_bindings
         self.line_directive = line_directive
@@ -560,17 +566,16 @@ class ExecutionContext(object):
                 # We can only insert the line directive at a line break
                 if len(self.result_text) == 0 \
                    or self.result_text[-1].endswith('\n'):
-                    self.result_text.append('%s(file: "%s", line: %d)\n' % (
-                        self.line_directive, file, line + 1))
+                    substitutions = {'file': file, 'line': line + 1}
+                    format_str = self.line_directive + '\n'
+                    self.result_text.append(format_str % substitutions)
                 # But if the new text contains any line breaks, we can create
                 # one
                 elif '\n' in text:
                     i = text.find('\n')
                     self.result_text.append(text[:i + 1])
-                    self.last_file_line = (
-                        self.last_file_line[0], self.last_file_line[1] + 1)
                     # and try again
-                    self.append_text(text[i + 1:], file, line)
+                    self.append_text(text[i + 1:], file, line + 1)
                     return
 
         self.result_text.append(text)
@@ -578,6 +583,7 @@ class ExecutionContext(object):
 
 
 class ASTNode(object):
+
     """Abstract base class for template AST nodes"""
 
     def __init__(self):
@@ -600,6 +606,7 @@ class ASTNode(object):
 
 
 class Block(ASTNode):
+
     """A sequence of other AST nodes, to be executed in order"""
 
     children = []
@@ -623,6 +630,7 @@ class Block(ASTNode):
 
 
 class Literal(ASTNode):
+
     """An AST node that generates literal text"""
 
     def __init__(self, context):
@@ -642,6 +650,7 @@ class Literal(ASTNode):
 
 
 class Code(ASTNode):
+
     """An AST node that is evaluated as Python"""
 
     code = None
@@ -699,6 +708,7 @@ class Code(ASTNode):
         save_children = context.local_bindings.get('__children__')
         # Execute the code with our __children__ in scope
         context.local_bindings['__children__'] = self.children
+        context.local_bindings['__file__'] = self.filename
         result = eval(self.code, context.local_bindings)
 
         if context.local_bindings['__children__'] is not self.children:
@@ -708,9 +718,18 @@ class Code(ASTNode):
 
         # If we got a result, the code was an expression, so append
         # its value
-        if result is not None and result != '':
+        if result is not None \
+                or (isinstance(result, str) and result != ''):
+            from numbers import Number, Integral
+            result_string = None
+            if isinstance(result, Number) and not isinstance(result, Integral):
+                result_string = repr(result)
+            elif isinstance(result, Integral) or isinstance(result, list):
+                result_string = str(result)
+            else:
+                result_string = result
             context.append_text(
-                str(result), self.filename, self.start_line_number)
+                result_string, self.filename, self.start_line_number)
 
     def __str__(self, indent=''):
         source_lines = re.sub(r'^\n', '', strip_trailing_nl(
@@ -719,9 +738,70 @@ class Code(ASTNode):
             s = indent + 'Code: {' + source_lines[0] + '}'
         else:
             s = indent + 'Code:\n' + indent + '{\n' + '\n'.join(
-                indent + 4 * ' ' + l for l in source_lines
+                indent + 4 * ' ' + line for line in source_lines
             ) + '\n' + indent + '}'
         return s + self.format_children(indent)
+
+
+def expand(filename, line_directive=_default_line_directive, **local_bindings):
+    r"""Return the contents of the given template file, executed with the given
+    local bindings.
+
+    >>> from tempfile import NamedTemporaryFile
+    >>> # On Windows, the name of a NamedTemporaryFile cannot be used to open
+    >>> # the file for a second time if delete=True. Therefore, we have to
+    >>> # manually handle closing and deleting this file to allow us to open
+    >>> # the file by its name across all platforms.
+    >>> f = NamedTemporaryFile(delete=False)
+    >>> _ = f.write(
+    ... br'''---
+    ... % for i in range(int(x)):
+    ... a pox on ${i} for epoxy
+    ... % end
+    ... ${120 +
+    ...
+    ...    3}
+    ... abc
+    ... ${"w\nx\nX\ny"}
+    ... z
+    ... ''')
+    >>> f.flush()
+    >>> result = expand(
+    ...     f.name,
+    ...     line_directive='//#sourceLocation(file: "%(file)s", ' + \
+    ...                    'line: %(line)d)',
+    ...     x=2
+    ... ).replace(
+    ...   '"%s"' % f.name.replace('\\', '/'), '"dummy.file"')
+    >>> print(result, end='')
+    //#sourceLocation(file: "dummy.file", line: 1)
+    ---
+    //#sourceLocation(file: "dummy.file", line: 3)
+    a pox on 0 for epoxy
+    //#sourceLocation(file: "dummy.file", line: 3)
+    a pox on 1 for epoxy
+    //#sourceLocation(file: "dummy.file", line: 5)
+    123
+    //#sourceLocation(file: "dummy.file", line: 8)
+    abc
+    w
+    x
+    X
+    y
+    //#sourceLocation(file: "dummy.file", line: 10)
+    z
+    >>> f.close()
+    >>> os.remove(f.name)
+    """
+    with io.open(filename, encoding='utf-8') as f:
+        t = parse_template(filename, f.read())
+        d = os.getcwd()
+        os.chdir(os.path.dirname(os.path.abspath(filename)))
+        try:
+            return execute_template(
+                t, line_directive=line_directive, **local_bindings)
+        finally:
+            os.chdir(d)
 
 
 def parse_template(filename, text=None):
@@ -730,17 +810,17 @@ def parse_template(filename, text=None):
     If text is supplied, it is assumed to be the contents of the file,
     as a string.
 
-    >>> print parse_template('dummy.file', text=
+    >>> print(parse_template('dummy.file', text=
     ... '''% for x in [1, 2, 3]:
     ... %   if x == 1:
     ... literal1
-    ... %   elif x > 1:   # add an output line after this line to fix the bug
+    ... %   elif x > 1:  # add output line after this line to fix bug
     ... %     if x == 2:
     ... literal2
     ... %     end
     ... %   end
     ... % end
-    ... ''')
+    ... '''))
     Block:
     [
         Code:
@@ -755,7 +835,7 @@ def parse_template(filename, text=None):
                 {
                     if x == 1:
                         __children__[0].execute(__context__)
-                    elif x > 1: # add output line after this line to fix bug
+                    elif x > 1:  # add output line after this line to fix bug
                         __children__[1].execute(__context__)
                 }
                 [
@@ -784,8 +864,9 @@ def parse_template(filename, text=None):
         ]
     ]
 
-    >>> print parse_template(
-    >>> 'dummy.file', text='%for x in range(10):\n%  print x\n%end\njuicebox')
+    >>> print(parse_template(
+    ...     'dummy.file',
+    ...     text='%for x in range(10):\n%  print(x)\n%end\njuicebox'))
     Block:
     [
         Code:
@@ -796,14 +877,14 @@ def parse_template(filename, text=None):
         [
             Block:
             [
-                Code: {print x} []
+                Code: {print(x)} []
             ]
         ]
         Literal:
         juicebox
     ]
 
-    >>> print parse_template('/dummy.file', text=
+    >>> print(parse_template('/dummy.file', text=
     ... '''Nothing
     ... % if x:
     ... %    for i in range(3):
@@ -811,7 +892,7 @@ def parse_template(filename, text=None):
     ... %    end
     ... % else:
     ... THIS SHOULD NOT APPEAR IN THE OUTPUT
-    ... ''')
+    ... '''))
     Block:
     [
         Literal:
@@ -848,10 +929,10 @@ def parse_template(filename, text=None):
         ]
     ]
 
-    >>> print parse_template('dummy.file', text='''%
+    >>> print(parse_template('dummy.file', text='''%
     ... %for x in y:
-    ... %    print y
-    ... ''')
+    ... %    print(y)
+    ... '''))
     Block:
     [
         Code:
@@ -862,18 +943,18 @@ def parse_template(filename, text=None):
         [
             Block:
             [
-                Code: {print y} []
+                Code: {print(y)} []
             ]
         ]
     ]
 
-    >>> print parse_template('dummy.file', text='''%
+    >>> print(parse_template('dummy.file', text='''%
     ... %if x:
-    ... %    print y
+    ... %    print(y)
     ... AAAA
     ... %else:
     ... BBBB
-    ... ''')
+    ... '''))
     Block:
     [
         Code:
@@ -886,7 +967,7 @@ def parse_template(filename, text=None):
         [
             Block:
             [
-                Code: {print y} []
+                Code: {print(y)} []
                 Literal:
                 AAAA
             ]
@@ -898,14 +979,14 @@ def parse_template(filename, text=None):
         ]
     ]
 
-    >>> print parse_template('dummy.file', text='''%
+    >>> print(parse_template('dummy.file', text='''%
     ... %if x:
-    ... %    print y
+    ... %    print(y)
     ... AAAA
     ... %# This is a comment
     ... %else:
     ... BBBB
-    ... ''')
+    ... '''))
     Block:
     [
         Code:
@@ -919,7 +1000,7 @@ def parse_template(filename, text=None):
         [
             Block:
             [
-                Code: {print y} []
+                Code: {print(y)} []
                 Literal:
                 AAAA
             ]
@@ -931,14 +1012,14 @@ def parse_template(filename, text=None):
         ]
     ]
 
-    >>> print parse_template('dummy.file', text='''\
+    >>> print(parse_template('dummy.file', text='''\
     ... %for x in y:
     ... AAAA
     ... %if x:
     ... BBBB
     ... %end
     ... CCCC
-    ... ''')
+    ... '''))
     Block:
     [
         Code:
@@ -972,12 +1053,15 @@ def parse_template(filename, text=None):
     return Block(ParseContext(filename, text))
 
 
-def execute_template(ast, line_directive='', **local_bindings):
+def execute_template(
+        ast, line_directive=_default_line_directive, **local_bindings):
     r"""Return the text generated by executing the given template AST.
 
     Keyword arguments become local variable bindings in the execution context
 
-    >>> ast = parse_template('/dummy.file', text=
+    >>> root_directory = os.path.abspath('/')
+    >>> file_name = (root_directory + 'dummy.file').replace('\\', '/')
+    >>> ast = parse_template(file_name, text=
     ... '''Nothing
     ... % if x:
     ... %    for i in range(3):
@@ -986,17 +1070,21 @@ def execute_template(ast, line_directive='', **local_bindings):
     ... % else:
     ... THIS SHOULD NOT APPEAR IN THE OUTPUT
     ... ''')
-    >>> print execute_template(ast, line_directive='//#sourceLocation', x=1),
-    //#sourceLocation(file: "/dummy.file", line: 1)
+    >>> out = execute_template(ast,
+    ... line_directive='//#sourceLocation(file: "%(file)s", line: %(line)d)',
+    ... x=1)
+    >>> out = out.replace(file_name, "DUMMY-FILE")
+    >>> print(out, end="")
+    //#sourceLocation(file: "DUMMY-FILE", line: 1)
     Nothing
-    //#sourceLocation(file: "/dummy.file", line: 4)
+    //#sourceLocation(file: "DUMMY-FILE", line: 4)
     0
-    //#sourceLocation(file: "/dummy.file", line: 4)
+    //#sourceLocation(file: "DUMMY-FILE", line: 4)
     1
-    //#sourceLocation(file: "/dummy.file", line: 4)
+    //#sourceLocation(file: "DUMMY-FILE", line: 4)
     2
 
-    >>> ast = parse_template('/dummy.file', text=
+    >>> ast = parse_template(file_name, text=
     ... '''Nothing
     ... % a = []
     ... % for x in range(3):
@@ -1004,10 +1092,31 @@ def execute_template(ast, line_directive='', **local_bindings):
     ... % end
     ... ${a}
     ... ''')
-    >>> print execute_template(ast, line_directive='//#sourceLocation', x=1),
-    //#sourceLocation(file: "/dummy.file", line: 1)
+    >>> out = execute_template(ast,
+    ... line_directive='//#sourceLocation(file: "%(file)s", line: %(line)d)',
+    ... x=1)
+    >>> out = out.replace(file_name, "DUMMY-FILE")
+    >>> print(out, end="")
+    //#sourceLocation(file: "DUMMY-FILE", line: 1)
     Nothing
-    //#sourceLocation(file: "/dummy.file", line: 6)
+    //#sourceLocation(file: "DUMMY-FILE", line: 6)
+    [0, 1, 2]
+
+    >>> ast = parse_template(file_name, text=
+    ... '''Nothing
+    ... % a = []
+    ... % for x in range(3):
+    ... %    a.append(x)
+    ... % end
+    ... ${a}
+    ... ''')
+    >>> out = execute_template(ast,
+    ...         line_directive='#line %(line)d "%(file)s"', x=1)
+    >>> out = out.replace(file_name, "DUMMY-FILE")
+    >>> print(out, end="")
+    #line 1 "DUMMY-FILE"
+    Nothing
+    #line 6 "DUMMY-FILE"
     [0, 1, 2]
     """
     execution_context = ExecutionContext(
@@ -1089,12 +1198,12 @@ def main():
         help='''Bindings to be set in the template's execution context''')
 
     parser.add_argument(
-        'file', type=argparse.FileType(),
+        'file', type=str,
         help='Path to GYB template file (defaults to stdin)', nargs='?',
-        default=sys.stdin)
+        default='-')
     parser.add_argument(
-        '-o', dest='target', type=argparse.FileType('w'),
-        help='Output file (defaults to stdout)', default=sys.stdout)
+        '-o', dest='target', type=str,
+        help='Output file (defaults to stdout)', default='-')
     parser.add_argument(
         '--test', action='store_true',
         default=False, help='Run a self-test')
@@ -1105,24 +1214,45 @@ def main():
         '--dump', action='store_true',
         default=False, help='Dump the parsed template to stdout')
     parser.add_argument(
-        '--line-directive', default='// ###sourceLocation',
-        help='Line directive prefix; empty => no line markers')
+        '--line-directive',
+        default=_default_line_directive,
+        help='''
+             Line directive format string, which will be
+             provided 2 substitutions, `%%(line)d` and `%%(file)s`.
+
+             Example: `#sourceLocation(file: "%%(file)s", line: %%(line)d)`
+
+             The default works automatically with the `line-directive` tool,
+             which see for more information.
+             ''')
 
     args = parser.parse_args(sys.argv[1:])
 
     if args.test or args.verbose_test:
         import doctest
-        if doctest.testmod(verbose=args.verbose_test).failed:
+        selfmod = sys.modules[__name__]
+        if doctest.testmod(selfmod, verbose=args.verbose_test or None).failed:
             sys.exit(1)
 
     bindings = dict(x.split('=', 1) for x in args.defines)
-    ast = parse_template(args.file.name, args.file.read())
+    if args.file == '-':
+        ast = parse_template('stdin', sys.stdin.read())
+    else:
+        with io.open(os.path.normpath(args.file), 'r', encoding='utf-8') as f:
+            ast = parse_template(args.file, f.read())
     if args.dump:
         print(ast)
-    # Allow the template to import .py files from its own directory
-    sys.path = [os.path.split(args.file.name)[0] or '.'] + sys.path
+    # Allow the template to open files and import .py files relative to its own
+    # directory
+    os.chdir(os.path.dirname(os.path.abspath(args.file)))
+    sys.path = ['.'] + sys.path
 
-    args.target.write(execute_template(ast, args.line_directive, **bindings))
+    if args.target == '-':
+        sys.stdout.write(execute_template(ast, args.line_directive, **bindings))
+    else:
+        with io.open(args.target, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(execute_template(ast, args.line_directive, **bindings))
+
 
 if __name__ == '__main__':
     main()

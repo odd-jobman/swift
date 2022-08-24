@@ -33,33 +33,33 @@ public struct ChangeSize {
 #endif
 }
 
-@_fixed_layout public enum SingletonEnum {
+@frozen public enum SingletonEnum {
   case X(ChangeSize)
 }
 
-public func getSingletonEnumValues(c: ChangeSize)
+public func getSingletonEnumValues(_ c: ChangeSize)
     -> [SingletonEnum?] {
   return [.X(c), nil]
 }
 
-@_fixed_layout public enum SinglePayloadEnum {
+@frozen public enum SinglePayloadEnum {
   case X(ChangeSize)
   case Y
   case Z
 }
 
-public func getSinglePayloadEnumValues(c: ChangeSize)
+public func getSinglePayloadEnumValues(_ c: ChangeSize)
     -> [SinglePayloadEnum?] {
   return [.X(c), .Y, .Z, nil]
 }
 
-@_fixed_layout public enum MultiPayloadEnum {
+@frozen public enum MultiPayloadEnum {
   case X(ChangeSize)
   case Y(ChangeSize)
   case Z
 }
 
-public func getMultiPayloadEnumValues(c: ChangeSize, _ d: ChangeSize)
+public func getMultiPayloadEnumValues(_ c: ChangeSize, _ d: ChangeSize)
     -> [MultiPayloadEnum?] {
   return [.X(c), .Y(d), .Z, nil]
 }

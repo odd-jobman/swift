@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2021 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,9 +22,17 @@
 // update the heap fast when we add a new node to the tree.
 import TestsUtils
 
+public let benchmarks = [
+  BenchmarkInfo(
+    name: "Prims",
+    runFunction: run_Prims,
+    tags: [.validation, .algorithm],
+    legacyFactor: 5),
+]
+
 class PriorityQueue {
-  final var heap : Array<EdgeCost>
-  final var graphIndexToHeapIndexMap : Array<Int?>
+  final var heap: Array<EdgeCost>
+  final var graphIndexToHeapIndexMap: Array<Int?>
 
   // Create heap for graph with NUM nodes.
   init(Num: Int) {
@@ -37,7 +45,7 @@ class PriorityQueue {
   }
 
   // Insert element N to heap, maintaining the heap property.
-  func insert(n : EdgeCost) {
+  func insert(_ n: EdgeCost) {
     let ind: Int = heap.count
     heap.append(n)
     graphIndexToHeapIndexMap[n.to] = heap.count - 1
@@ -46,7 +54,7 @@ class PriorityQueue {
 
   // Insert element N if in's not in the heap, or update its cost if the new
   // value is less than the existing one.
-  func insertOrUpdate(n : EdgeCost) {
+  func insertOrUpdate(_ n: EdgeCost) {
     let id = n.to
     let c  = n.cost
     if let ind = graphIndexToHeapIndexMap[id] {
@@ -64,13 +72,13 @@ class PriorityQueue {
 
   // Restore heap property by moving element at index IND up.
   // This is needed after insertion, and after decreasing an element's cost.
-  func bubbleUp(ind: Int) {
+  func bubbleUp(_ ind: Int) {
     var ind = ind
     let c = heap[ind].cost
     while (ind != 0) {
       let p = getParentIndex(ind)
       if heap[p].cost > c {
-        Swap(p, with: ind)
+        swap(p, with: ind)
         ind = p
       } else {
         break
@@ -83,7 +91,7 @@ class PriorityQueue {
     if (heap.isEmpty) {
       return nil
     }
-    Swap(0, with:heap.count-1)
+    swap(0, with:heap.count-1)
     let r = heap.removeLast()
     graphIndexToHeapIndexMap[r.to] = nil
     bubbleDown(0)
@@ -93,7 +101,7 @@ class PriorityQueue {
   // Restore heap property by moving element at index IND down.
   // This is needed after removing an element, and after increasing an
   // element's cost.
-  func bubbleDown(ind: Int) {
+  func bubbleDown(_ ind: Int) {
     var ind = ind
     let n = heap.count
     while (ind < n) {
@@ -111,48 +119,48 @@ class PriorityQueue {
       if (heap[ind].cost <= heap[min].cost) {
         break
       }
-      Swap(ind, with: min)
+      swap(ind, with: min)
       ind = min
     }
   }
 
   // Swaps elements I and J in the heap and correspondingly updates
   // graphIndexToHeapIndexMap.
-  func Swap(i: Int, with j : Int) {
+  func swap(_ i: Int, with j : Int) {
     if (i == j) {
       return
     }
     (heap[i], heap[j]) = (heap[j], heap[i])
-    let (I, J) = (heap[i].to, heap[j].to)
-    (graphIndexToHeapIndexMap[I], graphIndexToHeapIndexMap[J]) =
-    (graphIndexToHeapIndexMap[J], graphIndexToHeapIndexMap[I])
+    let (i2, j2) = (heap[i].to, heap[j].to)
+    (graphIndexToHeapIndexMap[i2], graphIndexToHeapIndexMap[j2]) =
+    (graphIndexToHeapIndexMap[j2], graphIndexToHeapIndexMap[i2])
   }
 
   // Dumps the heap.
   func dump() {
     print("QUEUE")
     for nodeCost in heap {
-      let to : Int = nodeCost.to
-      let from : Int = nodeCost.from
-      let cost : Double = nodeCost.cost
+      let to: Int = nodeCost.to
+      let from: Int = nodeCost.from
+      let cost: Double = nodeCost.cost
       print("(\(from)->\(to), \(cost))")
     }
   }
 
-  func getLeftChildIndex(index : Int) -> Int {
+  func getLeftChildIndex(_ index : Int) -> Int {
     return index*2 + 1
   }
-  func getRightChildIndex(index : Int) -> Int {
+  func getRightChildIndex(_ index : Int) -> Int {
     return (index + 1)*2
   }
-  func getParentIndex(childIndex : Int) -> Int {
+  func getParentIndex(_ childIndex : Int) -> Int {
     return (childIndex - 1)/2
   }
 }
 
 struct GraphNode {
-  var id : Int
-  var adjList : Array<Int>
+  var id: Int
+  var adjList: Array<Int>
 
   init(i : Int) {
     id = i
@@ -161,14 +169,14 @@ struct GraphNode {
 }
 
 struct EdgeCost {
-  var to : Int
-  var cost : Double
+  var to: Int
+  var cost: Double
   var from: Int
 }
 
 struct Edge : Equatable {
-  var start : Int
-  var end : Int
+  var start: Int
+  var end: Int
 }
 
 func ==(lhs: Edge, rhs: Edge) -> Bool {
@@ -176,14 +184,13 @@ func ==(lhs: Edge, rhs: Edge) -> Bool {
 }
 
 extension Edge : Hashable {
-  var hashValue: Int {
-    get {
-      return start.hashValue ^ end.hashValue
-    }
+  func hash(into hasher: inout Hasher) {
+    hasher.combine(start)
+    hasher.combine(end)
   }
 }
 
-func Prims(graph : Array<GraphNode>, _ fun : (Int,Int)->Double) -> Array<Int?> {
+func prims(_ graph : Array<GraphNode>, _ fun : (Int, Int) -> Double) -> Array<Int?> {
   var treeEdges = Array<Int?>(repeating:nil, count:graph.count)
 
   let queue = PriorityQueue(Num:graph.count)
@@ -191,7 +198,7 @@ func Prims(graph : Array<GraphNode>, _ fun : (Int,Int)->Double) -> Array<Int?> {
   queue.insert(EdgeCost(to: 0, cost: 0.0, from: 0))
 
   // Take an element with the smallest cost from the queue and add its
-  // neighbours to the queue if their cost was updated
+  // neighbors to the queue if their cost was updated
   while !queue.isEmpty() {
     // Add an edge with minimum cost to the spanning tree
     let e = queue.pop()!
@@ -214,8 +221,8 @@ func Prims(graph : Array<GraphNode>, _ fun : (Int,Int)->Double) -> Array<Int?> {
 }
 
 @inline(never)
-public func run_Prims(N: Int) {
-  for _ in 1...5*N {
+public func run_Prims(_ n: Int) {
+  for _ in 1...n {
     let nodes : [Int] = [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
       13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
       29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
@@ -226,7 +233,7 @@ public func run_Prims(N: Int) {
 
     // Prim's algorithm is designed for undirected graphs.
     // Due to that, in our set all the edges are paired, i.e. for any
-    // edge (start,end,C) there is also an edge (end,start,C).
+    // edge (start, end, C) there is also an edge (end, start, C).
     let edges : [(Int, Int, Double)] = [
       (26, 47, 921),
       (20, 25, 971),
@@ -742,7 +749,7 @@ public func run_Prims(N: Int) {
     }
 
     // Find spanning tree
-    let treeEdges = Prims(graph, { (start: Int, end: Int) in
+    let treeEdges = prims(graph, { (start: Int, end: Int) in
         return map[Edge(start: start, end: end)]!
     })
 
@@ -751,7 +758,6 @@ public func run_Prims(N: Int) {
     for i in 1..<treeEdges.count {
       if let n = treeEdges[i] { cost += map[Edge(start: n, end: i)]! }
     }
-    CheckResults(Int(cost) == 49324,
-                 "Incorrect results in Prims: \(Int(cost)) != 49324.")
+    check(Int(cost) == 49324)
   }
 }

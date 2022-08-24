@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -22,86 +22,295 @@
 using namespace swift;
 using namespace Lowering;
 
+ManagedValue ManagedValue::forForwardedRValue(SILGenFunction &SGF,
+                                              SILValue value) {
+  if (!value)
+    return ManagedValue();
+
+  switch (value->getOwnershipKind()) {
+  case OwnershipKind::Any:
+    llvm_unreachable("Invalid ownership for value");
+
+  case OwnershipKind::Owned:
+    return ManagedValue(value, SGF.enterDestroyCleanup(value));
+
+  case OwnershipKind::Guaranteed:
+  case OwnershipKind::None:
+  case OwnershipKind::Unowned:
+    return ManagedValue::forUnmanaged(value);
+  }
+}
+
 /// Emit a copy of this value with independent ownership.
-ManagedValue ManagedValue::copy(SILGenFunction &gen, SILLocation l) {
-  if (!cleanup.isValid()) {
-    assert(gen.getTypeLowering(getType()).isTrivial());
+ManagedValue ManagedValue::copy(SILGenFunction &SGF, SILLocation loc) const {
+  auto &lowering = SGF.getTypeLowering(getType());
+  if (lowering.isTrivial())
     return *this;
+
+  if (getType().isObject()) {
+    return SGF.B.createCopyValue(loc, *this, lowering);
   }
-  
-  auto &lowering = gen.getTypeLowering(getType());
-  assert(!lowering.isTrivial() && "trivial value has cleanup?");
-  
-  if (!lowering.isAddressOnly()) {
-    lowering.emitRetainValue(gen.B, l, getValue());
-    return gen.emitManagedRValueWithCleanup(getValue(), lowering);
+
+  SILValue buf = SGF.emitTemporaryAllocation(loc, getType());
+  SGF.B.createCopyAddr(loc, getValue(), buf, IsNotTake, IsInitialization);
+  return SGF.emitManagedRValueWithCleanup(buf, lowering);
+}
+
+// Emit an unmanaged copy of this value
+// WARNING: Callers of this API should manage the cleanup of this value!
+SILValue ManagedValue::unmanagedCopy(SILGenFunction &SGF,
+                                         SILLocation loc) const {
+  auto &lowering = SGF.getTypeLowering(getType());
+  if (lowering.isTrivial())
+    return getValue();
+
+  if (getType().isObject()) {
+    auto copy = SGF.B.emitCopyValueOperation(loc, getValue());
+    return copy;
   }
-  
-  SILValue buf = gen.emitTemporaryAllocation(l, getType());
-  gen.B.createCopyAddr(l, getValue(), buf, IsNotTake, IsInitialization);
-  return gen.emitManagedRValueWithCleanup(buf, lowering);
+
+  SILValue buf = SGF.emitTemporaryAllocation(loc, getType());
+  SGF.B.createCopyAddr(loc, getValue(), buf, IsNotTake, IsInitialization);
+  return buf;
+}
+
+/// Emit a copy of this value with independent ownership.
+ManagedValue ManagedValue::formalAccessCopy(SILGenFunction &SGF,
+                                            SILLocation loc) {
+  assert(SGF.isInFormalEvaluationScope() &&
+         "Can only perform a formal access copy in a formal evaluation scope");
+  auto &lowering = SGF.getTypeLowering(getType());
+  if (lowering.isTrivial())
+    return *this;
+
+  if (getType().isObject()) {
+    return SGF.B.createFormalAccessCopyValue(loc, *this);
+  }
+
+  SILValue buf = SGF.emitTemporaryAllocation(loc, getType());
+  return SGF.B.createFormalAccessCopyAddr(loc, *this, buf, IsNotTake,
+                                          IsInitialization);
 }
 
 /// Store a copy of this value with independent ownership into the given
 /// uninitialized address.
-void ManagedValue::copyInto(SILGenFunction &gen, SILValue dest, SILLocation L) {
-  auto &lowering = gen.getTypeLowering(getType());
-  if (lowering.isAddressOnly()) {
-    gen.B.createCopyAddr(L, getValue(), dest,
-                         IsNotTake, IsInitialization);
+void ManagedValue::copyInto(SILGenFunction &SGF, SILLocation loc,
+                            SILValue dest) {
+  auto &lowering = SGF.getTypeLowering(getType());
+  if (lowering.isAddressOnly() && SGF.silConv.useLoweredAddresses()) {
+    SGF.B.createCopyAddr(loc, getValue(), dest, IsNotTake, IsInitialization);
     return;
   }
-  lowering.emitRetainValue(gen.B, L, getValue());
-  gen.B.createStore(L, getValue(), dest);
+
+  SILValue copy = lowering.emitCopyValue(SGF.B, loc, getValue());
+  lowering.emitStoreOfCopy(SGF.B, loc, copy, dest, IsInitialization);
+}
+
+void ManagedValue::copyInto(SILGenFunction &SGF, SILLocation loc,
+                            Initialization *dest) {
+  dest->copyOrInitValueInto(SGF, loc, *this, /*isInit*/ false);
+  dest->finishInitialization(SGF);
 }
 
 /// This is the same operation as 'copy', but works on +0 values that don't
 /// have cleanups.  It returns a +1 value with one.
-ManagedValue ManagedValue::copyUnmanaged(SILGenFunction &gen, SILLocation loc) {
-  auto &lowering = gen.getTypeLowering(getType());
-  
-  if (lowering.isTrivial())
-    return *this;
-  
-  SILValue result;
-  if (!lowering.isAddressOnly()) {
-    lowering.emitRetainValue(gen.B, loc, getValue());
-    result = getValue();
-  } else {
-    result = gen.emitTemporaryAllocation(loc, getType());
-    gen.B.createCopyAddr(loc, getValue(), result, IsNotTake,IsInitialization);
+ManagedValue ManagedValue::copyUnmanaged(SILGenFunction &SGF, SILLocation loc) {
+  if (getType().isObject()) {
+    return SGF.B.createCopyValue(loc, *this);
   }
-  return gen.emitManagedRValueWithCleanup(result, lowering);
+
+  SILValue result = SGF.emitTemporaryAllocation(loc, getType());
+  SGF.B.createCopyAddr(loc, getValue(), result, IsNotTake, IsInitialization);
+  return SGF.emitManagedRValueWithCleanup(result);
+}
+
+/// This is the same operation as 'copy', but works on +0 values that don't
+/// have cleanups.  It returns a +1 value with one.
+ManagedValue ManagedValue::formalAccessCopyUnmanaged(SILGenFunction &SGF,
+                                                     SILLocation loc) {
+  assert(SGF.isInFormalEvaluationScope());
+
+  if (getType().isObject()) {
+    return SGF.B.createFormalAccessCopyValue(loc, *this);
+  }
+
+  SILValue result = SGF.emitTemporaryAllocation(loc, getType());
+  return SGF.B.createFormalAccessCopyAddr(loc, *this, result, IsNotTake,
+                                          IsInitialization);
 }
 
 /// Disable the cleanup for this value.
-void ManagedValue::forwardCleanup(SILGenFunction &gen) const {
+void ManagedValue::forwardCleanup(SILGenFunction &SGF) const {
   assert(hasCleanup() && "value doesn't have cleanup!");
-  gen.Cleanups.forwardCleanup(getCleanup());
+  SGF.Cleanups.forwardCleanup(getCleanup());
 }
 
 /// Forward this value, deactivating the cleanup and returning the
 /// underlying value.
-SILValue ManagedValue::forward(SILGenFunction &gen) const {
+SILValue ManagedValue::forward(SILGenFunction &SGF) const {
   if (hasCleanup())
-    forwardCleanup(gen);
+    forwardCleanup(SGF);
   return getValue();
 }
 
-void ManagedValue::forwardInto(SILGenFunction &gen, SILLocation loc,
+void ManagedValue::forwardInto(SILGenFunction &SGF, SILLocation loc,
                                SILValue address) {
-  if (hasCleanup())
-    forwardCleanup(gen);
-  auto &addrTL = gen.getTypeLowering(address->getType());
-  gen.emitSemanticStore(loc, getValue(), address, addrTL, IsInitialization);
+  assert(isPlusOne(SGF));
+  auto &addrTL = SGF.getTypeLowering(address->getType());
+  SGF.emitSemanticStore(loc, forward(SGF), address, addrTL, IsInitialization);
 }
 
-void ManagedValue::assignInto(SILGenFunction &gen, SILLocation loc,
+void ManagedValue::assignInto(SILGenFunction &SGF, SILLocation loc,
                               SILValue address) {
-  if (hasCleanup())
-    forwardCleanup(gen);
-  
-  auto &addrTL = gen.getTypeLowering(address->getType());
-  gen.emitSemanticStore(loc, getValue(), address, addrTL,
+  assert(isPlusOne(SGF));
+  auto &addrTL = SGF.getTypeLowering(address->getType());
+  SGF.emitSemanticStore(loc, forward(SGF), address, addrTL,
                         IsNotInitialization);
+}
+
+void ManagedValue::forwardInto(SILGenFunction &SGF, SILLocation loc,
+                               Initialization *dest) {
+  assert(isPlusOne(SGF));
+  dest->copyOrInitValueInto(SGF, loc, *this, /*isInit*/ true);
+  dest->finishInitialization(SGF);
+}
+
+ManagedValue ManagedValue::borrow(SILGenFunction &SGF, SILLocation loc) const {
+  assert(getValue() && "cannot borrow an invalid or in-context value");
+  if (isLValue())
+    return *this;
+  if (getType().isAddress())
+    return ManagedValue::forUnmanaged(getValue());
+  return SGF.emitManagedBeginBorrow(loc, getValue());
+}
+
+ManagedValue ManagedValue::formalAccessBorrow(SILGenFunction &SGF,
+                                              SILLocation loc) const {
+  assert(SGF.isInFormalEvaluationScope());
+  assert(getValue() && "cannot borrow an invalid or in-context value");
+  if (isLValue())
+    return *this;
+  if (getType().isAddress())
+    return ManagedValue::forUnmanaged(getValue());
+  return SGF.emitFormalEvaluationManagedBeginBorrow(loc, getValue());
+}
+
+ManagedValue ManagedValue::materialize(SILGenFunction &SGF,
+                                       SILLocation loc) const {
+  auto temporary = SGF.emitTemporaryAllocation(loc, getType());
+  bool hadCleanup = hasCleanup();
+
+  if (hadCleanup) {
+    SGF.B.emitStoreValueOperation(loc, forward(SGF), temporary,
+                                  StoreOwnershipQualifier::Init);
+
+    // SEMANTIC SIL TODO: This should really be called a temporary LValue.
+    return ManagedValue::forOwnedAddressRValue(
+        temporary, SGF.enterDestroyCleanup(temporary));
+  }
+  auto &lowering = SGF.getTypeLowering(getType());
+  if (lowering.isAddressOnly()) {
+    assert(!SGF.silConv.useLoweredAddresses());
+    auto copy = SGF.B.createCopyValue(loc, getValue());
+    SGF.B.emitStoreValueOperation(loc, copy, temporary,
+                                  StoreOwnershipQualifier::Init);
+    return ManagedValue::forOwnedAddressRValue(
+        temporary, SGF.enterDestroyCleanup(temporary));
+  }
+  // The temporary memory is +0 if the value was.
+  auto object = SGF.emitManagedBeginBorrow(loc, getValue());
+  auto borrowedAddr =
+      SGF.emitManagedStoreBorrow(loc, object.getValue(), temporary);
+  return ManagedValue::forBorrowedAddressRValue(borrowedAddr.getValue());
+}
+
+ManagedValue ManagedValue::formallyMaterialize(SILGenFunction &SGF,
+                                               SILLocation loc) const {
+  auto temporary = SGF.emitTemporaryAllocation(loc, getType());
+  bool hadCleanup = hasCleanup();
+  auto &lowering = SGF.getTypeLowering(getType());
+
+  if (hadCleanup) {
+    SGF.B.emitStoreValueOperation(loc, forward(SGF), temporary,
+                                  StoreOwnershipQualifier::Init);
+
+    return ManagedValue::forOwnedAddressRValue(
+        temporary, SGF.enterDestroyCleanup(temporary));
+  }
+  if (lowering.isAddressOnly()) {
+    assert(!SGF.silConv.useLoweredAddresses());
+    auto copy = SGF.B.createCopyValue(loc, getValue());
+    SGF.B.emitStoreValueOperation(loc, copy, temporary,
+                                  StoreOwnershipQualifier::Init);
+    return ManagedValue::forOwnedAddressRValue(
+        temporary, SGF.enterDestroyCleanup(temporary));
+  }
+  auto object = SGF.emitFormalEvaluationManagedBeginBorrow(loc, getValue());
+  return SGF.emitFormalEvaluationManagedStoreBorrow(loc, object.getValue(),
+                                                    temporary);
+}
+
+void ManagedValue::print(raw_ostream &os) const {
+  if (SILValue v = getValue()) {
+    v->print(os);
+  }
+}
+
+void ManagedValue::dump() const {
+  dump(llvm::errs());
+}
+
+void ManagedValue::dump(raw_ostream &os, unsigned indent) const {
+  os.indent(indent);
+  if (isInContext()) {
+    os << "InContext\n";
+    return;
+  }
+  if (isLValue()) os << "[lvalue] ";
+  if (hasCleanup()) os << "[cleanup] ";
+  if (SILValue v = getValue()) {
+    v->print(os);
+  } else {
+    os << "<null>\n";
+  }
+}
+
+ManagedValue ManagedValue::ensurePlusOne(SILGenFunction &SGF,
+                                         SILLocation loc) const {
+  // Undef can pair with any type of ownership, so it is effectively a +1 value.
+  if (isa<SILUndef>(getValue()))
+    return *this;
+
+  if (!isPlusOne(SGF)) {
+    return copy(SGF, loc);
+  }
+  return *this;
+}
+
+bool ManagedValue::isPlusOne(SILGenFunction &SGF) const {
+  // If this value is SILUndef, return true. SILUndef can always be passed to +1
+  // APIs.
+  if (isa<SILUndef>(getValue()))
+    return true;
+
+  // Ignore trivial values since for our purposes they are always at +1 since
+  // they can always be passed to +1 APIs.
+  if (getType().isTrivial(SGF.F))
+    return true;
+
+  // If we have an object and the object has any ownership, the same
+  // property applies.
+  if (getType().isObject() && getOwnershipKind() == OwnershipKind::None)
+    return true;
+
+  return hasCleanup();
+}
+
+bool ManagedValue::isPlusZero() const {
+  // SILUndef can always be passed to +0 APIs.
+  if (isa<SILUndef>(getValue()))
+    return true;
+
+  // Otherwise, just check if we have a cleanup.
+  return !hasCleanup();
 }

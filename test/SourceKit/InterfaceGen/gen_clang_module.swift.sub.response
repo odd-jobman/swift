@@ -1,10 +1,9 @@
-import Foo
 import FooHelper
 
 
-public func fooSubFunc1(a: Int32) -> Int32
+public func fooSubFunc1(_ a: Int32) -> Int32
 
-public struct FooSubEnum1 : RawRepresentable, Equatable {
+public struct FooSubEnum1 : Equatable, RawRepresentable {
 
     public init(_ rawValue: UInt32)
 
@@ -26,211 +25,206 @@ public var FooSubUnnamedEnumeratorA1: Int { get }
   {
     key.kind: source.lang.swift.syntaxtype.identifier,
     key.offset: 7,
-    key.length: 3
-  },
-  {
-    key.kind: source.lang.swift.syntaxtype.keyword,
-    key.offset: 11,
-    key.length: 6
-  },
-  {
-    key.kind: source.lang.swift.syntaxtype.identifier,
-    key.offset: 18,
     key.length: 9
   },
   {
     key.kind: source.lang.swift.syntaxtype.attribute.builtin,
-    key.offset: 30,
+    key.offset: 19,
     key.length: 6
   },
   {
     key.kind: source.lang.swift.syntaxtype.keyword,
-    key.offset: 37,
+    key.offset: 26,
     key.length: 4
   },
   {
     key.kind: source.lang.swift.syntaxtype.identifier,
-    key.offset: 42,
+    key.offset: 31,
     key.length: 11
   },
   {
+    key.kind: source.lang.swift.syntaxtype.keyword,
+    key.offset: 43,
+    key.length: 1
+  },
+  {
     key.kind: source.lang.swift.syntaxtype.identifier,
-    key.offset: 54,
+    key.offset: 45,
     key.length: 1
   },
   {
     key.kind: source.lang.swift.syntaxtype.typeidentifier,
-    key.offset: 57,
+    key.offset: 48,
     key.length: 5
   },
   {
     key.kind: source.lang.swift.syntaxtype.typeidentifier,
-    key.offset: 67,
+    key.offset: 58,
     key.length: 5
   },
   {
     key.kind: source.lang.swift.syntaxtype.attribute.builtin,
-    key.offset: 74,
+    key.offset: 65,
     key.length: 6
   },
   {
     key.kind: source.lang.swift.syntaxtype.keyword,
-    key.offset: 81,
+    key.offset: 72,
     key.length: 6
   },
   {
     key.kind: source.lang.swift.syntaxtype.identifier,
-    key.offset: 88,
+    key.offset: 79,
     key.length: 11
   },
   {
     key.kind: source.lang.swift.syntaxtype.typeidentifier,
-    key.offset: 102,
+    key.offset: 93,
+    key.length: 9
+  },
+  {
+    key.kind: source.lang.swift.syntaxtype.typeidentifier,
+    key.offset: 104,
     key.length: 16
   },
   {
-    key.kind: source.lang.swift.syntaxtype.typeidentifier,
-    key.offset: 120,
-    key.length: 9
-  },
-  {
     key.kind: source.lang.swift.syntaxtype.attribute.builtin,
-    key.offset: 137,
+    key.offset: 128,
     key.length: 6
   },
   {
     key.kind: source.lang.swift.syntaxtype.keyword,
-    key.offset: 144,
+    key.offset: 135,
     key.length: 4
   },
   {
     key.kind: source.lang.swift.syntaxtype.keyword,
-    key.offset: 149,
+    key.offset: 140,
     key.length: 1
   },
   {
     key.kind: source.lang.swift.syntaxtype.identifier,
-    key.offset: 151,
+    key.offset: 142,
     key.length: 8
   },
   {
     key.kind: source.lang.swift.syntaxtype.typeidentifier,
-    key.offset: 161,
+    key.offset: 152,
     key.length: 6
   },
   {
     key.kind: source.lang.swift.syntaxtype.attribute.builtin,
-    key.offset: 174,
+    key.offset: 165,
     key.length: 6
   },
   {
     key.kind: source.lang.swift.syntaxtype.keyword,
-    key.offset: 181,
+    key.offset: 172,
     key.length: 4
   },
   {
     key.kind: source.lang.swift.syntaxtype.identifier,
-    key.offset: 186,
+    key.offset: 177,
     key.length: 8
   },
   {
     key.kind: source.lang.swift.syntaxtype.typeidentifier,
-    key.offset: 196,
+    key.offset: 187,
     key.length: 6
   },
   {
     key.kind: source.lang.swift.syntaxtype.attribute.builtin,
-    key.offset: 209,
+    key.offset: 200,
     key.length: 6
   },
   {
     key.kind: source.lang.swift.syntaxtype.keyword,
-    key.offset: 216,
+    key.offset: 207,
     key.length: 3
   },
   {
     key.kind: source.lang.swift.syntaxtype.identifier,
-    key.offset: 220,
+    key.offset: 211,
     key.length: 8
   },
   {
     key.kind: source.lang.swift.syntaxtype.typeidentifier,
+    key.offset: 221,
+    key.length: 6
+  },
+  {
+    key.kind: source.lang.swift.syntaxtype.attribute.builtin,
     key.offset: 230,
     key.length: 6
   },
   {
-    key.kind: source.lang.swift.syntaxtype.attribute.builtin,
-    key.offset: 239,
-    key.length: 6
-  },
-  {
     key.kind: source.lang.swift.syntaxtype.keyword,
-    key.offset: 246,
+    key.offset: 237,
     key.length: 3
   },
   {
     key.kind: source.lang.swift.syntaxtype.identifier,
-    key.offset: 250,
+    key.offset: 241,
     key.length: 12
   },
   {
     key.kind: source.lang.swift.syntaxtype.typeidentifier,
-    key.offset: 264,
+    key.offset: 255,
     key.length: 11
   },
   {
-    key.kind: source.lang.swift.syntaxtype.identifier,
-    key.offset: 278,
+    key.kind: source.lang.swift.syntaxtype.keyword,
+    key.offset: 269,
     key.length: 3
   },
   {
     key.kind: source.lang.swift.syntaxtype.attribute.builtin,
-    key.offset: 284,
+    key.offset: 275,
     key.length: 6
   },
   {
     key.kind: source.lang.swift.syntaxtype.keyword,
-    key.offset: 291,
+    key.offset: 282,
     key.length: 3
   },
   {
     key.kind: source.lang.swift.syntaxtype.identifier,
-    key.offset: 295,
+    key.offset: 286,
     key.length: 12
   },
   {
     key.kind: source.lang.swift.syntaxtype.typeidentifier,
-    key.offset: 309,
+    key.offset: 300,
     key.length: 11
   },
   {
-    key.kind: source.lang.swift.syntaxtype.identifier,
-    key.offset: 323,
+    key.kind: source.lang.swift.syntaxtype.keyword,
+    key.offset: 314,
     key.length: 3
   },
   {
     key.kind: source.lang.swift.syntaxtype.attribute.builtin,
-    key.offset: 330,
+    key.offset: 321,
     key.length: 6
   },
   {
     key.kind: source.lang.swift.syntaxtype.keyword,
-    key.offset: 337,
+    key.offset: 328,
     key.length: 3
   },
   {
     key.kind: source.lang.swift.syntaxtype.identifier,
-    key.offset: 341,
+    key.offset: 332,
     key.length: 25
   },
   {
     key.kind: source.lang.swift.syntaxtype.typeidentifier,
-    key.offset: 368,
+    key.offset: 359,
     key.length: 3
   },
   {
-    key.kind: source.lang.swift.syntaxtype.identifier,
-    key.offset: 374,
+    key.kind: source.lang.swift.syntaxtype.keyword,
+    key.offset: 365,
     key.length: 3
   }
 ]
@@ -238,68 +232,63 @@ public var FooSubUnnamedEnumeratorA1: Int { get }
   {
     key.kind: source.lang.swift.ref.module,
     key.offset: 7,
-    key.length: 3
-  },
-  {
-    key.kind: source.lang.swift.ref.module,
-    key.offset: 18,
     key.length: 9
   },
   {
     key.kind: source.lang.swift.ref.struct,
-    key.offset: 57,
+    key.offset: 48,
     key.length: 5,
     key.is_system: 1
   },
   {
     key.kind: source.lang.swift.ref.struct,
-    key.offset: 67,
+    key.offset: 58,
     key.length: 5,
     key.is_system: 1
   },
   {
     key.kind: source.lang.swift.ref.protocol,
-    key.offset: 102,
-    key.length: 16,
-    key.is_system: 1
-  },
-  {
-    key.kind: source.lang.swift.ref.protocol,
-    key.offset: 120,
+    key.offset: 93,
     key.length: 9,
     key.is_system: 1
   },
   {
+    key.kind: source.lang.swift.ref.protocol,
+    key.offset: 104,
+    key.length: 16,
+    key.is_system: 1
+  },
+  {
     key.kind: source.lang.swift.ref.struct,
-    key.offset: 161,
+    key.offset: 152,
     key.length: 6,
     key.is_system: 1
   },
   {
     key.kind: source.lang.swift.ref.struct,
-    key.offset: 196,
+    key.offset: 187,
     key.length: 6,
     key.is_system: 1
   },
   {
     key.kind: source.lang.swift.ref.struct,
-    key.offset: 230,
+    key.offset: 221,
     key.length: 6,
     key.is_system: 1
   },
   {
     key.kind: source.lang.swift.ref.struct,
-    key.offset: 264,
+    key.offset: 255,
     key.length: 11
   },
   {
     key.kind: source.lang.swift.ref.struct,
-    key.offset: 309,
+    key.offset: 300,
     key.length: 11
   },
   {
     key.kind: source.lang.swift.ref.struct,
-    key.offset: 368,
+    key.offset: 359,
     key.length: 3,
     key.is_system: 1
   }
@@ -309,19 +298,25 @@ public var FooSubUnnamedEnumeratorA1: Int { get }
     key.kind: source.lang.swift.decl.function.free,
     key.accessibility: source.lang.swift.accessibility.public,
     key.name: "fooSubFunc1(_:)",
-    key.offset: 37,
-    key.length: 35,
-    key.nameoffset: 42,
-    key.namelength: 21,
+    key.offset: 26,
+    key.length: 37,
+    key.typename: "Int32",
+    key.nameoffset: 31,
+    key.namelength: 23,
+    key.attributes: [
+      {
+        key.offset: 19,
+        key.length: 6,
+        key.attribute: source.decl.attribute.public
+      }
+    ],
     key.substructure: [
       {
         key.kind: source.lang.swift.decl.var.parameter,
         key.name: "a",
-        key.offset: 54,
-        key.length: 8,
-        key.typename: "Int32",
-        key.nameoffset: 0,
-        key.namelength: 0
+        key.offset: 43,
+        key.length: 10,
+        key.typename: "Int32"
       }
     ]
   },
@@ -329,30 +324,37 @@ public var FooSubUnnamedEnumeratorA1: Int { get }
     key.kind: source.lang.swift.decl.struct,
     key.accessibility: source.lang.swift.accessibility.public,
     key.name: "FooSubEnum1",
-    key.offset: 81,
+    key.offset: 72,
     key.length: 157,
-    key.nameoffset: 88,
+    key.nameoffset: 79,
     key.namelength: 11,
-    key.bodyoffset: 131,
+    key.bodyoffset: 122,
     key.bodylength: 106,
     key.inheritedtypes: [
       {
-        key.name: "RawRepresentable"
+        key.name: "Equatable"
       },
       {
-        key.name: "Equatable"
+        key.name: "RawRepresentable"
+      }
+    ],
+    key.attributes: [
+      {
+        key.offset: 65,
+        key.length: 6,
+        key.attribute: source.decl.attribute.public
       }
     ],
     key.elements: [
       {
         key.kind: source.lang.swift.structure.elem.typeref,
-        key.offset: 102,
-        key.length: 16
+        key.offset: 93,
+        key.length: 9
       },
       {
         key.kind: source.lang.swift.structure.elem.typeref,
-        key.offset: 120,
-        key.length: 9
+        key.offset: 104,
+        key.length: 16
       }
     ],
     key.substructure: [
@@ -360,19 +362,24 @@ public var FooSubUnnamedEnumeratorA1: Int { get }
         key.kind: source.lang.swift.decl.function.method.instance,
         key.accessibility: source.lang.swift.accessibility.public,
         key.name: "init(_:)",
-        key.offset: 144,
+        key.offset: 135,
         key.length: 24,
-        key.nameoffset: 144,
+        key.nameoffset: 135,
         key.namelength: 24,
+        key.attributes: [
+          {
+            key.offset: 128,
+            key.length: 6,
+            key.attribute: source.decl.attribute.public
+          }
+        ],
         key.substructure: [
           {
             key.kind: source.lang.swift.decl.var.parameter,
             key.name: "rawValue",
-            key.offset: 149,
+            key.offset: 140,
             key.length: 18,
-            key.typename: "UInt32",
-            key.nameoffset: 0,
-            key.namelength: 0
+            key.typename: "UInt32"
           }
         ]
       },
@@ -380,18 +387,25 @@ public var FooSubUnnamedEnumeratorA1: Int { get }
         key.kind: source.lang.swift.decl.function.method.instance,
         key.accessibility: source.lang.swift.accessibility.public,
         key.name: "init(rawValue:)",
-        key.offset: 181,
+        key.offset: 172,
         key.length: 22,
-        key.nameoffset: 181,
+        key.nameoffset: 172,
         key.namelength: 22,
+        key.attributes: [
+          {
+            key.offset: 165,
+            key.length: 6,
+            key.attribute: source.decl.attribute.public
+          }
+        ],
         key.substructure: [
           {
             key.kind: source.lang.swift.decl.var.parameter,
             key.name: "rawValue",
-            key.offset: 186,
+            key.offset: 177,
             key.length: 16,
             key.typename: "UInt32",
-            key.nameoffset: 186,
+            key.nameoffset: 177,
             key.namelength: 8
           }
         ]
@@ -401,45 +415,76 @@ public var FooSubUnnamedEnumeratorA1: Int { get }
         key.accessibility: source.lang.swift.accessibility.public,
         key.setter_accessibility: source.lang.swift.accessibility.public,
         key.name: "rawValue",
-        key.offset: 216,
+        key.offset: 207,
         key.length: 20,
         key.typename: "UInt32",
-        key.nameoffset: 220,
-        key.namelength: 8
+        key.nameoffset: 211,
+        key.namelength: 8,
+        key.attributes: [
+          {
+            key.offset: 200,
+            key.length: 6,
+            key.attribute: source.decl.attribute.public
+          }
+        ]
       }
     ]
   },
   {
     key.kind: source.lang.swift.decl.var.global,
     key.accessibility: source.lang.swift.accessibility.public,
-    key.setter_accessibility: source.lang.swift.accessibility.public,
     key.name: "FooSubEnum1X",
-    key.offset: 246,
-    key.length: 29,
+    key.offset: 237,
+    key.length: 37,
     key.typename: "FooSubEnum1",
-    key.nameoffset: 250,
-    key.namelength: 12
+    key.nameoffset: 241,
+    key.namelength: 12,
+    key.bodyoffset: 268,
+    key.bodylength: 5,
+    key.attributes: [
+      {
+        key.offset: 230,
+        key.length: 6,
+        key.attribute: source.decl.attribute.public
+      }
+    ]
   },
   {
     key.kind: source.lang.swift.decl.var.global,
     key.accessibility: source.lang.swift.accessibility.public,
-    key.setter_accessibility: source.lang.swift.accessibility.public,
     key.name: "FooSubEnum1Y",
-    key.offset: 291,
-    key.length: 29,
+    key.offset: 282,
+    key.length: 37,
     key.typename: "FooSubEnum1",
-    key.nameoffset: 295,
-    key.namelength: 12
+    key.nameoffset: 286,
+    key.namelength: 12,
+    key.bodyoffset: 313,
+    key.bodylength: 5,
+    key.attributes: [
+      {
+        key.offset: 275,
+        key.length: 6,
+        key.attribute: source.decl.attribute.public
+      }
+    ]
   },
   {
     key.kind: source.lang.swift.decl.var.global,
     key.accessibility: source.lang.swift.accessibility.public,
-    key.setter_accessibility: source.lang.swift.accessibility.public,
     key.name: "FooSubUnnamedEnumeratorA1",
-    key.offset: 337,
-    key.length: 34,
+    key.offset: 328,
+    key.length: 42,
     key.typename: "Int",
-    key.nameoffset: 341,
-    key.namelength: 25
+    key.nameoffset: 332,
+    key.namelength: 25,
+    key.bodyoffset: 364,
+    key.bodylength: 5,
+    key.attributes: [
+      {
+        key.offset: 321,
+        key.length: 6,
+        key.attribute: source.decl.attribute.public
+      }
+    ]
   }
 ]

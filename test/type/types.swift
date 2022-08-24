@@ -1,13 +1,14 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 var a : Int
 
 func test() {
-  var y : a   // expected-error {{use of undeclared type 'a'}} expected-note {{here}}
-  var z : y   // expected-error {{'y' is not a type}}
+  var y : a   // expected-error {{cannot find type 'a' in scope}}
+  var z : y   // expected-error {{cannot find type 'y' in scope}}
+  var w : Swift.print   // expected-error {{no type named 'print' in module 'Swift'}}
 }
 
-var b : Int -> Int = { $0 }
+var b : (Int) -> Int = { $0 }
 
 var c2 : (field : Int)  // expected-error {{cannot create a single-element tuple with an element label}}{{11-19=}}
 
@@ -15,16 +16,17 @@ var d2 : () -> Int = { 4 }
 
 var d3 : () -> Float = { 4 }
 
-var d4 : () -> Int = { d2 }  // expected-error{{function produces expected type 'Int'; did you mean to call it with '()'?}} {{26-26=()}}
+var d4 : () -> Int = { d2 }  // expected-error{{function 'd2' was used as a property; add () to call it}} {{26-26=()}}
 
-var e0 : [Int]
-e0[] // expected-error {{cannot subscript a value of type '[Int]' with an index of type '()'}}
-  // expected-note @-1 {{overloads for 'subscript' exist with these partially matching parameter lists: (Int), (Range<Int>), (Range<Self.Index>)}}
+if #available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *) {
+  var e0 : [Int]
+  e0[] // expected-error {{missing argument for parameter #1 in call}} {{6-6=<#Int#>}}
+}
 
 var f0 : [Float]
 var f1 : [(Int,Int)]
 
-var g : Swift // expected-error {{use of undeclared type 'Swift'}} expected-note {{cannot use module 'Swift' as a type}}
+var g : Swift // expected-error {{cannot find type 'Swift' in scope}} expected-note {{cannot use module 'Swift' as a type}}
 
 var h0 : Int?
 _ = h0 == nil // no-warning
@@ -37,15 +39,22 @@ var h3b : [Int?]?
 var h4 : ([Int])?
 var h5 : ([([[Int??]])?])?
 var h7 : (Int,Int)?
-var h8 : (Int -> Int)?
-var h9 : Int? -> Int?
+var h8 : ((Int) -> Int)?
+var h9 : (Int?) -> Int?
 var h10 : Int?.Type?.Type
 
 var i = Int?(42)
 
-var bad_io : (Int) -> (inout Int, Int)  // expected-error {{'inout' is only valid in parameter lists}}
-
-func bad_io2(a: (inout Int, Int)) {}    // expected-error {{'inout' is only valid in parameter lists}}
+func testInvalidUseOfParameterAttr() {
+  var bad_io : (Int) -> (inout Int, Int)  // expected-error {{'inout' may only be used on parameters}}
+  func bad_io2(_ a: (inout Int, Int)) {}    // expected-error {{'inout' may only be used on parameters}}
+  
+  var bad_is : (Int) -> (__shared Int, Int)  // expected-error {{'__shared' may only be used on parameters}}
+  func bad_is2(_ a: (__shared Int, Int)) {}    // expected-error {{'__shared' may only be used on parameters}}
+  
+  var bad_iow : (Int) -> (__owned Int, Int)  // expected-error {{'__owned' may only be used on parameters}}
+  func bad_iow2(_ a: (__owned Int, Int)) {}  // expected-error {{'__owned' may only be used on parameters}}
+}
 
 // <rdar://problem/15588967> Array type sugar default construction syntax doesn't work
 func test_array_construct<T>(_: T) {
@@ -83,9 +92,9 @@ var y3b : Gen<[Int?]?>
 var y4 : Gen<([Int])?>
 var y5 : Gen<([([[Int??]])?])?>
 var y7 : Gen<(Int,Int)?>
-var y8 : Gen<(Int -> Int)?>
-var y8a : Gen<[[Int]? -> Int]>
-var y9 : Gen<Int? -> Int?>
+var y8 : Gen<((Int) -> Int)?>
+var y8a : Gen<[([Int]?) -> Int]>
+var y9 : Gen<(Int?) -> Int?>
 var y10 : Gen<Int?.Type?.Type>
 var y11 : Gen<Gen<Int>?>
 var y12 : Gen<Gen<Int>?>?
@@ -104,9 +113,9 @@ var z3b = Gen<[Int?]?>()
 var z4 = Gen<([Int])?>()
 var z5 = Gen<([([[Int??]])?])?>()
 var z7 = Gen<(Int,Int)?>()
-var z8 = Gen<(Int -> Int)?>()
-var z8a = Gen<[[Int]? -> Int]>()
-var z9 = Gen<Int? -> Int?>()
+var z8 = Gen<((Int) -> Int)?>()
+var z8a = Gen<[([Int]?) -> Int]>()
+var z9 = Gen<(Int?) -> Int?>()
 var z10 = Gen<Int?.Type?.Type>()
 var z11 = Gen<Gen<Int>?>()
 var z12 = Gen<Gen<Int>?>?()
@@ -144,14 +153,53 @@ let tupleTypeWithNames = (age:Int, count:Int)(4, 5)
 let dictWithTuple = [String: (age:Int, count:Int)]()
 
 // <rdar://problem/21684837> typeexpr not being formed for postfix !
-let bb2 = [Int!](repeating: nil, count: 2)
+let bb2 = [Int!](repeating: nil, count: 2) // expected-warning {{using '!' is not allowed here; treating this as '?' instead}}{{15-16=?}}
 
 // <rdar://problem/21560309> inout allowed on function return type
-func r21560309<U>(body: (_: inout Int) -> inout U) {}  // expected-error {{'inout' is only valid in parameter lists}}
+func r21560309<U>(_ body: (_: inout Int) -> inout U) {}  // expected-error {{'inout' may only be used on parameters}}
 r21560309 { x in x }
 
 // <rdar://problem/21949448> Accepts-invalid: 'inout' shouldn't be allowed on stored properties
 class r21949448 {
-  var myArray: inout [Int] = []   // expected-error {{'inout' is only valid in parameter lists}}
+  var myArray: inout [Int] = []   // expected-error {{'inout' may only be used on parameters}}
 }
 
+// SE-0066 - Standardize function type argument syntax to require parentheses
+let _ : Int -> Float // expected-error {{single argument function types require parentheses}} {{9-9=(}} {{12-12=)}}
+let _ : inout Int -> Float // expected-error {{'inout' may only be used on parameters}}
+// expected-error@-1 {{single argument function types require parentheses}} {{15-15=(}} {{18-18=)}}
+func testNoParenFunction(x: Int -> Float) {} // expected-error {{single argument function types require parentheses}} {{29-29=(}} {{32-32=)}}
+func testNoParenFunction(x: inout Int -> Float) {} // expected-error {{single argument function types require parentheses}} {{35-35=(}} {{38-38=)}}
+
+func foo1(a : UnsafePointer<Void>) {} // expected-warning {{UnsafePointer<Void> has been replaced by UnsafeRawPointer}}{{15-34=UnsafeRawPointer}}
+func foo2(a : UnsafeMutablePointer<()>) {} // expected-warning {{UnsafeMutablePointer<Void> has been replaced by UnsafeMutableRawPointer}}{{15-39=UnsafeMutableRawPointer}}
+class C {
+  func foo1(a : UnsafePointer<Void>) {} // expected-warning {{UnsafePointer<Void> has been replaced by UnsafeRawPointer}}{{17-36=UnsafeRawPointer}}
+  func foo2(a : UnsafeMutablePointer<()>) {} // expected-warning {{UnsafeMutablePointer<Void> has been replaced by UnsafeMutableRawPointer}}{{17-41=UnsafeMutableRawPointer}}
+  func foo3() {
+    let _ : UnsafePointer<Void> // expected-warning {{UnsafePointer<Void> has been replaced by UnsafeRawPointer}}{{13-32=UnsafeRawPointer}}
+    let _ : UnsafeMutablePointer<Void> // expected-warning {{UnsafeMutablePointer<Void> has been replaced by UnsafeMutableRawPointer}}{{13-39=UnsafeMutableRawPointer}}
+  }
+}
+
+let _ : inout @convention(c) (Int) -> Int // expected-error {{'inout' may only be used on parameters}}
+func foo3(inout a: Int -> Void) {} // expected-error {{'inout' before a parameter name is not allowed, place it before the parameter type instead}} {{11-16=}} {{20-20=inout }}
+                                   // expected-error @-1 {{single argument function types require parentheses}} {{20-20=(}} {{23-23=)}}
+
+func sr5505(arg: Int) -> String {
+  return "hello"
+}
+var _: sr5505 = sr5505 // expected-error {{cannot find type 'sr5505' in scope}}
+
+typealias A = (inout Int ..., Int ... = [42, 12]) -> Void // expected-error {{'inout' must not be used on variadic parameters}}
+                                                          // expected-error@-1 {{only a single element can be variadic}} {{35-39=}}
+                                                          // expected-error@-2 {{default argument not permitted in a tuple type}} {{39-49=}}
+
+// rdar://94888357 - failed to produce a diagnostic when type is used incorrectly
+func rdar94888357() {
+  struct S<T> { // expected-note {{generic type 'S' declared here}}
+    init(_ str: String) {}
+  }
+
+  let _ = S<String, String>("") // expected-error {{generic type 'S' specialized with too many type parameters (got 2, but expected 1)}}
+}

@@ -2,40 +2,23 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
 //  This file defines diagnostics emitted during IR generation.
-//  Each diagnostic is described using one of three kinds (error, warning, or 
+//  Each diagnostic is described using one of three kinds (error, warning, or
 //  note) along with a unique identifier, category, options, and text, and is
 //  followed by a signature describing the diagnostic argument kinds.
 //
 //===----------------------------------------------------------------------===//
 
-#if !(defined(DIAG) || (defined(ERROR) && defined(WARNING) && defined(NOTE)))
-#  error Must define either DIAG or the set {ERROR,WARNING,NOTE}
-#endif
-
-#ifndef ERROR
-#  define ERROR(ID,Options,Text,Signature)   \
-  DIAG(ERROR,ID,Options,Text,Signature)
-#endif
-
-#ifndef WARNING
-#  define WARNING(ID,Options,Text,Signature) \
-  DIAG(WARNING,ID,Options,Text,Signature)
-#endif
-
-#ifndef NOTE
-#  define NOTE(ID,Options,Text,Signature) \
-  DIAG(NOTE,ID,Options,Text,Signature)
-#endif
-
+#define DEFINE_DIAGNOSTIC_MACROS
+#include "DefineDiagnosticMacros.h"
 
 ERROR(no_llvm_target,none,
       "error loading LLVM target for triple '%0': %1", (StringRef, StringRef))
@@ -63,12 +46,18 @@ ERROR(alignment_dynamic_type_layout_unsupported,none,
 ERROR(alignment_less_than_natural,none,
       "@_alignment cannot decrease alignment below natural alignment of %0",
       (unsigned))
+ERROR(alignment_more_than_maximum,none,
+      "@_alignment cannot increase alignment above maximum alignment of %0",
+      (unsigned))
 
-#ifndef DIAG_NO_UNDEF
-# if defined(DIAG)
-#  undef DIAG
-# endif
-# undef NOTE
-# undef WARNING
-# undef ERROR
-#endif
+ERROR(temporary_allocation_size_negative,none,
+      "allocation capacity must be greater than or equal to zero", ())
+ERROR(temporary_allocation_size_overflow,none,
+      "allocation byte count too large", ())
+ERROR(temporary_allocation_alignment_not_positive,none,
+      "alignment value must be greater than zero", ())
+ERROR(temporary_allocation_alignment_not_power_of_2,none,
+      "alignment value must be a power of two", ())
+
+#define UNDEFINE_DIAGNOSTIC_MACROS
+#include "DefineDiagnosticMacros.h"

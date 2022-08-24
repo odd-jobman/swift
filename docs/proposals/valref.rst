@@ -1,6 +1,5 @@
 :orphan:
 
-.. @raise litre.TestsAreMissing
 .. _valref:
 
 =======================
@@ -12,8 +11,8 @@
 :Date: 2013-03-15
 
 **Abstract:** We propose a system that offers first-class support for
-both value and reference semantics.  By allowing—but not
-requiring—(instance) variables, function parameters, and generic
+both value and reference semantics.  By allowing--but not
+requiring--(instance) variables, function parameters, and generic
 constraints to be declared as ``val`` or ``ref``, we offer users the
 ability to nail down semantics to the desired degree without
 compromising ease of use.
@@ -220,7 +219,7 @@ and has value semantics::
     case Cons(car:T, cdr:List<T>)
   }
 
-  // A list node with reference semantics—copying the node creates a node
+  // A list node with reference semantics--copying the node creates a node
   // that shares structure with the tail of the list
   union Node<T> {
     case Nil()
@@ -245,7 +244,7 @@ Function Parameters
 Function parameters can be explicitly declared ``val``, or ``ref``::
 
   func baz(
-      x: Int      // x is passed by-value
+      _ x: Int      // x is passed by-value
     , val y: Int  // just like "y: Int"
     , ref z: Int  // allocate z on the heap
 
@@ -290,7 +289,7 @@ type parameter, as follows::
 parameters::
 
   // Fill an array with independent copies of x
-  func fill<T:val>(array:[T], x:T) {
+  func fill<T:val>(_ array:[T], x:T) {
     for i in 0...array.length {
       array[i] = x
     }
@@ -365,7 +364,7 @@ Objective-C Interoperability
 Clonable Objective-C classes
 -----------------------------
 
-In Cocoa, a notion similar to cloneability is captured in the ``NSCopying`` and
+In Cocoa, a notion similar to clonability is captured in the ``NSCopying`` and
 ``NSMutableCopying`` protocols, and a notion similar to ``val`` instance
 variables is captured by the behavior of ``(copy)`` properties. However, there
 are some behavioral and semantic differences that need to be taken into account.
@@ -432,16 +431,16 @@ How This Design Beats Rust/C++/C#/etc.
 
 * Simple programs stay simple.  Rust has a great low-level memory safety
   story, but it comes at the expense of ease-of-use.  You can't learn
-  to use that system effectively without confronting three `kinds`__
+  to use that system effectively without confronting two `kinds`__
   of pointer, `named lifetimes`__, `borrowing managed boxes and
   rooting`__, etc.  By contrast, there's a path to learning swift that
   postpones the ``val``\ /``ref`` distinction, and that's pretty much
   *all* one must learn to have a complete understanding of the object
   model in the "easy" and "safe" zones.
 
-__ http://static.rust-lang.org/doc/tutorial.html#boxes-and-pointers
-__ http://static.rust-lang.org/doc/tutorial-borrowed-ptr.html#named-lifetimes
-__ http://static.rust-lang.org/doc/tutorial-borrowed-ptr.html#borrowing-managed-boxes-and-rooting
+__ https://doc.rust-lang.org/reference.html#pointer-types
+__ https://doc.rust-lang.org/book/lifetimes.html
+__ https://doc.rust-lang.org/book/box-syntax-and-patterns.html
 
 * Simple programs stay safe.  C++ offers great control over
   everything, but the sharp edges are always exposed.  This design
@@ -473,7 +472,7 @@ __ http://static.rust-lang.org/doc/tutorial-borrowed-ptr.html#borrowing-managed-
 ==============================================
 
 It is *possible* to build a struct with reference semantics. For
-example, 
+example,
 
 ..parsed-literal::
 
@@ -556,7 +555,7 @@ example:
 * ``var`` is only one character different from ``val``.  Is that too
   confusable?  Syntax highlighting can help, but it might not be enough.
 
-  * What about ``let`` as a replacement for ``var``?  
+  * What about ``let`` as a replacement for ``var``?
     There's always the dreaded ``auto``.
 
   * Should we drop ``let``\ /``var``\ /``auto`` for ivars, because it

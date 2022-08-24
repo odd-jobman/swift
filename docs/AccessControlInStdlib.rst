@@ -54,7 +54,7 @@ To document the reason for marking symbols public, we use comments:
 `internal`
 ==========
 
-In Swift, `internal` is an implied default everywhere—except within
+In Swift, `internal` is an implied default everywhere--except within
 `public` extensions and protocols.  Therefore, `internal` should be used
 explicitly everywhere in the stdlib to avoid confusion.
 
@@ -87,7 +87,7 @@ Variables, functions and typealiases should have names that start with an
 underscore::
 
   var _value: Int
-  func _bridgeSomethingToAnything(something: AnyObject) -> AnyObject
+  func _bridgeSomethingToAnything(_ something: AnyObject) -> AnyObject
   typealias _InternalTypealias = HeapBuffer<Int, Int>
 
 To apply the rule to an initializer, one of its label arguments *or*

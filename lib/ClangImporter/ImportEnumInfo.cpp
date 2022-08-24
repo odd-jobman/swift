@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -15,7 +15,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "ClangAdapter.h"
 #include "ImportEnumInfo.h"
+#include "ImporterImpl.h"
 #include "swift/Basic/StringExtras.h"
 #include "swift/Parse/Lexer.h"
 #include "clang/AST/Attr.h"
@@ -23,36 +25,109 @@
 #include "clang/Lex/MacroInfo.h"
 #include "clang/Lex/Preprocessor.h"
 
+#include "llvm/ADT/Statistic.h"
+#define DEBUG_TYPE "Enum Info"
+STATISTIC(EnumInfoNumCacheHits, "# of times the enum info cache was hit");
+STATISTIC(EnumInfoNumCacheMisses, "# of times the enum info cache was missed");
+
 using namespace swift;
 using namespace importer;
+
+/// Find the last extensibility attribute on \p decl as arranged by source
+/// location...unless there's an API note, in which case that one wins.
+///
+/// This is not what Clang will do, but it's more useful for us since CF_ENUM
+/// already has enum_extensibility(open) in it.
+static clang::EnumExtensibilityAttr *
+getBestExtensibilityAttr(clang::Preprocessor &pp, const clang::EnumDecl *decl) {
+  clang::EnumExtensibilityAttr *bestSoFar = nullptr;
+  const clang::SourceManager &sourceMgr = pp.getSourceManager();
+  for (auto *next : decl->specific_attrs<clang::EnumExtensibilityAttr>()) {
+    if (next->getLocation().isInvalid()) {
+      // This is from API notes -- use it!
+      return next;
+    }
+
+    if (!bestSoFar ||
+        sourceMgr.isBeforeInTranslationUnit(bestSoFar->getLocation(),
+                                            next->getLocation())) {
+      bestSoFar = next;
+    }
+  }
+  return bestSoFar;
+}
 
 /// Classify the given Clang enumeration to describe how to import it.
 void EnumInfo::classifyEnum(const clang::EnumDecl *decl,
                             clang::Preprocessor &pp) {
+  assert(decl);
+  clang::PrettyStackTraceDecl trace(decl, clang::SourceLocation(),
+                                    pp.getSourceManager(), "classifying");
+  assert(decl->isThisDeclarationADefinition());
+
   // Anonymous enumerations simply get mapped to constants of the
   // underlying type of the enum, because there is no way to conjure up a
   // name for the Swift type.
   if (!decl->hasNameForLinkage()) {
-    kind = EnumKind::Constants;
+    // If this enum comes from a typedef, we can find a name.
+    if (!isa<clang::TypedefType>(decl->getIntegerType().getTypePtr()) ||
+        // If the typedef is available in Swift, the user will get ambiguity.
+        // It also means they may not have intended this API to be imported like this.
+        !importer::isUnavailableInSwift(
+            cast<clang::TypedefType>(decl->getIntegerType().getTypePtr())->getDecl(),
+            nullptr, true)) {
+      kind = EnumKind::Constants;
+      return;
+    }
+  }
+
+  // First, check for attributes that denote the classification.
+  if (auto domainAttr = decl->getAttr<clang::NSErrorDomainAttr>()) {
+    kind = EnumKind::NonFrozenEnum;
+    nsErrorDomain = domainAttr->getErrorDomain()->getName();
+  }
+  if (decl->hasAttr<clang::FlagEnumAttr>()) {
+    kind = EnumKind::Options;
+    return;
+  }
+  if (auto *attr = getBestExtensibilityAttr(pp, decl)) {
+    if (attr->getExtensibility() == clang::EnumExtensibilityAttr::Closed)
+      kind = EnumKind::FrozenEnum;
+    else
+      kind = EnumKind::NonFrozenEnum;
+    return;
+  }
+  if (!nsErrorDomain.empty())
+    return;
+
+  if (decl->isScoped()) {
+    kind = EnumKind::NonFrozenEnum;
     return;
   }
 
-  // First, check for attributes that denote the classification
-  if (auto domainAttr = decl->getAttr<clang::NSErrorDomainAttr>()) {
-    kind = EnumKind::Enum;
-    attribute = domainAttr;
-    return;
+  // If API notes have /removed/ a FlagEnum or EnumExtensibility attribute,
+  // then we don't need to check the macros.
+  for (auto *attr : decl->specific_attrs<clang::SwiftVersionedAttr>()) {
+    if (!attr->getIsReplacedByActive())
+      continue;
+    if (isa<clang::FlagEnumAttr>(attr->getAttrToAdd()) ||
+        isa<clang::EnumExtensibilityAttr>(attr->getAttrToAdd())) {
+      kind = EnumKind::Unknown;
+      return;
+    }
   }
 
   // Was the enum declared using *_ENUM or *_OPTIONS?
-  // FIXME: Use Clang attributes instead of grovelling the macro expansion loc.
-  auto loc = decl->getLocStart();
+  // FIXME: Stop using these once flag_enum and enum_extensibility
+  // have been adopted everywhere, or at least relegate them to Swift 4 mode
+  // only.
+  auto loc = decl->getBeginLoc();
   if (loc.isMacroID()) {
     StringRef MacroName = pp.getImmediateMacroName(loc);
     if (MacroName == "CF_ENUM" || MacroName == "__CF_NAMED_ENUM" ||
         MacroName == "OBJC_ENUM" || MacroName == "SWIFT_ENUM" ||
         MacroName == "SWIFT_ENUM_NAMED") {
-      kind = EnumKind::Enum;
+      kind = EnumKind::NonFrozenEnum;
       return;
     }
     if (MacroName == "CF_OPTIONS" || MacroName == "OBJC_OPTIONS" ||
@@ -64,7 +139,7 @@ void EnumInfo::classifyEnum(const clang::EnumDecl *decl,
 
   // Hardcode a particular annoying case in the OS X headers.
   if (decl->getName() == "DYLD_BOOL") {
-    kind = EnumKind::Enum;
+    kind = EnumKind::FrozenEnum;
     return;
   }
 
@@ -85,8 +160,8 @@ void EnumInfo::classifyEnum(const clang::EnumDecl *decl,
 ///
 /// This is used to derive the common prefix of enum constants so we can elide
 /// it from the Swift interface.
-static StringRef getCommonWordPrefix(StringRef a, StringRef b,
-                                     bool &followedByNonIdentifier) {
+StringRef importer::getCommonWordPrefix(StringRef a, StringRef b,
+                                        bool &followedByNonIdentifier) {
   auto aWords = camel_case::getWords(a), bWords = camel_case::getWords(b);
   auto aI = aWords.begin(), aE = aWords.end(), bI = bWords.begin(),
        bE = bWords.end();
@@ -124,7 +199,8 @@ static StringRef getCommonWordPrefix(StringRef a, StringRef b,
 /// in Cocoa and Cocoa Touch.
 ///
 /// \see getCommonWordPrefix
-static StringRef getCommonPluralPrefix(StringRef singular, StringRef plural) {
+StringRef importer::getCommonPluralPrefix(StringRef singular,
+                                          StringRef plural) {
   assert(!plural.empty());
 
   if (singular.empty())
@@ -167,10 +243,10 @@ static StringRef getCommonPluralPrefix(StringRef singular, StringRef plural) {
 
 /// Determine the prefix to be stripped from the names of the enum constants
 /// within the given enum.
-void EnumInfo::determineConstantNamePrefix(ASTContext &ctx,
-                                           const clang::EnumDecl *decl) {
+void EnumInfo::determineConstantNamePrefix(const clang::EnumDecl *decl) {
   switch (getKind()) {
-  case EnumKind::Enum:
+  case EnumKind::NonFrozenEnum:
+  case EnumKind::FrozenEnum:
   case EnumKind::Options:
     // Enums are mapped to Swift enums, Options to Swift option sets, both
     // of which attempt prefix-stripping.
@@ -182,7 +258,7 @@ void EnumInfo::determineConstantNamePrefix(ASTContext &ctx,
     return;
   }
 
-  // If there are no enumers, there is no prefix to compute.
+  // If there are no enumerators, there is no prefix to compute.
   auto ec = decl->enumerator_begin(), ecEnd = decl->enumerator_end();
   if (ec == ecEnd)
     return;
@@ -194,7 +270,7 @@ void EnumInfo::determineConstantNamePrefix(ASTContext &ctx,
     if (elem->hasAttr<clang::SwiftNameAttr>())
       return false;
 
-    clang::VersionTuple maxVersion{~0U, ~0U, ~0U};
+    llvm::VersionTuple maxVersion{~0U, ~0U, ~0U};
     switch (elem->getAvailability(nullptr, maxVersion)) {
     case clang::AR_Available:
     case clang::AR_NotYetIntroduced:
@@ -214,6 +290,8 @@ void EnumInfo::determineConstantNamePrefix(ASTContext &ctx,
     case clang::AR_Unavailable:
       return false;
     }
+
+    llvm_unreachable("Invalid AvailabilityAttr.");
   };
 
   // Move to the first non-deprecated enumerator, or non-swift_name'd
@@ -269,7 +347,20 @@ void EnumInfo::determineConstantNamePrefix(ASTContext &ctx,
 
     // Don't use importFullName() here, we want to ignore the swift_name
     // and swift_private attributes.
-    StringRef enumNameStr = decl->getName();
+    StringRef enumNameStr;
+    // If there's no name, this must be typedef. So use the typedef's name.
+    if (!decl->hasNameForLinkage()) {
+      auto typedefDecl = cast<clang::TypedefType>(
+                             decl->getIntegerType().getTypePtr())->getDecl();
+      enumNameStr = typedefDecl->getName();
+    } else {
+      enumNameStr = decl->getName();
+    }
+
+    if (enumNameStr.empty())
+      enumNameStr = decl->getTypedefNameForAnonDecl()->getName();
+    assert(!enumNameStr.empty() && "should have been classified as Constants");
+
     StringRef commonWithEnum = getCommonPluralPrefix(checkPrefix, enumNameStr);
     size_t delta = commonPrefix.size() - checkPrefix.size();
 
@@ -282,5 +373,17 @@ void EnumInfo::determineConstantNamePrefix(ASTContext &ctx,
     commonPrefix = commonPrefix.slice(0, commonWithEnum.size() + delta);
   }
 
-  constantNamePrefix = ctx.AllocateCopy(commonPrefix);
+  constantNamePrefix = commonPrefix;
+}
+
+EnumInfo EnumInfoCache::getEnumInfo(const clang::EnumDecl *decl) {
+  auto iter = enumInfos.find(decl);
+  if (iter != enumInfos.end()) {
+    ++EnumInfoNumCacheHits;
+    return iter->second;
+  }
+  ++EnumInfoNumCacheMisses;
+  EnumInfo enumInfo(decl, clangPP);
+  enumInfos[decl] = enumInfo;
+  return enumInfo;
 }

@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend -emit-sil %s -o /dev/null -verify
+// RUN: %target-swift-emit-sil %s -verify | %FileCheck %s
 
 func testUnreachableAfterReturn() -> Int {
   var x: Int = 3
@@ -16,7 +16,7 @@ func testUnreachableAfterIfReturn(a: Bool) -> Int {
 }
 
 func testUnreachableForAfterContinue(b: Bool) {
-  for (var i:Int = 0; i<10; i+=1) { // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
+  for _ in 0..<10 {
     var y: Int = 300
     y += 1
     if b {
@@ -43,9 +43,8 @@ func testUnreachableWhileAfterContinue(b: Bool) {
 }
 
 func testBreakAndContinue() {
-  var i = 0
   var m = 0
-  for (i = 0; i < 10; i += 1) { // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
+  for _ in 0 ..< 10 {
     m += 1
     if m == 15 {
       break
@@ -68,7 +67,7 @@ func testUnreachableCase1(a : Tree) {
   case let Leaf:
     _ = Leaf
     return
-  case .Branch(_):  // expected-warning {{case will never be executed}}
+  case .Branch(_): // expected-warning {{case is already handled by previous patterns; consider removing it}}
     return
   }
 }
@@ -78,7 +77,7 @@ func testUnreachableCase2(a : Tree) {
   case let Leaf:
     _ = Leaf
     fallthrough
-  case .Branch(_):
+  case .Branch(_): // expected-warning {{case is already handled by previous patterns; consider removing it}}
     return
   }
 }
@@ -87,7 +86,7 @@ func testUnreachableCase3(a : Tree) {
   switch a {
   case _:
     break
-  case .Branch(_):  // expected-warning {{case will never be executed}}
+  case .Branch(_): // expected-warning {{case is already handled by previous patterns; consider removing it}}
     return
   }
 }
@@ -110,14 +109,50 @@ func testUnreachableCase5(a : Tree) {
   }
 }
 
+func testOptionalEvaluationBreak(a : Tree) {
+  class SR5763 { func foo() {} }
+  func createOptional() -> SR5763? { return SR5763() }
+  switch a {
+  case _:
+    break
+    createOptional()?.foo() // expected-warning {{code after 'break' will never be executed}}
+  }
+}
 
-func testUnreachableAfterThrow(e: ErrorProtocol) throws {
+func testUnreachableAfterThrow(e: Error) throws {
   throw e
   return   // expected-warning {{code after 'throw' will never be executed}}
 }
 
 class TestThrowInInit {
-  required init(e: ErrorProtocol) throws {
+  required init(e: Error) throws {
     throw e  // no unreachable code diagnostic for the implicit return.
   }
+}
+
+func sr6141() {
+  var bar: String? = ""
+  return;
+  bar?.append("x")  // expected-warning{{code after 'return' will never be executed}}
+}
+
+func testUnreachableCatchClause() {
+  enum ErrorEnum: Error { case someError }
+  do {
+    throw ErrorEnum.someError
+  } catch let error {
+    print(error)
+  } catch ErrorEnum.someError { // expected-warning {{case will never be executed}}
+    print("some error")
+  }
+}
+
+func sr13639() -> Int {
+  return Foo.bar
+  struct Foo { // no-warning
+    static var bar = 0
+    // CHECK: sil private @$s16unreachable_code7sr13639SiyF3FooL_V7fooFuncyyF : $@convention(method) (Foo) -> ()
+    func fooFunc() {}
+  }
+  func appendix() {} // no-warning
 }

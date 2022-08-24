@@ -2,19 +2,19 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "arc-sequence-opts"
 
 #include "RCStateTransition.h"
-#include "swift/Basic/Fallthrough.h"
 #include "swift/SIL/SILInstruction.h"
+#include "swift/SIL/SILFunction.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Debug.h"
 
@@ -29,7 +29,7 @@ static bool isAutoreleasePoolCall(SILInstruction *I) {
   if (!AI)
     return false;
 
-  auto *Fn = AI->getReferencedFunction();
+  auto *Fn = AI->getReferencedFunctionOrNull();
   if (!Fn)
     return false;
 
@@ -43,26 +43,25 @@ static bool isAutoreleasePoolCall(SILInstruction *I) {
 //                           RCStateTransitionKind
 //===----------------------------------------------------------------------===//
 
-RCStateTransitionKind swift::getRCStateTransitionKind(ValueBase *V) {
-  switch (V->getKind()) {
-  case ValueKind::StrongRetainInst:
-  case ValueKind::RetainValueInst:
+RCStateTransitionKind swift::getRCStateTransitionKind(SILNode *N) {
+  switch (N->getKind()) {
+  case SILNodeKind::StrongRetainInst:
+  case SILNodeKind::RetainValueInst:
     return RCStateTransitionKind::StrongIncrement;
 
-  case ValueKind::StrongReleaseInst:
-  case ValueKind::ReleaseValueInst:
+  case SILNodeKind::StrongReleaseInst:
+  case SILNodeKind::ReleaseValueInst:
     return RCStateTransitionKind::StrongDecrement;
 
-  case ValueKind::SILArgument: {
-    auto *Arg = cast<SILArgument>(V);
-    if (Arg->isFunctionArg() &&
-        Arg->hasConvention(SILArgumentConvention::Direct_Owned))
+  case SILNodeKind::SILFunctionArgument: {
+    auto *Arg = cast<SILFunctionArgument>(N);
+    if (Arg->hasConvention(SILArgumentConvention::Direct_Owned))
       return RCStateTransitionKind::StrongEntrance;
     return RCStateTransitionKind::Unknown;
   }
 
-  case ValueKind::ApplyInst: {
-    auto *AI = cast<ApplyInst>(V);
+  case SILNodeKind::ApplyInst: {
+    auto *AI = cast<ApplyInst>(N);
     if (isAutoreleasePoolCall(AI))
       return RCStateTransitionKind::AutoreleasePoolCall;
 
@@ -72,7 +71,7 @@ RCStateTransitionKind swift::getRCStateTransitionKind(ValueBase *V) {
     // TODO: When we support pairing retains with @owned parameters, we will
     // need to be able to handle the potential of multiple state transition
     // kinds.
-    for (auto result : AI->getSubstCalleeType()->getDirectResults()) {
+    for (auto result : AI->getSubstCalleeConv().getDirectSILResults()) {
       if (result.getConvention() == ResultConvention::Owned)
         return RCStateTransitionKind::StrongEntrance;
     }
@@ -80,14 +79,15 @@ RCStateTransitionKind swift::getRCStateTransitionKind(ValueBase *V) {
     return RCStateTransitionKind::Unknown;
   }
 
-  case ValueKind::AllocRefInst:
-  case ValueKind::AllocRefDynamicInst:
-    // AllocRef* are always allocating new classes so they are introducing new
-    // values at +1.
+  // Alloc* are always allocating new classes so they are introducing new
+  // values at +1.
+  case SILNodeKind::AllocRefInst:
+  case SILNodeKind::AllocRefDynamicInst:
+  case SILNodeKind::AllocBoxInst:
     return RCStateTransitionKind::StrongEntrance;
 
-  case ValueKind::AllocBoxInst:
-    // AllocBox introduce their container result at +1.
+  case SILNodeKind::PartialApplyInst:
+    // Partial apply boxes are introduced at +1.
     return RCStateTransitionKind::StrongEntrance;
 
   default:
@@ -129,12 +129,12 @@ bool RCStateTransition::matchingInst(SILInstruction *Inst) const {
     return false;
 
   if (Kind == RCStateTransitionKind::StrongIncrement) {
-    auto InstTransKind = getRCStateTransitionKind(Inst);
+    auto InstTransKind = getRCStateTransitionKind(Inst->asSILNode());
     return InstTransKind == RCStateTransitionKind::StrongDecrement;
   }
 
   if (Kind == RCStateTransitionKind::StrongDecrement) {
-    auto InstTransKind = getRCStateTransitionKind(Inst);
+    auto InstTransKind = getRCStateTransitionKind(Inst->asSILNode());
     return InstTransKind == RCStateTransitionKind::StrongIncrement;
   }
 

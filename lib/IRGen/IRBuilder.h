@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -19,24 +19,35 @@
 
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InlineAsm.h"
 #include "swift/Basic/LLVM.h"
 #include "Address.h"
 #include "IRGen.h"
 
 namespace swift {
 namespace irgen {
+class FunctionPointer;
+class IRGenModule;
 
-typedef llvm::IRBuilder<> IRBuilderBase;
+using IRBuilderBase = llvm::IRBuilder<>;
 
 class IRBuilder : public IRBuilderBase {
+public:
   // Without this, it keeps resolving to llvm::IRBuilderBase because
   // of the injected class name.
-  typedef irgen::IRBuilderBase IRBuilderBase;
+  using IRBuilderBase = irgen::IRBuilderBase;
 
+private:
   /// The block containing the insertion point when the insertion
   /// point was last cleared.  Used only for preserving block
   /// ordering.
   llvm::BasicBlock *ClearedIP;
+  unsigned NumTrapBarriers = 0;
+
+#ifndef NDEBUG
+  /// Whether debug information is requested. Only used in assertions.
+  bool DebugInfo;
+#endif
 
   // Set calling convention of the call instruction using
   // the same calling convention as the callee function.
@@ -50,8 +61,15 @@ class IRBuilder : public IRBuilderBase {
   }
 
 public:
-  IRBuilder(llvm::LLVMContext &Context)
-    : IRBuilderBase(Context), ClearedIP(nullptr) {}
+  IRBuilder(llvm::LLVMContext &Context, bool DebugInfo)
+    : IRBuilderBase(Context), ClearedIP(nullptr)
+#ifndef NDEBUG
+    , DebugInfo(DebugInfo)
+#endif
+    {}
+
+  /// Defined below.
+  class SavedInsertionPointRAII;
 
   /// Determines if the current location is apparently reachable.  The
   /// invariant we maintain is that the insertion point of the builder
@@ -67,7 +85,7 @@ public:
   bool hasPostTerminatorIP() const {
     return GetInsertBlock() != nullptr &&
            !GetInsertBlock()->empty() &&
-           isa<llvm::TerminatorInst>(GetInsertBlock()->back());
+           GetInsertBlock()->back().isTerminator();
   }
 
   void ClearInsertionPoint() {
@@ -89,71 +107,63 @@ public:
     IRBuilderBase::SetInsertPoint(BB, before);
   }
 
-  /// A stable insertion point in the function.  "Stable" means that
-  /// it will point to the same location in the function, even if
-  /// instructions are subsequently added to the current basic block.
-  class StableIP {
-    /// Either an instruction that we're inserting after or the basic
-    /// block that we're inserting at the beginning of.
-    typedef llvm::PointerUnion<llvm::Instruction*, llvm::BasicBlock*> UnionTy;
-    UnionTy After;
-  public:
-    StableIP() = default;
-    explicit StableIP(const IRBuilder &Builder) {
-      if (!Builder.hasValidIP()) {
-        After = UnionTy();
-        assert(!isValid());
-        return;
-      }
-
-      llvm::BasicBlock *curBlock = Builder.GetInsertBlock();
-      assert(Builder.GetInsertPoint() == curBlock->end());
-      if (curBlock->empty())
-        After = curBlock;
-      else
-        After = &curBlock->back();
-    }
-
-    /// Does this stable IP point to a valid location?
-    bool isValid() const {
-      return !After.isNull();
-    }
-
-    /// Insert an unparented instruction at this insertion point.
-    /// Note that inserting multiple instructions at an IP will cause
-    /// them to end up in reverse order.
-    void insert(llvm::Instruction *I) {
-      assert(isValid() && "inserting at invalid location!");
-      assert(I->getParent() == nullptr);
-      if (llvm::BasicBlock *block = After.dyn_cast<llvm::BasicBlock*>()) {
-        block->getInstList().push_front(I);
-      } else {
-        llvm::Instruction *afterInsn = After.get<llvm::Instruction*>();
-        afterInsn->getParent()->getInstList().insertAfter(
-            afterInsn->getIterator(), I);
-      }
-    }
-
-    // Support for being placed in pointer unions.
-    void *getOpaqueValue() const { return After.getOpaqueValue(); }
-    static StableIP getFromOpaqueValue(void *p) {
-      StableIP result;
-      result.After = UnionTy::getFromOpaqueValue(p);
-      return result;
-    }
-    enum { NumLowBitsAvailable
-             = llvm::PointerLikeTypeTraits<UnionTy>::NumLowBitsAvailable };
-  };
-
-  /// Capture a stable reference to the current IP.
-  StableIP getStableIP() const {
-    return StableIP(*this);
+  void SetInsertPoint(llvm::Instruction *I) {
+    ClearedIP = nullptr;
+    IRBuilderBase::SetInsertPoint(I);
   }
+
+  /// Return the LLVM module we're inserting into.
+  llvm::Module *getModule() const {
+    if (auto BB = GetInsertBlock())
+      return BB->getModule();
+    assert(ClearedIP && "IRBuilder has no active or cleared insertion block");
+    return ClearedIP->getModule();
+  }
+
+  using IRBuilderBase::CreateAnd;
+  llvm::Value *CreateAnd(llvm::Value *LHS, llvm::Value *RHS,
+                         const Twine &Name = "") {
+    if (auto *RC = dyn_cast<llvm::Constant>(RHS))
+      if (isa<llvm::ConstantInt>(RC) &&
+          cast<llvm::ConstantInt>(RC)->isMinusOne())
+        return LHS;  // LHS & -1 -> LHS
+     return IRBuilderBase::CreateAnd(LHS, RHS, Name);
+  }
+  llvm::Value *CreateAnd(llvm::Value *LHS, const APInt &RHS,
+                         const Twine &Name = "") {
+    return CreateAnd(LHS, llvm::ConstantInt::get(LHS->getType(), RHS), Name);
+  }
+  llvm::Value *CreateAnd(llvm::Value *LHS, uint64_t RHS, const Twine &Name = "") {
+    return CreateAnd(LHS, llvm::ConstantInt::get(LHS->getType(), RHS), Name);
+  }
+
+  using IRBuilderBase::CreateOr;
+  llvm::Value *CreateOr(llvm::Value *LHS, llvm::Value *RHS,
+                        const Twine &Name = "") {
+    if (auto *RC = dyn_cast<llvm::Constant>(RHS))
+      if (RC->isNullValue())
+        return LHS;  // LHS | 0 -> LHS
+    return IRBuilderBase::CreateOr(LHS, RHS, Name);
+  }
+  llvm::Value *CreateOr(llvm::Value *LHS, const APInt &RHS,
+                        const Twine &Name = "") {
+    return CreateOr(LHS, llvm::ConstantInt::get(LHS->getType(), RHS), Name);
+  }
+  llvm::Value *CreateOr(llvm::Value *LHS, uint64_t RHS,
+                        const Twine &Name = "") {
+    return CreateOr(LHS, llvm::ConstantInt::get(LHS->getType(), RHS), Name);
+  }
+
+  /// Don't create allocas this way; you'll get a dynamic alloca.
+  /// Use IGF::createAlloca or IGF::emitDynamicAlloca.
+  llvm::Value *CreateAlloca(llvm::Type *type, llvm::Value *arraySize,
+                            const llvm::Twine &name = "") = delete;
 
   llvm::LoadInst *CreateLoad(llvm::Value *addr, Alignment align,
                              const llvm::Twine &name = "") {
-    llvm::LoadInst *load = IRBuilderBase::CreateLoad(addr, name);
-    load->setAlignment(align.getValue());
+    llvm::LoadInst *load = IRBuilderBase::CreateLoad(
+        addr->getType()->getPointerElementType(), addr, name);
+    load->setAlignment(llvm::MaybeAlign(align.getValue()).valueOrOne());
     return load;
   }
   llvm::LoadInst *CreateLoad(Address addr, const llvm::Twine &name = "") {
@@ -163,7 +173,7 @@ public:
   llvm::StoreInst *CreateStore(llvm::Value *value, llvm::Value *addr,
                                Alignment align) {
     llvm::StoreInst *store = IRBuilderBase::CreateStore(value, addr);
-    store->setAlignment(align.getValue());
+    store->setAlignment(llvm::MaybeAlign(align.getValue()).valueOrOne());
     return store;
   }
   llvm::StoreInst *CreateStore(llvm::Value *value, Address addr) {
@@ -177,12 +187,18 @@ public:
   llvm::StoreInst *CreateStore(llvm::Value *value, llvm::Value *addr) = delete;
   
   using IRBuilderBase::CreateStructGEP;
-  Address CreateStructGEP(Address address, unsigned index, Size size,
+  Address CreateStructGEP(Address address, unsigned index, Size offset,
                           const llvm::Twine &name = "") {
     llvm::Value *addr = CreateStructGEP(
-        address.getType()->getElementType(), address.getAddress(),
+        address.getType()->getPointerElementType(), address.getAddress(),
         index, name);
-    return Address(addr, address.getAlignment().alignmentAtOffset(size));
+    return Address(addr, address.getAlignment().alignmentAtOffset(offset));
+  }
+  Address CreateStructGEP(Address address, unsigned index,
+                          const llvm::StructLayout *layout,
+                          const llvm::Twine &name = "") {
+    Size offset = Size(layout->getElementOffset(index));
+    return CreateStructGEP(address, index, offset, name);
   }
 
   /// Given a pointer to an array element, GEP to the array element
@@ -190,7 +206,7 @@ public:
   Address CreateConstArrayGEP(Address base, unsigned index, Size eltSize,
                               const llvm::Twine &name = "") {
     auto addr = CreateConstInBoundsGEP1_32(
-        base.getType()->getElementType(), base.getAddress(), index, name);
+        base.getType()->getPointerElementType(), base.getAddress(), index, name);
     return Address(addr,
                    base.getAlignment().alignmentAtOffset(eltSize * index));
   }
@@ -199,7 +215,7 @@ public:
   Address CreateConstByteArrayGEP(Address base, Size offset,
                                   const llvm::Twine &name = "") {
     auto addr = CreateConstInBoundsGEP1_32(
-        base.getType()->getElementType(), base.getAddress(), offset.getValue(),
+        base.getType()->getPointerElementType(), base.getAddress(), offset.getValue(),
         name);
     return Address(addr, base.getAlignment().alignmentAtOffset(offset));
   }
@@ -217,7 +233,7 @@ public:
                                const llvm::Twine &name = "") {
     // Do nothing if the type doesn't change.
     auto origPtrType = address.getType();
-    if (origPtrType->getElementType() == type) return address;
+    if (origPtrType->getPointerElementType() == type) return address;
 
     // Otherwise, cast to a pointer to the correct type.
     auto ptrType = type->getPointerTo(origPtrType->getAddressSpace());
@@ -230,10 +246,21 @@ public:
 
   using IRBuilderBase::CreateMemCpy;
   llvm::CallInst *CreateMemCpy(Address dest, Address src, Size size) {
-    return CreateMemCpy(dest.getAddress(), src.getAddress(),
-                        size.getValue(),
-                        std::min(dest.getAlignment(),
-                                 src.getAlignment()).getValue());
+    return CreateMemCpy(
+        dest.getAddress(), llvm::MaybeAlign(dest.getAlignment().getValue()),
+        src.getAddress(), llvm::MaybeAlign(src.getAlignment().getValue()),
+        size.getValue());
+  }
+
+  using IRBuilderBase::CreateMemSet;
+  llvm::CallInst *CreateMemSet(Address dest, llvm::Value *value, Size size) {
+    return CreateMemSet(dest.getAddress(), value, size.getValue(),
+                        llvm::MaybeAlign(dest.getAlignment().getValue()));
+  }
+  llvm::CallInst *CreateMemSet(Address dest, llvm::Value *value,
+                               llvm::Value *size) {
+    return CreateMemSet(dest.getAddress(), value, size,
+                        llvm::MaybeAlign(dest.getAlignment().getValue()));
   }
   
   using IRBuilderBase::CreateLifetimeStart;
@@ -248,54 +275,182 @@ public:
                    llvm::ConstantInt::get(Context, APInt(64, size.getValue())));
   }
 
-  //using IRBuilderBase::CreateCall;
+  // We're intentionally not allowing direct use of
+  // llvm::IRBuilder::CreateCall in order to push code towards using
+  // FunctionPointer.
+
+  bool isTrapIntrinsic(llvm::Value *Callee) {
+    return Callee ==
+           llvm::Intrinsic::getDeclaration(getModule(), llvm::Intrinsic::trap);
+  }
+  bool isTrapIntrinsic(llvm::Intrinsic::ID intrinsicID) {
+    return intrinsicID == llvm::Intrinsic::trap;
+  }
 
   llvm::CallInst *CreateCall(llvm::Value *Callee, ArrayRef<llvm::Value *> Args,
                              const Twine &Name = "",
-                             llvm::MDNode *FPMathTag = nullptr) {
-    auto Call = IRBuilderBase::CreateCall(Callee, Args, Name, FPMathTag);
-    setCallingConvUsingCallee(Call);
-    return Call;
-  }
+                             llvm::MDNode *FPMathTag = nullptr) = delete;
 
-  llvm::CallInst *CreateCall(llvm::FunctionType *FTy, llvm::Value *Callee,
+  llvm::CallInst *CreateCall(llvm::FunctionType *FTy, llvm::Constant *Callee,
                              ArrayRef<llvm::Value *> Args,
                              const Twine &Name = "",
                              llvm::MDNode *FPMathTag = nullptr) {
+    assert((!DebugInfo || getCurrentDebugLocation()) && "no debugloc on call");
+    assert(!isTrapIntrinsic(Callee) && "Use CreateNonMergeableTrap");
     auto Call = IRBuilderBase::CreateCall(FTy, Callee, Args, Name, FPMathTag);
     setCallingConvUsingCallee(Call);
     return Call;
   }
 
-  llvm::CallInst *CreateCall(llvm::Function *Callee,
+  llvm::CallInst *CreateCall(llvm::Constant *Callee,
                              ArrayRef<llvm::Value *> Args,
                              const Twine &Name = "",
                              llvm::MDNode *FPMathTag = nullptr) {
-    auto Call = IRBuilderBase::CreateCall(Callee, Args, Name, FPMathTag);
+    // assert((!DebugInfo || getCurrentDebugLocation()) && "no debugloc on
+    // call");
+    assert(!isTrapIntrinsic(Callee) && "Use CreateNonMergeableTrap");
+    auto Call = IRBuilderBase::CreateCall(
+        cast<llvm::FunctionType>(Callee->getType()->getPointerElementType()),
+        Callee, Args, Name, FPMathTag);
     setCallingConvUsingCallee(Call);
     return Call;
+  }
+
+  llvm::CallInst *CreateCall(const FunctionPointer &fn,
+                             ArrayRef<llvm::Value *> args);
+
+  llvm::CallInst *CreateAsmCall(llvm::InlineAsm *asmBlock,
+                                ArrayRef<llvm::Value *> args) {
+    return IRBuilderBase::CreateCall(asmBlock, args);
+  }
+
+  /// Call an intrinsic with no type arguments.
+  llvm::CallInst *CreateIntrinsicCall(llvm::Intrinsic::ID intrinsicID,
+                                      ArrayRef<llvm::Value *> args,
+                                      const Twine &name = "") {
+    assert(!isTrapIntrinsic(intrinsicID) && "Use CreateNonMergeableTrap");
+    auto intrinsicFn =
+      llvm::Intrinsic::getDeclaration(getModule(), intrinsicID);
+    return CreateCall(intrinsicFn, args, name);
+  }
+
+  /// Call an intrinsic with type arguments.
+  llvm::CallInst *CreateIntrinsicCall(llvm::Intrinsic::ID intrinsicID,
+                                      ArrayRef<llvm::Type*> typeArgs,
+                                      ArrayRef<llvm::Value *> args,
+                                      const Twine &name = "") {
+    assert(!isTrapIntrinsic(intrinsicID) && "Use CreateNonMergeableTrap");
+    auto intrinsicFn =
+      llvm::Intrinsic::getDeclaration(getModule(), intrinsicID, typeArgs);
+    return CreateCall(intrinsicFn, args, name);
+  }
+  
+  /// Create an expect intrinsic call.
+  llvm::CallInst *CreateExpect(llvm::Value *value,
+                               llvm::Value *expected,
+                               const Twine &name = "") {
+    return CreateIntrinsicCall(llvm::Intrinsic::expect,
+                               {value->getType()},
+                               {value, expected},
+                               name);
+  }
+
+  /// Call the trap intrinsic. If optimizations are enabled, an inline asm
+  /// gadget is emitted before the trap. The gadget inhibits transforms which
+  /// merge trap calls together, which makes debugging crashes easier.
+  llvm::CallInst *CreateNonMergeableTrap(IRGenModule &IGM, StringRef failureMsg);
+
+  /// Split a first-class aggregate value into its component pieces.
+  template <unsigned N>
+  std::array<llvm::Value *, N> CreateSplit(llvm::Value *aggregate) {
+    assert(isa<llvm::StructType>(aggregate->getType()));
+    assert(cast<llvm::StructType>(aggregate->getType())->getNumElements() == N);
+    std::array<llvm::Value *, N> results;
+    for (unsigned i = 0; i != N; ++i) {
+      results[i] = CreateExtractValue(aggregate, i);
+    }
+    return results;
+  }
+
+  /// Combine the given values into a first-class aggregate.
+  llvm::Value *CreateCombine(llvm::StructType *aggregateType,
+                             ArrayRef<llvm::Value*> values) {
+    assert(aggregateType->getNumElements() == values.size());
+    llvm::Value *result = llvm::UndefValue::get(aggregateType);
+    for (unsigned i = 0, e = values.size(); i != e; ++i) {
+      result = CreateInsertValue(result, values[i], i);
+    }
+    return result;
+  }
+
+  bool insertingAtEndOfBlock() const {
+    assert(hasValidIP() && "Must have insertion point to ask about it");
+    return InsertPt == BB->end();
+  }
+};
+
+/// Given a Builder as input to its constructor, this class resets the Builder
+/// so it has the same insertion point at end of scope.
+class IRBuilder::SavedInsertionPointRAII {
+  IRBuilder &builder;
+  PointerUnion<llvm::Instruction *, llvm::BasicBlock *> savedInsertionPoint;
+
+public:
+  /// Constructor that saves a Builder's insertion point without changing the
+  /// builder's underlying insertion point.
+  SavedInsertionPointRAII(IRBuilder &inputBuilder)
+      : builder(inputBuilder), savedInsertionPoint() {
+    // If our builder does not have a valid insertion point, just put nullptr
+    // into SavedIP.
+    if (!builder.hasValidIP()) {
+      savedInsertionPoint = static_cast<llvm::BasicBlock *>(nullptr);
+      return;
+    }
+
+    // If we are inserting into the end of the block, stash the insertion block.
+    if (builder.insertingAtEndOfBlock()) {
+      savedInsertionPoint = builder.GetInsertBlock();
+      return;
+    }
+
+    // Otherwise, stash the instruction.
+    auto *i = &*builder.GetInsertPoint();
+    savedInsertionPoint = i;
+  }
+
+  SavedInsertionPointRAII(IRBuilder &b, llvm::Instruction *newInsertionPoint)
+      : SavedInsertionPointRAII(b) {
+    builder.SetInsertPoint(newInsertionPoint);
+  }
+
+  SavedInsertionPointRAII(IRBuilder &b, llvm::BasicBlock *block,
+                          llvm::BasicBlock::iterator iter)
+      : SavedInsertionPointRAII(b) {
+    builder.SetInsertPoint(block, iter);
+  }
+
+  SavedInsertionPointRAII(IRBuilder &b, llvm::BasicBlock *insertionBlock)
+      : SavedInsertionPointRAII(b) {
+    builder.SetInsertPoint(insertionBlock);
+  }
+
+  SavedInsertionPointRAII(const SavedInsertionPointRAII &) = delete;
+  SavedInsertionPointRAII &operator=(const SavedInsertionPointRAII &) = delete;
+  SavedInsertionPointRAII(SavedInsertionPointRAII &&) = delete;
+  SavedInsertionPointRAII &operator=(SavedInsertionPointRAII &&) = delete;
+
+  ~SavedInsertionPointRAII() {
+    if (savedInsertionPoint.isNull()) {
+      builder.ClearInsertionPoint();
+    } else if (savedInsertionPoint.is<llvm::Instruction *>()) {
+      builder.SetInsertPoint(savedInsertionPoint.get<llvm::Instruction *>());
+    } else {
+      builder.SetInsertPoint(savedInsertionPoint.get<llvm::BasicBlock *>());
+    }
   }
 };
 
 } // end namespace irgen
 } // end namespace swift
-
-namespace llvm {
-  template <> class PointerLikeTypeTraits<swift::irgen::IRBuilder::StableIP> {
-    typedef swift::irgen::IRBuilder::StableIP type;
-  public:
-    static void *getAsVoidPointer(type IP) {
-      return IP.getOpaqueValue();
-    }
-    static type getFromVoidPointer(void *p) {
-      return type::getFromOpaqueValue(p);
-    }
-
-    // The number of bits available are the min of the two pointer types.
-    enum {
-      NumLowBitsAvailable = type::NumLowBitsAvailable
-    };
-  };
-}
 
 #endif

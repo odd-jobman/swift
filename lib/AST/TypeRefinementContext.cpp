@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -19,6 +19,7 @@
 #include "swift/AST/Module.h"
 #include "swift/AST/Stmt.h"
 #include "swift/AST/Expr.h"
+#include "swift/AST/SourceFile.h"
 #include "swift/AST/TypeRefinementContext.h"
 #include "swift/Basic/SourceManager.h"
 
@@ -27,8 +28,10 @@ using namespace swift;
 TypeRefinementContext::TypeRefinementContext(ASTContext &Ctx, IntroNode Node,
                                              TypeRefinementContext *Parent,
                                              SourceRange SrcRange,
-                                             const AvailabilityContext &Info)
-    : Node(Node), SrcRange(SrcRange), AvailabilityInfo(Info) {
+                                             const AvailabilityContext &Info,
+                                             const AvailabilityContext &ExplicitInfo)
+    : Node(Node), SrcRange(SrcRange),
+      AvailabilityInfo(Info), ExplicitAvailabilityInfo(ExplicitInfo) {
   if (Parent) {
     assert(SrcRange.isValid());
     Parent->addChild(this);
@@ -45,18 +48,30 @@ TypeRefinementContext::createRoot(SourceFile *SF,
   ASTContext &Ctx = SF->getASTContext();
   return new (Ctx)
       TypeRefinementContext(Ctx, SF,
-                            /*Parent=*/nullptr, SourceRange(), Info);
+                            /*Parent=*/nullptr, SourceRange(),
+                            Info, AvailabilityContext::alwaysAvailable());
 }
 
 TypeRefinementContext *
 TypeRefinementContext::createForDecl(ASTContext &Ctx, Decl *D,
                                      TypeRefinementContext *Parent,
                                      const AvailabilityContext &Info,
+                                     const AvailabilityContext &ExplicitInfo,
                                      SourceRange SrcRange) {
   assert(D);
   assert(Parent);
   return new (Ctx)
-      TypeRefinementContext(Ctx, D, Parent, SrcRange, Info);
+      TypeRefinementContext(Ctx, D, Parent, SrcRange, Info, ExplicitInfo);
+}
+
+TypeRefinementContext *TypeRefinementContext::createForDeclImplicit(
+    ASTContext &Ctx, Decl *D, TypeRefinementContext *Parent,
+    const AvailabilityContext &Info, SourceRange SrcRange) {
+  assert(D);
+  assert(Parent);
+  return new (Ctx) TypeRefinementContext(
+      Ctx, IntroNode(D, Reason::DeclImplicit), Parent, SrcRange, Info,
+      AvailabilityContext::alwaysAvailable());
 }
 
 TypeRefinementContext *
@@ -67,7 +82,8 @@ TypeRefinementContext::createForIfStmtThen(ASTContext &Ctx, IfStmt *S,
   assert(Parent);
   return new (Ctx)
       TypeRefinementContext(Ctx, IntroNode(S, /*IsThen=*/true), Parent,
-                            S->getThenStmt()->getSourceRange(), Info);
+                            S->getThenStmt()->getSourceRange(),
+                            Info, /* ExplicitInfo */Info);
 }
 
 TypeRefinementContext *
@@ -78,7 +94,8 @@ TypeRefinementContext::createForIfStmtElse(ASTContext &Ctx, IfStmt *S,
   assert(Parent);
   return new (Ctx)
       TypeRefinementContext(Ctx, IntroNode(S, /*IsThen=*/false), Parent,
-                            S->getElseStmt()->getSourceRange(), Info);
+                            S->getElseStmt()->getSourceRange(),
+                            Info, /* ExplicitInfo */Info);
 }
 
 TypeRefinementContext *
@@ -91,7 +108,7 @@ TypeRefinementContext::createForConditionFollowingQuery(ASTContext &Ctx,
   assert(Parent);
   SourceRange Range(PAI->getEndLoc(), LastElement.getEndLoc());
   return new (Ctx) TypeRefinementContext(Ctx, PAI, Parent, Range,
-                                         Info);
+                                         Info, /* ExplicitInfo */Info);
 }
 
 TypeRefinementContext *
@@ -106,7 +123,7 @@ TypeRefinementContext::createForGuardStmtFallthrough(ASTContext &Ctx,
   SourceRange Range(RS->getEndLoc(), ContainingBraceStmt->getEndLoc());
   return new (Ctx) TypeRefinementContext(Ctx,
                                          IntroNode(RS, /*IsFallthrough=*/true),
-                                         Parent, Range, Info);
+                                         Parent, Range, Info, /* ExplicitInfo */Info);
 }
 
 TypeRefinementContext *
@@ -117,7 +134,7 @@ TypeRefinementContext::createForGuardStmtElse(ASTContext &Ctx, GuardStmt *RS,
   assert(Parent);
   return new (Ctx)
       TypeRefinementContext(Ctx, IntroNode(RS, /*IsFallthrough=*/false), Parent,
-                            RS->getBody()->getSourceRange(), Info);
+                            RS->getBody()->getSourceRange(), Info, /* ExplicitInfo */Info);
 }
 
 TypeRefinementContext *
@@ -127,14 +144,7 @@ TypeRefinementContext::createForWhileStmtBody(ASTContext &Ctx, WhileStmt *S,
   assert(S);
   assert(Parent);
   return new (Ctx) TypeRefinementContext(
-      Ctx, S, Parent, S->getBody()->getSourceRange(), Info);
-}
-
-// Only allow allocation of TypeRefinementContext using the allocator in
-// ASTContext.
-void *TypeRefinementContext::operator new(size_t Bytes, ASTContext &C,
-                                          unsigned Alignment) {
-  return C.Allocate(Bytes, Alignment);
+      Ctx, S, Parent, S->getBody()->getSourceRange(), Info, /* ExplicitInfo */Info);
 }
 
 TypeRefinementContext *
@@ -170,6 +180,7 @@ void TypeRefinementContext::dump(raw_ostream &OS, SourceManager &SrcMgr) const {
 SourceLoc TypeRefinementContext::getIntroductionLoc() const {
   switch (getReason()) {
   case Reason::Decl:
+  case Reason::DeclImplicit:
     return Node.getAsDecl()->getLoc();
 
   case Reason::IfStmtThenBranch:
@@ -190,6 +201,104 @@ SourceLoc TypeRefinementContext::getIntroductionLoc() const {
   case Reason::Root:
     return SourceLoc();
   }
+
+  llvm_unreachable("Unhandled Reason in switch.");
+}
+
+static SourceRange
+getAvailabilityConditionVersionSourceRange(const PoundAvailableInfo *PAI,
+                                           PlatformKind Platform,
+                                           const llvm::VersionTuple &Version) {
+  SourceRange Range;
+  for (auto *S : PAI->getQueries()) {
+    if (auto *V = dyn_cast<PlatformVersionConstraintAvailabilitySpec>(S)) {
+      if (V->getPlatform() == Platform && V->getVersion() == Version) {
+        // More than one: return invalid range, no unique choice.
+        if (Range.isValid())
+          return SourceRange();
+        else
+          Range = V->getVersionSrcRange();
+      }
+    }
+  }
+  return Range;
+}
+
+static SourceRange
+getAvailabilityConditionVersionSourceRange(
+    const MutableArrayRef<StmtConditionElement> &Conds,
+    PlatformKind Platform,
+    const llvm::VersionTuple &Version) {
+  SourceRange Range;
+  for (auto const& C : Conds) {
+    if (C.getKind() == StmtConditionElement::CK_Availability) {
+      SourceRange R = getAvailabilityConditionVersionSourceRange(
+        C.getAvailability(), Platform, Version);
+      // More than one: return invalid range.
+      if (Range.isValid())
+        return SourceRange();
+      else
+        Range = R;
+    }
+  }
+  return Range;
+}
+
+static SourceRange
+getAvailabilityConditionVersionSourceRange(const DeclAttributes &DeclAttrs,
+                                           PlatformKind Platform,
+                                           const llvm::VersionTuple &Version) {
+  SourceRange Range;
+  for (auto *Attr : DeclAttrs) {
+    if (auto *AA = dyn_cast<AvailableAttr>(Attr)) {
+      if (AA->Introduced.hasValue() &&
+          AA->Introduced.getValue() == Version &&
+          AA->Platform == Platform) {
+
+        // More than one: return invalid range.
+        if (Range.isValid())
+          return SourceRange();
+        else
+          Range = AA->IntroducedRange;
+      }
+    }
+  }
+  return Range;
+}
+
+SourceRange
+TypeRefinementContext::getAvailabilityConditionVersionSourceRange(
+    PlatformKind Platform,
+    const llvm::VersionTuple &Version) const {
+  switch (getReason()) {
+  case Reason::Decl:
+    return ::getAvailabilityConditionVersionSourceRange(
+      Node.getAsDecl()->getAttrs(), Platform, Version);
+
+  case Reason::IfStmtThenBranch:
+  case Reason::IfStmtElseBranch:
+    return ::getAvailabilityConditionVersionSourceRange(
+      Node.getAsIfStmt()->getCond(), Platform, Version);
+
+  case Reason::ConditionFollowingAvailabilityQuery:
+    return ::getAvailabilityConditionVersionSourceRange(
+      Node.getAsPoundAvailableInfo(), Platform, Version);
+
+  case Reason::GuardStmtFallthrough:
+  case Reason::GuardStmtElseBranch:
+    return ::getAvailabilityConditionVersionSourceRange(
+      Node.getAsGuardStmt()->getCond(), Platform, Version);
+
+  case Reason::WhileStmtBody:
+    return ::getAvailabilityConditionVersionSourceRange(
+      Node.getAsWhileStmt()->getCond(), Platform, Version);
+
+  case Reason::Root:
+  case Reason::DeclImplicit:
+    return SourceRange();
+  }
+
+  llvm_unreachable("Unhandled Reason in switch.");
 }
 
 void TypeRefinementContext::print(raw_ostream &OS, SourceManager &SrcMgr,
@@ -199,13 +308,15 @@ void TypeRefinementContext::print(raw_ostream &OS, SourceManager &SrcMgr,
 
   OS << " versions=" << AvailabilityInfo.getOSVersion().getAsString();
 
-  if (getReason() == Reason::Decl) {
+  if (getReason() == Reason::Decl || getReason() == Reason::DeclImplicit) {
     Decl *D = Node.getAsDecl();
     OS << " decl=";
     if (auto VD = dyn_cast<ValueDecl>(D)) {
-      OS << VD->getFullName();
+      OS << VD->getName();
     } else if (auto *ED = dyn_cast<ExtensionDecl>(D)) {
       OS << "extension." << ED->getExtendedType().getString();
+    } else if (isa<TopLevelCodeDecl>(D)) {
+      OS << "<top-level-code>";
     }
   }
 
@@ -214,6 +325,10 @@ void TypeRefinementContext::print(raw_ostream &OS, SourceManager &SrcMgr,
     OS << " src_range=";
     R.print(OS, SrcMgr, /*PrintText=*/false);
   }
+
+  if (!ExplicitAvailabilityInfo.isAlwaysAvailable())
+    OS << " explicit_versions="
+       << ExplicitAvailabilityInfo.getOSVersion().getAsString();
 
   for (TypeRefinementContext *Child : Children) {
     OS << '\n';
@@ -235,6 +350,9 @@ StringRef TypeRefinementContext::getReasonName(Reason R) {
   case Reason::Decl:
     return "decl";
 
+  case Reason::DeclImplicit:
+    return "decl_implicit";
+
   case Reason::IfStmtThenBranch:
     return "if_then";
 
@@ -253,4 +371,6 @@ StringRef TypeRefinementContext::getReasonName(Reason R) {
   case Reason::WhileStmtBody:
     return "while_body";
   }
+
+  llvm_unreachable("Unhandled Reason in switch.");
 }

@@ -1,10 +1,10 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 class C : Hashable {
 	var x = 0
 
-  var hashValue: Int {
-    return x
+  func hash(into hasher: inout Hasher) {
+    hasher.combine(x)
   }
 }
 
@@ -24,11 +24,15 @@ dictCC = dictDC
 dictCC = dictDD
 
 dictCD = dictDD
-dictCD = dictCC // expected-error{{cannot assign value of type 'Dictionary<C, C>' to type 'Dictionary<C, D>'}}
+dictCD = dictCC // expected-error{{cannot assign value of type '[C : C]' to type '[C : D]'}}
+// expected-note@-1 {{arguments to generic parameter 'Value' ('C' and 'D') are expected to be equal}}
 
 
 dictDC = dictDD
-dictDC = dictCD // expected-error{{cannot assign value of type 'Dictionary<C, D>' to type 'Dictionary<D, C>'}}
+dictDC = dictCD // expected-error {{cannot assign value of type '[C : D]' to type '[D : C]'}}
+// expected-note@-1 {{arguments to generic parameter 'Key' ('C' and 'D') are expected to be equal}}
+// expected-note@-2 {{arguments to generic parameter 'Value' ('D' and 'C') are expected to be equal}}
 
-dictDD = dictCC // expected-error{{cannot assign value of type 'Dictionary<C, C>' to type 'Dictionary<D, D>'}}
-
+dictDD = dictCC // expected-error{{cannot assign value of type '[C : C]' to type '[D : D]'}}
+// expected-note@-1 {{arguments to generic parameter 'Key' ('C' and 'D') are expected to be equal}}
+// expected-note@-2 {{arguments to generic parameter 'Value' ('C' and 'D') are expected to be equal}}

@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2021 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,8 +14,15 @@
 // It is reported to be very slow: <rdar://problem/17255477>
 import TestsUtils
 
+public let benchmarks =
+  BenchmarkInfo(
+    name: "StrToInt",
+    runFunction: run_StrToInt,
+    tags: [.validation, .api, .String],
+    legacyFactor: 10)
+
 @inline(never)
-public func run_StrToInt(N: Int) {
+public func run_StrToInt(_ n: Int) {
   // 64 numbers from -500_000 to 500_000 generated randomly
   let input = ["-237392", "293715", "126809", "333779", "-362824", "144198",
                "-394973", "-163669", "-7236", "376965", "-400783", "-118670",
@@ -29,7 +36,7 @@ public func run_StrToInt(N: Int) {
                "-316727", "483808", "300149", "-405877", "-98938", "283685",
                "-247856", "-46975", "346060", "160085",]
   let ref_result = 517492
-  func DoOneIter(arr: [String]) -> Int {
+  func doOneIter(_ arr: [String]) -> Int {
     var r = 0
     for n in arr {
       r += Int(n)!
@@ -40,8 +47,8 @@ public func run_StrToInt(N: Int) {
     return r
   }
   var res = Int.max
-  for _ in 1...1000*N {
-    res = res & DoOneIter(input)
+  for _ in 1...100*n {
+    res = res & doOneIter(input)
   }
-  CheckResults(res == ref_result, "IncorrectResults in StrToInt: \(res) != \(ref_result)")
+  check(res == ref_result)
 }

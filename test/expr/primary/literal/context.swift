@@ -1,9 +1,9 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 // Test "context" literals, #file, #line, #column, etc.
 
-func requireInt(x: Int) { }
-func requireString(s: String) { }
+func requireInt(_ x: Int) { }
+func requireString(_ s: String) { }
 
 func testContextLiterals() {
   let file = #file

@@ -2,16 +2,16 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 #if defined(__APPLE__)
-#include "Darwin/Cache-Mac.cpp"
+#include "Darwin/Cache-Mac.inc"
 #else
 
 //  This file implements a default caching implementation that never evicts
@@ -65,7 +65,7 @@ template<> struct DenseMapInfo<DefaultCacheKey> {
     return LHS.CBs->keyIsEqualCB(LHS.Key, RHS.Key, nullptr);
   }
 };
-}
+} // namespace llvm
 
 CacheImpl::ImplTy CacheImpl::create(StringRef Name, const CallBacks &CBs) {
   return new DefaultCache(CBs);
@@ -77,13 +77,25 @@ void CacheImpl::setAndRetain(void *Key, void *Value, size_t Cost) {
 
   DefaultCacheKey CKey(Key, &DCache.CBs);
   auto Entry = DCache.Entries.find(CKey);
-  if (Entry != DCache.Entries.end()) {
-    DCache.CBs.keyDestroyCB(Entry->first.Key, nullptr);
-    DCache.CBs.valueDestroyCB(Entry->second, nullptr);
-    DCache.Entries.erase(Entry);
+
+  // If there is no existing entry, retain the value and insert the entry.
+  if (Entry == DCache.Entries.end()) {
+    DCache.CBs.valueRetainCB(Value, nullptr);
+    DCache.Entries[CKey] = Value;
+    return;
   }
 
-  DCache.Entries[CKey] = Value;
+  // If there is an existing entry, the original key and the new key are ==.
+  // Swap the new key into the map and destroy the original key.
+  std::swap(Entry->first.Key, Key);
+  DCache.CBs.keyDestroyCB(Key, nullptr);
+
+  // Replace the value, if necessary.
+  if (Entry->second != Value) {
+    DCache.CBs.valueRetainCB(Value, nullptr);
+    std::swap(Entry->second, Value);
+    DCache.CBs.valueReleaseCB(Value, nullptr);
+  }
 
   // FIXME: Not thread-safe! It should avoid deleting the value until
   // 'releaseValue is called on it.
@@ -116,7 +128,7 @@ bool CacheImpl::remove(const void *Key) {
   auto Entry = DCache.Entries.find(CKey);
   if (Entry != DCache.Entries.end()) {
     DCache.CBs.keyDestroyCB(Entry->first.Key, nullptr);
-    DCache.CBs.valueDestroyCB(Entry->second, nullptr);
+    DCache.CBs.valueReleaseCB(Entry->second, nullptr);
     DCache.Entries.erase(Entry);
     return true;
   }
@@ -129,7 +141,7 @@ void CacheImpl::removeAll() {
 
   for (auto Entry : DCache.Entries) {
     DCache.CBs.keyDestroyCB(Entry.first.Key, nullptr);
-    DCache.CBs.valueDestroyCB(Entry.second, nullptr);
+    DCache.CBs.valueReleaseCB(Entry.second, nullptr);
   }
   DCache.Entries.clear();
 }

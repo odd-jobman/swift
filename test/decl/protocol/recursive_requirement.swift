@@ -1,32 +1,32 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift -warn-redundant-requirements
 
 // -----
 
 protocol Foo {
-  associatedtype Bar : Foo // expected-error{{type may not reference itself as a requirement}}
+  associatedtype Bar : Foo
 }
 
-struct Oroborous : Foo {
-  typealias Bar = Oroborous
+struct Ouroboros : Foo {
+  typealias Bar = Ouroboros
 }
 
 // -----
 
 protocol P {
- associatedtype A : P // expected-error{{type may not reference itself as a requirement}}
+ associatedtype A : P
 }
 
 struct X<T: P> {
 }
 
-func f<T : P>(z: T) {
+func f<T : P>(_ z: T) {
  _ = X<T.A>()
 }
 
 // -----
 
 protocol PP2 {
-  associatedtype A : P2 = Self // expected-error{{type may not reference itself as a requirement}}
+  associatedtype A : P2 = Self
 }
 
 protocol P2 : PP2 {
@@ -40,26 +40,27 @@ struct Y2 : P2 {
   typealias A = Y2
 }
 
-func f<T : P2>(z: T) {
+func f<T : P2>(_ z: T) {
  _ = X2<T.A>()
 }
 
 // -----
 
 protocol P3 {
- associatedtype A: P4 = Self // expected-error{{type may not reference itself as a requirement}}
+ associatedtype A: P4 = Self
 }
 
 protocol P4 : P3 {}
 
-protocol DeclaredP : P3, P4 {}
+protocol DeclaredP : P3, // expected-warning{{redundant conformance constraint 'Self' : 'P3'}}
+P4 {}
 
 struct Y3 : DeclaredP {
 }
 
 struct X3<T:P4> {}
 
-func f2<T:P4>(a: T) {
+func f2<T:P4>(_ a: T) {
  _ = X3<T.A>()
 }
 
@@ -68,14 +69,17 @@ f2(Y3())
 // -----
 
 protocol Alpha {
-  associatedtype Beta: Gamma // expected-error{{type may not reference itself as a requirement}}
+  associatedtype Beta: Gamma
 }
 
 protocol Gamma {
-  associatedtype Delta: Alpha // expected-error{{type may not reference itself as a requirement}}
+  associatedtype Delta: Alpha
 }
 
-struct Epsilon<T: Alpha, U: Gamma where T.Beta == U, U.Delta == T> { }
+struct Epsilon<T: Alpha,
+               U: Gamma> // expected-warning{{redundant conformance constraint 'U' : 'Gamma'}}
+  where T.Beta == U,
+        U.Delta == T {}
 
 // -----
 
@@ -83,14 +87,14 @@ protocol AsExistentialA {
   var delegate : AsExistentialB? { get }
 }
 protocol AsExistentialB {
-  func aMethod(object : AsExistentialA)
+  func aMethod(_ object : AsExistentialA)
 }
 
 protocol AsExistentialAssocTypeA {
-  var delegate : AsExistentialAssocTypeB? { get } // expected-error {{protocol 'AsExistentialAssocTypeB' can only be used as a generic constraint because it has Self or associated type requirements}}
+  var delegate : AsExistentialAssocTypeB? { get } // expected-error {{use of protocol 'AsExistentialAssocTypeB' as a type must be written 'any AsExistentialAssocTypeB'}}
 }
 protocol AsExistentialAssocTypeB {
-  func aMethod(object : AsExistentialAssocTypeA)
+  func aMethod(_ object : AsExistentialAssocTypeA)
   associatedtype Bar
 }
 
@@ -99,15 +103,15 @@ protocol AsExistentialAssocTypeAgainA {
   associatedtype Bar
 }
 protocol AsExistentialAssocTypeAgainB {
-  func aMethod(object : AsExistentialAssocTypeAgainA) // expected-error {{protocol 'AsExistentialAssocTypeAgainA' can only be used as a generic constraint because it has Self or associated type requirements}}
+  func aMethod(_ object : AsExistentialAssocTypeAgainA) // expected-error {{use of protocol 'AsExistentialAssocTypeAgainA' as a type must be written 'any AsExistentialAssocTypeAgainA'}}
 }
 
 // SR-547
 protocol A {
-    associatedtype B1: B // expected-error{{type may not reference itself as a requirement}}
+    associatedtype B1: B
     associatedtype C1: C
     
-    mutating func addObserver(observer: B1, forProperty: C1)
+    mutating func addObserver(_ observer: B1, forProperty: C1)
 }
 
 protocol C {
@@ -115,10 +119,8 @@ protocol C {
 }
 
 protocol B {
-    associatedtype BA: A // expected-error{{type may not reference itself as a requirement}}
+    associatedtype BA: A
     associatedtype BC: C
     
-    func observeChangeOfProperty(property: BC, observable: BA)
+    func observeChangeOfProperty(_ property: BC, observable: BA)
 }
-
-

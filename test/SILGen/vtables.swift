@@ -1,11 +1,4 @@
-// RUN: %target-swift-frontend -sdk %S/Inputs -emit-silgen -I %S/Inputs -enable-source-import %s -disable-objc-attr-requires-foundation-module | FileCheck %s
-
-// FIXME: rdar://problem/19648117 Needs splitting objc parts out
-// XFAIL: linux
-
-import gizmo
-
-// TODO: Generic base classes
+// RUN: %target-swift-emit-silgen %s | %FileCheck %s
 
 // Test for compilation order independence
 class C : B {
@@ -13,6 +6,7 @@ class C : B {
   override func bar() {}
   // bas inherited from A
   override func qux() {}
+  func flux() {}
 
   // zim inherited from B
   override func zang() {}
@@ -23,16 +17,17 @@ class C : B {
   func mopsy() {}
 }
 // CHECK: sil_vtable C {
-// CHECK:   #A.foo!1: _TFC7vtables1B3foo
-// CHECK:   #A.bar!1: _TFC7vtables1C3bar
-// CHECK:   #A.bas!1: _TFC7vtables1A3bas
-// CHECK:   #A.qux!1: _TFC7vtables1C3qux
-// CHECK:   #B.init!allocator.1: _TFC7vtables1CC
-// CHECK:   #B.init!initializer.1: _TFC7vtables1Cc
-// CHECK:   #B.zim!1: _TFC7vtables1B3zim
-// CHECK:   #B.zang!1: _TFC7vtables1C4zang
-// CHECK:   #C.flopsy!1: _TFC7vtables1C6flopsy
-// CHECK:   #C.mopsy!1: _TFC7vtables1C5mopsy
+// CHECK:   #A.foo: {{.*}} : @$s7vtables1BC3foo{{[_0-9a-zA-Z]*}}F
+// CHECK:   #A.bar: {{.*}} : @$s7vtables1CC3bar{{[_0-9a-zA-Z]*}}F
+// CHECK:   #A.bas: {{.*}} : @$s7vtables1AC3bas{{[_0-9a-zA-Z]*}}F
+// CHECK:   #A.qux: {{.*}} : @$s7vtables1CC3qux{{[_0-9a-zA-Z]*}}F
+// CHECK:   #A.flux: {{.*}} : @$s7vtables1BC4flux{{[_0-9a-zA-Z]*}}F
+// CHECK:   #B.init!allocator: {{.*}} : @$s7vtables1CC{{[_0-9a-zA-Z]*}}fC
+// CHECK:   #B.zim: {{.*}} : @$s7vtables1BC3zim{{[_0-9a-zA-Z]*}}F
+// CHECK:   #B.zang: {{.*}} : @$s7vtables1CC4zang{{[_0-9a-zA-Z]*}}F
+// CHECK:   #C.flux: {{.*}} : @$s7vtables1CC4flux{{[_0-9a-zA-Z]*}}F
+// CHECK:   #C.flopsy: {{.*}} : @$s7vtables1CC6flopsy{{[_0-9a-zA-Z]*}}F
+// CHECK:   #C.mopsy: {{.*}} : @$s7vtables1CC5mopsy{{[_0-9a-zA-Z]*}}F
 // CHECK: }
 
 class A {
@@ -40,14 +35,16 @@ class A {
   func bar() {}
   func bas() {}
   func qux() {}
+  func flux() {}
 }
 
 // CHECK: sil_vtable A {
-// CHECK:   #A.foo!1: _TFC7vtables1A3foo
-// CHECK:   #A.bar!1: _TFC7vtables1A3bar
-// CHECK:   #A.bas!1: _TFC7vtables1A3bas
-// CHECK:   #A.qux!1: _TFC7vtables1A3qux
-// CHECK:   #A.init!initializer.1: _TFC7vtables1Ac
+// CHECK:   #A.foo: {{.*}} : @$s7vtables1AC3foo{{[_0-9a-zA-Z]*}}F
+// CHECK:   #A.bar: {{.*}} : @$s7vtables1AC3bar{{[_0-9a-zA-Z]*}}F
+// CHECK:   #A.bas: {{.*}} : @$s7vtables1AC3bas{{[_0-9a-zA-Z]*}}F
+// CHECK:   #A.qux: {{.*}} : @$s7vtables1AC3qux{{[_0-9a-zA-Z]*}}F
+// CHECK:   #A.flux: {{.*}} : @$s7vtables1AC4flux{{[_0-9a-zA-Z]*}}F
+// CHECK:   #A.init!allocator: {{.*}} : @$s7vtables1AC{{[_0-9a-zA-Z]*}}fC
 // CHECK: }
 
 class B : A {
@@ -57,82 +54,27 @@ class B : A {
   // bar inherited from A
   // bas inherited from A
   override func qux() {}
+  @available(*, unavailable) override func flux() {}
 
   func zim() {}
   func zang() {}
 }
 
 // CHECK: sil_vtable B {
-// CHECK:   #A.foo!1: _TFC7vtables1B3foo
-// CHECK:   #A.bar!1: _TFC7vtables1A3bar
-// CHECK:   #A.bas!1: _TFC7vtables1A3bas
-// CHECK:   #A.qux!1: _TFC7vtables1B3qux
-// CHECK:   #B.init!allocator.1: _TFC7vtables1BC
-// CHECK:   #B.init!initializer.1: _TFC7vtables1Bc
-// CHECK:   #B.zim!1: _TFC7vtables1B3zim
-// CHECK:   #B.zang!1: _TFC7vtables1B4zang
+// CHECK:   #A.foo: {{.*}} : @$s7vtables1BC3foo{{[_0-9a-zA-Z]*}}F
+// CHECK:   #A.bar: {{.*}} : @$s7vtables1AC3bar{{[_0-9a-zA-Z]*}}F
+// CHECK:   #A.bas: {{.*}} : @$s7vtables1AC3bas{{[_0-9a-zA-Z]*}}F
+// CHECK:   #A.qux: {{.*}} : @$s7vtables1BC3qux{{[_0-9a-zA-Z]*}}F
+// CHECK:   #A.flux: {{.*}} : @$s7vtables1BC4flux{{[_0-9a-zA-Z]*}}F
+// CHECK:   #B.init!allocator: {{.*}} : @$s7vtables1BC{{[_0-9a-zA-Z]*}}fC
+// CHECK:   #B.zim: {{.*}} : @$s7vtables1BC3zim{{[_0-9a-zA-Z]*}}F
+// CHECK:   #B.zang: {{.*}} : @$s7vtables1BC4zang{{[_0-9a-zA-Z]*}}F
 // CHECK: }
-
-// Test ObjC base class
-
-class Hoozit : Gizmo {
-  // Overrides Gizmo.frob
-  override func frob() {}
-  // Overrides Gizmo.funge
-  override func funge() {}
-
-  func anse() {}
-  func incorrige() {}
-}
-
-// Entries only exist for native Swift methods
-
-// CHECK: sil_vtable Hoozit {
-// CHECK:   #Hoozit.frob!1: _TFC7vtables6Hoozit4frob
-// CHECK:   #Hoozit.funge!1: _TFC7vtables6Hoozit5funge
-// CHECK:   #Hoozit.anse!1: _TFC7vtables6Hoozit4anse
-// CHECK:   #Hoozit.incorrige!1: _TFC7vtables6Hoozit9incorrige
-// CHECK: }
-
-class Wotsit : Hoozit {
-  override func funge() {}
-  override func incorrige() {}
-}
-
-// CHECK: sil_vtable Wotsit {
-// CHECK:   #Hoozit.frob!1: _TFC7vtables6Hoozit4frob
-// CHECK:   #Hoozit.funge!1: _TFC7vtables6Wotsit5funge
-// CHECK:   #Hoozit.anse!1: _TFC7vtables6Hoozit4anse
-// CHECK:   #Hoozit.incorrige!1: _TFC7vtables6Wotsit9incorrige
-// CHECK: }
-
-// <rdar://problem/15282548>
-// CHECK: sil_vtable Base {
-// CHECK:   #Base.init!initializer.1: _TFC7vtables4Basec
-// CHECK: }
-// CHECK: sil_vtable Derived {
-// CHECK:   #Base.init!initializer.1: _TFC7vtables7Derivedc
-// CHECK: }
-@objc class Base {}
-
-extension Base {
-  // note: does not have a vtable slot, because it is from an extension
-  func identify() -> Int {
-    return 0
-  }
-}
-
-class Derived : Base {
-  override func identify() -> Int {
-    return 1
-  }
-}
-
 
 // CHECK: sil_vtable RequiredInitDerived {
-// CHECK-NEXT: #SimpleInitBase.init!initializer.1: _TFC7vtables19RequiredInitDerivedc
-// CHECK-NEXT  #RequiredInitDerived.init!allocator.1: _TFC7vtables19RequiredInitDerivedC
-// CHECK-NEXT}
+// CHECK-NEXT: #SimpleInitBase.init!allocator: {{.*}} : @$s7vtables19RequiredInitDerivedC{{[_0-9a-zA-Z]*}}fC
+// CHECK-NEXT: #RequiredInitDerived.deinit!deallocator: @$s7vtables19RequiredInitDerivedCfD
+// CHECK-NEXT: }
 
 class SimpleInitBase { }
 
@@ -151,11 +93,11 @@ class Observed {
 
 // rdar://problem/21298214
 class BaseWithDefaults {
-   func a(object: AnyObject? = nil) {}
+   func a(_ object: AnyObject? = nil) {}
 }
 
 class DerivedWithoutDefaults : BaseWithDefaults {
-   override func a(object: AnyObject?) { 
+   override func a(_ object: AnyObject?) { 
      super.a(object)   
    }
 }
@@ -168,4 +110,25 @@ class DerivedWithoutDefaults : BaseWithDefaults {
 // CHECK:         #Observed.x!setter
 
 // CHECK-LABEL: sil_vtable DerivedWithoutDefaults {
-// CHECK:         #BaseWithDefaults.a!1: _TFC7vtables22DerivedWithoutDefaults1a
+// CHECK:         #BaseWithDefaults.a: {{.*}} : @$s7vtables22DerivedWithoutDefaultsC1a{{[_0-9a-zA-Z]*}}F
+
+
+
+// Escape identifiers that represent special names
+
+class SubscriptAsFunction {
+  func `subscript`() {}
+}
+
+// CHECK-LABEL: sil_vtable SubscriptAsFunction {
+// CHECK-NOT:     #SubscriptAsFunction.subscript
+// CHECK:         #SubscriptAsFunction.`subscript`:
+
+
+class DeinitAsFunction {
+  func `deinit`() {}
+}
+
+// CHECK-LABEL: sil_vtable DeinitAsFunction {
+// CHECK:         #DeinitAsFunction.`deinit`:
+// CHECK:         #DeinitAsFunction.deinit!deallocator

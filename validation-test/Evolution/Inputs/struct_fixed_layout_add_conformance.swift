@@ -7,7 +7,7 @@ public func getVersion() -> Int {
 #endif
 }
 
-@_fixed_layout public struct AddConformance {
+@frozen public struct AddConformance {
   public init() {
     x = 0
     y = 0
@@ -39,7 +39,7 @@ extension AddConformance : PointLike {}
 extension AddConformance : Point3DLike {}
 #endif
 
-public func workWithPointLike<T>(t: T) -> Int {
+public func workWithPointLike<T>(_ t: T) -> Int {
   if let p = t as? PointLike {
     return p.x * p.y
   } else {

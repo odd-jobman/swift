@@ -1,4 +1,4 @@
-// RUN: %target-run-simple-swift | FileCheck %s
+// RUN: %target-run-simple-swift | %FileCheck %s
 // REQUIRES: executable_test
 
 var x: Int! = 0
@@ -14,7 +14,7 @@ print(sequences) // CHECK-NEXT: ["fibonacci": [1, 1, 2, 3, 5]]
 sequences["fibonacci"]!.append(8)
 print(sequences) // CHECK-NEXT: ["fibonacci": [1, 1, 2, 3, 5, 8]]
 
-func printAndReturn(x: Int) -> Int { print(x); return x }
+func printAndReturn(_ x: Int) -> Int { print(x); return x }
 
 print("optional binding") // CHECK-NEXT: optional binding
 var y: Int? = nil

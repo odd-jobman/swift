@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -17,6 +17,9 @@
 
 #ifndef SWIFT_SIL_CONSUMPTION_H
 #define SWIFT_SIL_CONSUMPTION_H
+
+#include "llvm/Support/ErrorHandling.h"
+#include <cstdint>
 
 namespace swift {
 
@@ -30,7 +33,7 @@ enum IsTake_t : bool { IsNotTake, IsTake };
 enum IsInitialization_t : bool { IsNotInitialization, IsInitialization };
 
 /// The behavior of a dynamic cast operation on the source value.
-enum class CastConsumptionKind : unsigned char {
+enum class CastConsumptionKind : uint8_t {
   /// The source value is always taken, regardless of whether the cast
   /// succeeds.  That is, if the cast fails, the source value is
   /// destroyed.
@@ -43,18 +46,45 @@ enum class CastConsumptionKind : unsigned char {
   /// The source value is always left in place, and the destination
   /// value is copied into on success.
   CopyOnSuccess,
+
+  /// The source value is never taken, regardless of whether the cast
+  /// succeeds. Instead, we always borrow the source value and feed it through.
+  ///
+  /// NOTE: This can only be used with objects. We do not support borrowing of
+  /// addresses. If an address is needed for a cast operation, a BorrowAlways
+  /// value must be copied into a temporary and operated upon. If the result of
+  /// the cast is a loadable type then the value is loaded using a
+  /// load_borrow. If an address only value is returned, we continue processing
+  /// the value as an owned TakeAlways value.
+  BorrowAlways,
 };
 
 /// Should the source value be destroyed if the cast fails?
 inline bool shouldDestroyOnFailure(CastConsumptionKind kind) {
-  return (kind == CastConsumptionKind::TakeAlways);
+  switch (kind) {
+  case CastConsumptionKind::TakeAlways:
+    return true;
+  case CastConsumptionKind::TakeOnSuccess:
+  case CastConsumptionKind::CopyOnSuccess:
+  case CastConsumptionKind::BorrowAlways:
+    return false;
+  }
+  llvm_unreachable("covered switch");
 }
 
 /// Should the source value be taken if the cast succeeds?
 inline IsTake_t shouldTakeOnSuccess(CastConsumptionKind kind) {
-  return IsTake_t(kind != CastConsumptionKind::CopyOnSuccess);
+  switch (kind) {
+  case CastConsumptionKind::TakeAlways:
+  case CastConsumptionKind::TakeOnSuccess:
+    return IsTake;
+  case CastConsumptionKind::CopyOnSuccess:
+  case CastConsumptionKind::BorrowAlways:
+    return IsNotTake;
+  }
+  llvm_unreachable("covered switch");
 }
 
-}  // end namespace swift
+} // end namespace swift
 
 #endif

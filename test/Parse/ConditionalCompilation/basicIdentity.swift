@@ -1,4 +1,4 @@
-// RUN: %swift -parse %s -verify -D FOO -D BAZ -target x86_64-apple-macosx10.9 -parse-stdlib
+// RUN: %swift -typecheck %s -verify -D FOO -D BAZ -target x86_64-apple-macosx10.9 -parse-stdlib
 
 struct Foo {}
 
@@ -63,3 +63,9 @@ var v = u
 var w = Foo()
 #endif
 var x = w
+
+// Test os(macOS) as well
+#if os(macOS)
+var y = Foo()
+#endif
+var z = y

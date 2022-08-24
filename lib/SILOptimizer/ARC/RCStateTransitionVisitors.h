@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -38,14 +38,14 @@ class RCStateTransitionKindVisitor {
   ImplTy &asImpl() { return *reinterpret_cast<ImplTy *>(this); }
 
 public:
-#define KIND(K) ResultTy visit ## K(ValueBase *) { return ResultTy(); }
+#define KIND(K) ResultTy visit ## K(SILNode *) { return ResultTy(); }
 #include "RCStateTransition.def"
 
-  ResultTy visit(ValueBase *V) {
-    switch (getRCStateTransitionKind(V)) {
+  ResultTy visit(SILNode *N) {
+    switch (getRCStateTransitionKind(N)) {
 #define KIND(K)                                 \
   case RCStateTransitionKind::K:                \
-    return asImpl().visit ## K(V);
+    return asImpl().visit ## K(N);
 #include "RCStateTransition.def"
     }
     llvm_unreachable("Covered switch isn't covered?!");
@@ -116,22 +116,21 @@ class BottomUpDataflowRCStateVisitor
 
 public:
   RCIdentityFunctionInfo *RCFI;
+  EpilogueARCFunctionInfo *EAFI;
   ARCState &DataflowState;
   bool FreezeOwnedArgEpilogueReleases;
-  ConsumedArgToEpilogueReleaseMatcher &EpilogueReleaseMatcher;
   BlotMapVector<SILInstruction *, BottomUpRefCountState> &IncToDecStateMap;
   ImmutablePointerSetFactory<SILInstruction> &SetFactory;
 
 public:
   BottomUpDataflowRCStateVisitor(
-      RCIdentityFunctionInfo *RCFI, ARCState &DataflowState,
-      bool FreezeOwnedArgEpilogueReleases,
-      ConsumedArgToEpilogueReleaseMatcher &ERM,
+      RCIdentityFunctionInfo *RCFI, EpilogueARCFunctionInfo *EAFI,
+      ARCState &DataflowState, bool FreezeOwnedArgEpilogueReleases,
       IncToDecStateMapTy &IncToDecStateMap,
       ImmutablePointerSetFactory<SILInstruction> &SetFactory);
-  DataflowResult visitAutoreleasePoolCall(ValueBase *V);
-  DataflowResult visitStrongDecrement(ValueBase *V);
-  DataflowResult visitStrongIncrement(ValueBase *V);
+  DataflowResult visitAutoreleasePoolCall(SILNode *N);
+  DataflowResult visitStrongDecrement(SILNode *N);
+  DataflowResult visitStrongIncrement(SILNode *N);
 };
 
 } // end swift namespace
@@ -164,14 +163,15 @@ public:
       RCIdentityFunctionInfo *RCFI, ARCState &State,
       DecToIncStateMapTy &DecToIncStateMap,
       ImmutablePointerSetFactory<SILInstruction> &SetFactory);
-  DataflowResult visitAutoreleasePoolCall(ValueBase *V);
-  DataflowResult visitStrongDecrement(ValueBase *V);
-  DataflowResult visitStrongIncrement(ValueBase *V);
-  DataflowResult visitStrongEntrance(ValueBase *V);
+  DataflowResult visitAutoreleasePoolCall(SILNode *N);
+  DataflowResult visitStrongDecrement(SILNode *N);
+  DataflowResult visitStrongIncrement(SILNode *N);
+  DataflowResult visitStrongEntrance(SILNode *N);
 
 private:
   DataflowResult visitStrongEntranceApply(ApplyInst *AI);
-  DataflowResult visitStrongEntranceArgument(SILArgument *Arg);
+  DataflowResult visitStrongEntrancePartialApply(PartialApplyInst *PAI);
+  DataflowResult visitStrongEntranceArgument(SILFunctionArgument *Arg);
   DataflowResult visitStrongEntranceAllocRef(AllocRefInst *ARI);
   DataflowResult visitStrongEntranceAllocRefDynamic(AllocRefDynamicInst *ARI);
   DataflowResult visitStrongAllocBox(AllocBoxInst *ABI);

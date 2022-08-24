@@ -1,5 +1,6 @@
 // expected-note{{top-level code defined in this source file}}
-// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -parse -verify %s %S/delegate.swift
+// expected-note@-1{{pass '-parse-as-library' to compiler invocation if this is intentional}}
+// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -typecheck -verify %s %S/delegate.swift
 
 // REQUIRES: objc_interop
 

@@ -2,11 +2,11 @@
 #
 # This source file is part of the Swift.org open source project
 #
-# Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+# Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 # Licensed under Apache License v2.0 with Runtime Library Exception
 #
-# See http://swift.org/LICENSE.txt for license information
-# See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+# See https://swift.org/LICENSE.txt for license information
+# See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 #
 # ===---------------------------------------------------------------------===//
 #
@@ -22,8 +22,6 @@
 #   && open /tmp/protocols.svg
 #
 # ===---------------------------------------------------------------------===//
-
-from __future__ import print_function
 
 import cgi
 import os
@@ -70,6 +68,7 @@ def body_lines(body_text):
             r'(\s*[:,]\s*' + identifier + ')?|' + operator + '.*)',
             body_text, re_flags)
     ]
+
 
 # Mapping from protocol to associated type / operator requirements
 body = {}
@@ -130,6 +129,7 @@ def parse_protocol(m):
                 return
             graph.setdefault(parent.strip(), set()).add(child)
 
+
 protocols_and_operators = interpolate(r'''
 \bprotocol \s+ (%(identifier)s) \s*
   (?::\s*([^{]+))?                   # refinements
@@ -184,8 +184,8 @@ for node in sorted(graph.keys()):
               else ''
 
     label = node if len(requirements + generics) == 0 else (
-        '\n<TABLE BORDER="0">\n<TR><TD>\n%s\n</TD></TR><HR/>' +
-        '\n%s%s%s</TABLE>\n' % (
+        ('\n<TABLE BORDER="0">\n<TR><TD>\n%s\n</TD></TR><HR/>' +
+            '\n%s%s%s</TABLE>\n') % (
             node,
             '\n'.join('<TR><TD>%s</TD></TR>' % r for r in requirements),
             divider,

@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -18,15 +18,15 @@
 #define SWIFT_IDE_REPL_CODE_COMPLETION_H
 
 #include "swift/Basic/LLVM.h"
-#include "swift/IDE/CodeCompletion.h"
 #include "swift/IDE/CodeCompletionCache.h"
+#include "swift/IDE/CodeCompletionConsumer.h"
 #include "swift/Parse/CodeCompletionCallbacks.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include <memory>
-#include <vector>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace swift {
 

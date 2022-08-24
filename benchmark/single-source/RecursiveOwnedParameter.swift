@@ -2,15 +2,21 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2021 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 import TestsUtils
+
+public let benchmarks =
+  BenchmarkInfo(
+    name: "RecursiveOwnedParameter",
+    runFunction: run_RecursiveOwnedParameter,
+    tags: [.validation, .api, .Array, .refcount])
 
 // This test recursively visits each element of an array in a class and compares
 // it with every value in a different array stored in a different class. The
@@ -27,7 +33,7 @@ class ArrayWrapper {
     data = [Int](repeating: initialValue, count: count)
   }
 
-  func compare(b: ArrayWrapper, _ iteration: Int, _ stopIteration: Int) -> Bool {
+  func compare(_ b: ArrayWrapper, _ iteration: Int, _ stopIteration: Int) -> Bool {
     // We will never return true here by design. We want to test the full effect
     // every time of retaining, releasing.
     if iteration == stopIteration || data[iteration] == b.data[iteration] {
@@ -39,19 +45,18 @@ class ArrayWrapper {
 }
 
 @inline(never)
-public func run_RecursiveOwnedParameter(N: Int) {
+public func run_RecursiveOwnedParameter(_ n: Int) {
   let numElts = 1_000
 
   let a = ArrayWrapper(numElts, 0)
   let b = ArrayWrapper(numElts, 1)
 
   var result = 0
-  for _ in 0..<100*N {
+  for _ in 0..<100*n {
     if a.compare(b, 0, numElts) {
       result += 1
     }
   }
-  let refResult = 100*N
-  CheckResults(result == refResult,
-    "IncorrectResults in RecursiveOwnedParameter: \(result) != \(refResult)")
+  let refResult = 100*n
+  check(result == refResult)
 }

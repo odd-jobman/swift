@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -25,10 +25,14 @@
 AVAILABILITY_PLATFORM(iOS, "iOS")
 AVAILABILITY_PLATFORM(tvOS, "tvOS")
 AVAILABILITY_PLATFORM(watchOS, "watchOS")
-AVAILABILITY_PLATFORM(OSX, "OS X")
-AVAILABILITY_PLATFORM(iOSApplicationExtension, "iOS application extension")
-AVAILABILITY_PLATFORM(tvOSApplicationExtension, "tvOS application extension")
-AVAILABILITY_PLATFORM(watchOSApplicationExtension, "watchOS application extension")
-AVAILABILITY_PLATFORM(OSXApplicationExtension, "OS X application extension")
+AVAILABILITY_PLATFORM(macOS, "macOS")
+AVAILABILITY_PLATFORM(iOSApplicationExtension, "application extensions for iOS")
+AVAILABILITY_PLATFORM(tvOSApplicationExtension, "application extensions for tvOS")
+AVAILABILITY_PLATFORM(watchOSApplicationExtension, "application extensions for watchOS")
+AVAILABILITY_PLATFORM(macOSApplicationExtension, "application extensions for macOS")
+AVAILABILITY_PLATFORM(macCatalyst, "Mac Catalyst")
+AVAILABILITY_PLATFORM(macCatalystApplicationExtension, "application extensions for Mac Catalyst")
+AVAILABILITY_PLATFORM(OpenBSD, "OpenBSD")
+AVAILABILITY_PLATFORM(Windows, "Windows")
 
 #undef AVAILABILITY_PLATFORM

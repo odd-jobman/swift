@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -16,7 +16,6 @@
 #include "swift/SIL/SILInstruction.h"
 #include "swift/SIL/Dominance.h"
 #include "swift/SILOptimizer/Analysis/Analysis.h"
-#include "llvm/ADT/DenseMap.h"
 
 namespace swift {
 class SILModule;
@@ -25,24 +24,28 @@ class SILInstruction;
 class DominanceAnalysis : public FunctionAnalysisBase<DominanceInfo> {
 protected:
   virtual void verify(DominanceInfo *DI) const override {
-    if (DI->getRoots().empty())
+    if (DI->roots().empty())
       return;
     DI->verify();
   }
 
 public:
   DominanceAnalysis()
-  : FunctionAnalysisBase<DominanceInfo>(AnalysisKind::Dominance) {}
+      : FunctionAnalysisBase<DominanceInfo>(SILAnalysisKind::Dominance) {}
 
   DominanceAnalysis(const DominanceAnalysis &) = delete;
   DominanceAnalysis &operator=(const DominanceAnalysis &) = delete;
 
-  static bool classof(const SILAnalysis *S) {
-    return S->getKind() == AnalysisKind::Dominance;
+  static SILAnalysisKind getAnalysisKind() {
+    return SILAnalysisKind::Dominance;
   }
 
-  DominanceInfo *newFunctionAnalysis(SILFunction *F) override {
-    return new DominanceInfo(F);
+  static bool classof(const SILAnalysis *S) {
+    return S->getKind() == SILAnalysisKind::Dominance;
+  }
+
+  std::unique_ptr<DominanceInfo> newFunctionAnalysis(SILFunction *F) override {
+    return std::make_unique<DominanceInfo>(F);
   }
 
   virtual bool shouldInvalidate(SILAnalysis::InvalidationKind K) override {
@@ -53,24 +56,30 @@ public:
 class PostDominanceAnalysis : public FunctionAnalysisBase<PostDominanceInfo> {
 protected:
   virtual void verify(PostDominanceInfo *PDI) const override {
-    if (PDI->getRoots().empty())
+    if (PDI->roots().empty())
       return;
     PDI->verify();
   }
 
 public:
   PostDominanceAnalysis()
-  : FunctionAnalysisBase<PostDominanceInfo>(AnalysisKind::PostDominance) {}
+      : FunctionAnalysisBase<PostDominanceInfo>(
+            SILAnalysisKind::PostDominance) {}
 
   PostDominanceAnalysis(const PostDominanceAnalysis &) = delete;
   PostDominanceAnalysis &operator=(const PostDominanceAnalysis &) = delete;
 
-  static bool classof(const SILAnalysis *S) {
-    return S->getKind() == AnalysisKind::PostDominance;
+  static SILAnalysisKind getAnalysisKind() {
+    return SILAnalysisKind::PostDominance;
   }
 
-  PostDominanceInfo *newFunctionAnalysis(SILFunction *F) override {
-    return new PostDominanceInfo(F);
+  static bool classof(const SILAnalysis *S) {
+    return S->getKind() == SILAnalysisKind::PostDominance;
+  }
+
+  std::unique_ptr<PostDominanceInfo>
+  newFunctionAnalysis(SILFunction *F) override {
+    return std::make_unique<PostDominanceInfo>(F);
   }
 
   virtual bool shouldInvalidate(SILAnalysis::InvalidationKind K) override {

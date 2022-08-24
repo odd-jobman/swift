@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2020 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -14,207 +14,463 @@
 //
 //===----------------------------------------------------------------------===//
 
-/// PASS(Id, Name, Description)
-///   The pass is identified by PassKind::Id, and there exists a
-///   global function swift::create##Id().
+/// PASS(Id, Tag, Description)
+///   Id is a pass "identifier", used for its enum case, PassKind::Id,
+///   and type name, as returned by the global function swift::create##Id().
+///
+///   Tag identifies the pass as a command-line compatible option string.
+///
+///   Description is a short description of the pass.
+///
+///   Id and Tag are unique identifiers which may be used in test
+///   cases and tools to specify a pass by string. Different tools simply prefer
+///   different identifier formats. Changing any of one these strings may change
+///   the functionality of some tests.
 ///
 ///   This macro must be defined by the includer.
 #ifndef PASS
 #error "Macro must be defined by includer"
 #endif
 
+/// IRGEN_PASS(Id, Tag, Description)
+///   This macro follows the same conventions as PASS(Id, Tag, Description),
+///   but is used for IRGen passes which are built outside of the
+///   SILOptimizer library.
+///   
+///   An IRGen pass is created by IRGen and needs to be registered with the pass
+///   manager dynamically.
+#ifndef IRGEN_PASS
+#define IRGEN_PASS(Id, Tag, Description) PASS(Id, Tag, Description)
+#endif
+
+/// SWIFT_FUNCTION_PASS(Id, Tag, Description)
+///   This macro follows the same conventions as PASS(Id, Tag, Description),
+///   but is used for function passes which are implemented in Swift.
+///
+///   No further code is need on the C++ side. On the swift swift a function
+///   pass with the same name must be registered with 'registerPass()'.
+///
+#ifndef SWIFT_FUNCTION_PASS
+#define SWIFT_FUNCTION_PASS(Id, Tag, Description) PASS(Id, Tag, Description)
+#endif
+
+/// SWIFT_FUNCTION_PASS_WITH_LEGACY(Id, Tag, Description)
+///   Like SWIFT_FUNCTION_PASS, but a C++ legacy pass is used if the Swift pass
+///   is not registered.
+///   The C++ legacy creation function must be named 'createLegacy<Id>'
+///
+#ifndef SWIFT_FUNCTION_PASS_WITH_LEGACY
+#define SWIFT_FUNCTION_PASS_WITH_LEGACY(Id, Tag, Description) \
+        SWIFT_FUNCTION_PASS(Id, Tag, Description)
+#endif
+
+/// SWIFT_INSTRUCTION_PASS(Inst, Tag)
+///   Similar to SWIFT_FUNCTION_PASS, but defines an instruction pass which is
+///   implemented in swift and is run by the SILCombiner.
+///   The \p Inst argument specifies the instruction class, and \p Tag a name
+///   for the pass.
+///
+///   No further code is need on the C++ side. On the swift side an instruction
+///   pass with the same name must be registered with 'registerPass()'.
+///
+#ifndef SWIFT_INSTRUCTION_PASS
+#define SWIFT_INSTRUCTION_PASS(Inst, Tag)
+#endif
+
+/// SWIFT_INSTRUCTION_PASS_WITH_LEGACY(Inst, Tag)
+///   Like SWIFT_INSTRUCTION_PASS, but the a C++ legacy SILCombine visit
+///   function is used if the swift pass is not registered.
+///   The C++ legacy visit function must be named
+///   'SILCombiner::legacyVisit<Inst>'.
+///
+#ifndef SWIFT_INSTRUCTION_PASS_WITH_LEGACY
+#define SWIFT_INSTRUCTION_PASS_WITH_LEGACY(Inst, Tag) \
+        SWIFT_INSTRUCTION_PASS(Inst, Tag)
+#endif
+
 /// PASS_RANGE(RANGE_ID, START, END)
 ///   Pass IDs between PassKind::START and PassKind::END, inclusive,
-///   fall within the set known as 
+///   fall within the set known as
 #ifndef PASS_RANGE
 #define PASS_RANGE(Id, First, Last)
 #endif
 
 PASS(AADumper, "aa-dump",
-     "Dump AA result for all pairs of ValueKinds in all functions")
+     "Dump Alias Analysis over all Pairs")
 PASS(ABCOpt, "abcopts",
-     "Optimization of array bounds checks")
+     "Array Bounds Check Optimization")
+PASS(AccessEnforcementDom, "access-enforcement-dom",
+     "Remove dominated access checks with no nested conflict")
+PASS(AccessEnforcementOpts, "access-enforcement-opts",
+     "Access Enforcement Optimization")
+PASS(AccessEnforcementReleaseSinking, "access-enforcement-release",
+     "Access Enforcement Release Sinking")
+PASS(AccessEnforcementSelection, "access-enforcement-selection",
+     "Access Enforcement Selection")
+PASS(AccessEnforcementWMO, "access-enforcement-wmo",
+     "Access Enforcement Whole Module Optimization")
+PASS(CrossModuleOptimization, "cmo",
+     "Perform cross-module optimization")
+PASS(AccessSummaryDumper, "access-summary-dump",
+     "Dump Address Parameter Access Summary")
+PASS(AccessStorageAnalysisDumper, "access-storage-analysis-dump",
+     "Dump Access Storage Analysis Summaries")
+PASS(AccessPathVerification, "access-path-verification",
+     "Verify Access Paths (and Access Storage)")
+PASS(AccessStorageDumper, "access-storage-dump",
+     "Dump Access Storage Information")
+PASS(AccessMarkerElimination, "access-marker-elim",
+     "Access Marker Elimination.")
+PASS(AddressLowering, "address-lowering",
+     "SIL Address Lowering")
 PASS(AllocBoxToStack, "allocbox-to-stack",
-     "Promote heap allocations to stack allocations")
+     "Stack Promotion of Box Objects")
+IRGEN_PASS(AllocStackHoisting, "alloc-stack-hoisting",
+           "SIL alloc_stack Hoisting")
 PASS(ArrayCountPropagation, "array-count-propagation",
-     "Propagate the count of arrays")
+     "Array Count Propagation")
 PASS(ArrayElementPropagation, "array-element-propagation",
-     "Propagate the value of array elements")
+     "Array Element Propagation")
+SWIFT_FUNCTION_PASS_WITH_LEGACY(AssumeSingleThreaded, "sil-assume-single-threaded",
+     "Assume Single-Threaded Environment")
 PASS(BasicInstructionPropertyDumper, "basic-instruction-property-dump",
-     "Dump MemBehavior and ReleaseBehavior results from calling "
-     "SILInstruction::{getMemoryBehavior,getReleasingBehavior}()"
-     " on all instructions")
+     "Print SIL Instruction MemBehavior and ReleaseBehavior Information")
 PASS(BasicCalleePrinter, "basic-callee-printer",
-     "Construct basic callee analysis and use it to print callees "
-     "for testing purposes")
+     "Print Basic Callee Analysis for Testing")
 PASS(CFGPrinter, "view-cfg",
-     "View the CFG of all passed in functions")
+     "View Function CFGs")
 PASS(COWArrayOpts, "cowarray-opt",
-     "COW Array optimizations")
+     "COW Array Optimization")
 PASS(CSE, "cse",
-     "Common subexpression elimination")
+     "Common Subexpression Elimination")
 PASS(CallerAnalysisPrinter, "caller-analysis-printer",
-     "Print callsites of every function in the module")
+     "Print Caller Analysis for Testing")
 PASS(CapturePromotion, "capture-promotion",
-     "Promote captures from by-reference to by-value")
+     "Capture Promotion to Eliminate Escaping Boxes")
 PASS(CapturePropagation, "capture-prop",
      "Captured Constant Propagation")
 PASS(ClosureSpecializer, "closure-specialize",
-     "Specialize functions passed a closure to call the closure directly")
+     "Closure Specialization on Constant Function Arguments")
+PASS(ClosureLifetimeFixup, "closure-lifetime-fixup",
+     "Closure Lifetime Fixup")
 PASS(CodeSinking, "code-sinking",
-     "Sinks code closer to users")
+     "Code Sinking")
 PASS(ComputeDominanceInfo, "compute-dominance-info",
-     "Utility pass that computes (post-)dominance info for all functions in "
-     "order to help test dominanceinfo updating")
+     "Compute Dominance Information for Testing")
 PASS(ComputeLoopInfo, "compute-loop-info",
-     "Utility pass that computes loop info for all functions in order to help "
-     "test loop info updating")
+     "Compute Loop Information for Testing")
+PASS(ConditionForwarding, "condition-forwarding",
+     "Conditional Branch Forwarding to Fold SIL switch_enum")
+PASS(ConstantEvaluatorTester, "test-constant-evaluator",
+      "Test constant evaluator")
+PASS(ConstantEvaluableSubsetChecker, "test-constant-evaluable-subset",
+     "Test Swift code snippets expected to be constant evaluable")
 PASS(CopyForwarding, "copy-forwarding",
-     "Eliminate redundant copies")
+     "Copy Forwarding to Remove Redundant Copies")
+PASS(CopyPropagation, "copy-propagation",
+     "Copy propagation to Remove Redundant SSA Copies, pruning debug info")
+PASS(MandatoryCopyPropagation, "mandatory-copy-propagation",
+     "Copy propagation to Remove Redundant SSA Copies, preserving debug info")
+PASS(COWOpts, "cow-opts",
+     "Optimize COW operations")
+PASS(Differentiation, "differentiation",
+     "Automatic Differentiation")
+PASS(EpilogueARCMatcherDumper, "sil-epilogue-arc-dumper",
+     "Print Epilogue retains of Returned Values and Argument releases")
 PASS(EpilogueRetainReleaseMatcherDumper, "sil-epilogue-retain-release-dumper",
-     "Dump epilogue retains for return value and releases for arguments")
+     "Print Epilogue retains of Returned Values and Argument releases")
 PASS(RedundantOverflowCheckRemoval, "remove-redundant-overflow-checks",
-     "Removes redundant overflow checks")
+     "Redundant Overflow Check Removal")
 PASS(DCE, "dce",
-     "Eliminate dead code")
-PASS(DeadFunctionElimination, "sil-deadfuncelim",
-     "Remove unused functions")
+     "Dead Code Elimination")
+PASS(DeadArgSignatureOpt, "dead-arg-signature-opt",
+     "Dead Argument Elimination via Function Specialization")
+PASS(DeadFunctionAndGlobalElimination, "sil-deadfuncelim",
+     "Dead Function and Global Variable Elimination")
 PASS(DeadObjectElimination, "deadobject-elim",
-     "Eliminate unused objects that do not have destructors with side effects")
+     "Dead Object Elimination for Classes with Trivial Destruction")
 PASS(DefiniteInitialization, "definite-init",
-     "Definite Initialization")
-PASS(Devirtualizer, "devirtualizer", "Devirtualize indirect calls")
+     "Definite Initialization for Diagnostics")
+PASS(DestroyHoisting, "destroy-hoisting",
+     "Hoisting of value destroys")
+PASS(SSADestroyHoisting, "ssa-destroy-hoisting",
+     "Hoist destroy_addr for uniquely identified values")
+PASS(Devirtualizer, "devirtualizer",
+     "Indirect Call Devirtualization")
+PASS(DiagnoseInfiniteRecursion, "diagnose-infinite-recursion",
+     "Diagnose Infinitely-Recursive Code")
+PASS(DiagnoseInvalidEscapingCaptures, "diagnose-invalid-escaping-captures",
+     "Diagnose Invalid Escaping Captures")
+PASS(DiagnoseLifetimeIssues, "diagnose-lifetime-issues",
+     "Diagnose Lifetime Issues")
+PASS(DiagnoseStaticExclusivity, "diagnose-static-exclusivity",
+     "Static Enforcement of Law of Exclusivity")
 PASS(DiagnoseUnreachable, "diagnose-unreachable",
      "Diagnose Unreachable Code")
 PASS(DiagnosticConstantPropagation, "diagnostic-constant-propagation",
-     "Propagate constants and emit diagnostics")
+     "Constants Propagation for Diagnostics")
+PASS(DifferentiabilityWitnessDevirtualizer,
+     "differentiability-witness-devirtualizer",
+     "Inlines Differentiability Witnesses")
 PASS(EagerSpecializer, "eager-specializer",
-     "Specialize speculatively and insert dispatch guarded by type checks")
+     "Eager Specialization via @_specialize")
+PASS(OnonePrespecializations, "onone-prespecializer",
+     "Pre specialization via @_specialize")
 PASS(EarlyCodeMotion, "early-codemotion",
-     "Code motion without release hoisting")
+     "Early Code Motion without Release Hoisting")
 PASS(EarlyInliner, "early-inline",
-     "Inline functions that are not marked as having special semantics")
+     "Early Inlining Preserving Semantic Functions")
 PASS(EmitDFDiagnostics, "dataflow-diagnostics",
      "Emit SIL Diagnostics")
 PASS(EscapeAnalysisDumper, "escapes-dump",
-     "Dumps the results of escape analysis for all functions")
-PASS(ExternalDefsToDecls, "external-defs-to-decls",
-     "Convert external definitions to decls")
-PASS(ExternalFunctionDefinitionsElimination, "external-func-definition-elim",
-     "Eliminate external function definitions")
+     "Dump Escape Analysis Results")
+SWIFT_FUNCTION_PASS(EscapeInfoDumper, "dump-escape-info",
+     "Dumps escape information")
+SWIFT_FUNCTION_PASS(AddressEscapeInfoDumper, "dump-addr-escape-info",
+     "Dumps address escape information")
+SWIFT_FUNCTION_PASS(AccessDumper, "dump-access",
+     "Dump access information")
+SWIFT_FUNCTION_PASS(ComputeEffects, "compute-effects",
+     "Computes function effects")
+PASS(FlowIsolation, "flow-isolation",
+     "Enforces flow-sensitive actor isolation rules")
 PASS(FunctionOrderPrinter, "function-order-printer",
-     "Print function orderings for test purposes")
+     "Print Function Order for Testing")
 PASS(FunctionSignatureOpts, "function-signature-opts",
-     "Create function with optimized signatures")
+     "Function Signature Optimization")
+SWIFT_FUNCTION_PASS(RangeDumper, "dump-ranges",
+     "Dumps block and instruction ranges")
 PASS(ARCSequenceOpts, "arc-sequence-opts",
-     "Optimize sequences of retain/release opts by removing redundant inner "
-     "retain/release sequences")
+     "ARC Sequence Optimization")
 PASS(ARCLoopOpts, "arc-loop-opts",
-     "Run all arc loop passes")
+     "ARC Loop Optimization")
+PASS(EarlyRedundantLoadElimination, "early-redundant-load-elim",
+     "Early Redundant Load Elimination")
 PASS(RedundantLoadElimination, "redundant-load-elim",
-     "Multiple basic block redundant load elimination")
+     "Redundant Load Elimination")
 PASS(DeadStoreElimination, "dead-store-elim",
-     "Multiple basic block dead store elimination")
+     "Dead Store Elimination")
+PASS(MandatoryGenericSpecializer, "mandatory-generic-specializer",
+     "Mandatory Generic Function Specialization on Static Types")
 PASS(GenericSpecializer, "generic-specializer",
-     "Specialization of generic functions by static types")
+     "Generic Function Specialization on Static Types")
+PASS(ExistentialSpecializer, "existential-specializer",
+     "Existential Specializer")
+PASS(SILSkippingChecker, "check-sil-skipping",
+     "Utility pass to ensure -experimental-skip-*-function-bodies skip "
+     "SIL generation of not-to-be-serialized functions entirely")
 PASS(GlobalOpt, "global-opt",
-     "Global variable optimizations")
+     "SIL Global Optimization")
 PASS(GlobalPropertyOpt, "global-property-opt",
-     "Optimize properties")
+     "Global Property Optimization")
+PASS(MandatoryARCOpts, "mandatory-arc-opts",
+     "Mandatory ARC Optimization")
 PASS(HighLevelCSE, "high-level-cse",
-     "Common subexpression elimination on High-level SIL")
+     "Common Subexpression Elimination on High-Level SIL")
 PASS(HighLevelLICM, "high-level-licm",
-     "High Level Loop invariant code motion")
+     "Loop Invariant Code Motion in High-Level SIL")
 PASS(IVInfoPrinter, "iv-info-printer",
-     "Display induction variable information")
-PASS(InOutDeshadowing, "inout-deshadow",
-     "Remove inout argument shadow variables")
+     "Print Induction Variable Information for Testing")
+PASS(LowerHopToActor, "lower-hop-to-actor",
+     "Lower hop_to_executor instructions with actor operands")
+PASS(OptimizeHopToExecutor, "optimize-hop-to-executor",
+     "Optimize hop_to_executor instructions for actor isolated code")
 PASS(InstCount, "inst-count",
-     "Count all instructions in the module using llvm Statistics")
-PASS(JumpThreadSimplifyCFG, "simplify-cfg",
-     "Clean up the CFG of SIL functions")
+     "Record SIL Instruction, Block, and Function Counts as LLVM Statistics")
+PASS(JumpThreadSimplifyCFG, "jumpthread-simplify-cfg",
+     "Simplify CFG via Jump Threading")
 PASS(LetPropertiesOpt, "let-properties-opt",
-     "SIL let properties optimization")
+     "Let Property Optimization")
 PASS(LICM, "licm",
-     "Loop invariant code motion")
+     "Loop Invariant Code Motion")
 PASS(LateCodeMotion, "late-codemotion",
-     "Code motion with release hoisting")
+     "Late Code Motion with Release Hoisting")
+PASS(LateDeadFunctionAndGlobalElimination, "late-deadfuncelim",
+     "Late Dead Function and Global Elimination")
 PASS(LateInliner, "late-inline",
-     "Run the late inliner")
+     "Late Function Inlining")
 PASS(LoopCanonicalizer, "loop-canonicalizer",
-     "Canonicalize loops")
+     "Loop Canonicalization")
 PASS(LoopInfoPrinter, "loop-info-printer",
-     "Display loop information")
+     "Print Loop Information for Testing")
 PASS(LoopRegionViewText, "loop-region-view-text",
-     "Construct the loop region data structure and dump its contents as text")
+     "Print Loop Region Information for Testing")
 PASS(LoopRegionViewCFG, "loop-region-view-cfg",
-     "Construct the loop region data structure and dump its contents as a pdf cfg")
+     "View Loop Region CFG")
 PASS(LoopRotate, "loop-rotate",
-     "Rotate loops")
+     "Loop Rotation")
 PASS(LoopUnroll, "loop-unroll",
-     "Unroll loops")
+     "Loop Unrolling")
 PASS(LowerAggregateInstrs, "lower-aggregate-instrs",
-     "Lower aggregate instructions to scalar instructions")
+     "Lower Aggregate SIL Instructions to Multiple Scalar Operations")
 PASS(MandatoryInlining, "mandatory-inlining",
-     "Inline transparent functions")
+     "Mandatory Inlining of Transparent Functions")
 PASS(Mem2Reg, "mem2reg",
-     "Promote stack allocations to SSA values")
+     "Memory to SSA Value Conversion to Remove Stack Allocation")
 PASS(MemBehaviorDumper, "mem-behavior-dump",
-     "Dump MemBehavior results from alias analysis for all instruction pairs")
+     "Print SIL Instruction MemBehavior from Alias Analysis over all Pairs")
 PASS(LSLocationPrinter, "lslocation-dump",
-     "Dump LSLocation results from analyzing all accessed locations")
-PASS(MergeCondFails, "merge-cond_fails",
-     "Remove redundant overflow checks")
+     "Print Load-Store Location Results Covering all Accesses")
+SWIFT_FUNCTION_PASS_WITH_LEGACY(MergeCondFails, "merge-cond_fails",
+     "Merge SIL cond_fail to Eliminate Redundant Overflow Checks")
+PASS(MoveCondFailToPreds, "move-cond-fail-to-preds",
+     "Move SIL cond_fail by Hoisting Checks")
 PASS(NoReturnFolding, "noreturn-folding",
-     "Add 'unreachable' after noreturn calls")
+     "Prune Control Flow at No-Return Calls Using SIL unreachable")
+SWIFT_FUNCTION_PASS(ObjCBridgingOptimization, "objc-bridging-opt",
+     "Optimize ObjectiveC briging operations")
+PASS(ObjectOutliner, "object-outliner",
+     "Outlining of Global Objects")
+PASS(Outliner, "outliner",
+     "Function Outlining Optimization")
+PASS(OwnershipModelEliminator, "ownership-model-eliminator",
+     "Eliminate Ownership Annotation of SIL")
+PASS(ModulePrinter, "module-printer",
+     "Print the module")
+PASS(NestedSemanticFunctionCheck, "nested-semantic-function-check",
+     "Diagnose improperly nested '@_semantics' functions")
+PASS(NonTransparentFunctionOwnershipModelEliminator,
+     "non-transparent-func-ownership-model-eliminator",
+     "Eliminate Ownership Annotations from non-transparent SIL Functions")
 PASS(RCIdentityDumper, "rc-id-dumper",
-     "Dump the RCIdentity of all values in a function")
-// TODO: It makes no sense to have early inliner, late inliner, and
-// perf inliner in terms of names.
+     "Print Reference Count Identities")
+PASS(AlwaysInlineInliner, "always-inline",
+     "Inline always inline functions")
 PASS(PerfInliner, "inline",
-     "Inline functions which are determined to be less than a pre-set cost")
+     "Performance Function Inlining")
 PASS(PerformanceConstantPropagation, "performance-constant-propagation",
-     "Propagate constants and do not emit diagnostics")
-PASS(PredictableMemoryOptimizations, "predictable-memopt",
-     "Predictable early memory optimizations")
-PASS(ReleaseDevirtualizer, "release-devirtualizer",
-     "Devirtualize release-instructions")
-PASS(RemovePins, "remove-pins",
-     "Remove pin/unpin pairs")
+     "Constant Propagation for Performance without Diagnostics")
+PASS(PerformanceDiagnostics, "performance-diagnostics",
+     "Constant Propagation for Performance without Diagnostics")
+PASS(PredictableMemoryAccessOptimizations, "predictable-memaccess-opts",
+     "Predictable Memory Access Optimizations for Diagnostics")
+PASS(PredictableDeadAllocationElimination, "predictable-deadalloc-elim",
+     "Eliminate dead temporary allocations after diagnostics")
+PASS(RedundantPhiElimination, "redundant-phi-elimination",
+     "Redundant Phi Block Argument Elimination")
+PASS(PhiExpansion, "phi-expansion",
+     "Replace Phi arguments by their only used field")
+SWIFT_FUNCTION_PASS_WITH_LEGACY(ReleaseDevirtualizer, "release-devirtualizer",
+     "SIL release Devirtualization")
+PASS(RetainSinking, "retain-sinking",
+     "SIL retain Sinking")
+PASS(ReleaseHoisting, "release-hoisting",
+     "SIL release Hoisting")
+PASS(LateReleaseHoisting, "late-release-hoisting",
+     "Late SIL release Hoisting Preserving Epilogues")
+PASS(TargetConstantFolding, "target-constant-folding",
+     "Target specific constant folding")
+IRGEN_PASS(LoadableByAddress, "loadable-address",
+     "SIL Large Loadable type by-address lowering.")
+PASS(MandatorySILLinker, "mandatory-linker",
+     "Deserialize all referenced SIL functions that are shared or transparent")
+PASS(PerformanceSILLinker, "performance-linker",
+     "Deserialize all referenced SIL functions")
+PASS(RawSILInstLowering, "raw-sil-inst-lowering",
+     "Lower all raw SIL instructions to canonical equivalents.")
+PASS(TempLValueOpt, "temp-lvalue-opt",
+     "Remove short-lived immutable temporary l-values")
+PASS(TempRValueOpt, "temp-rvalue-opt",
+     "Remove short-lived immutable temporary copies")
 PASS(SideEffectsDumper, "side-effects-dump",
-     "Dumps the results of side-effect analysis for all functions")
-PASS(SILCleanup, "cleanup",
+     "Print Side-Effect Information for all Functions")
+PASS(IRGenPrepare, "irgen-prepare",
      "Cleanup SIL in preparation for IRGen")
+PASS(SILGenCleanup, "silgen-cleanup",
+     "Cleanup SIL in preparation for diagnostics")
 PASS(SILCombine, "sil-combine",
-     "Perform small peepholes and combine operations")
+     "Combine SIL Instructions via Peephole Optimization")
 PASS(SILDebugInfoGenerator, "sil-debuginfo-gen",
-     "Write a SIL file for debugging")
-PASS(SILLinker, "linker",
-     "Link in all of the serialized SIL referenced in the module")
+     "Generate Debug Information with Source Locations into Textual SIL")
+PASS(EarlySROA, "early-sroa",
+     "Scalar Replacement of Aggregate Stack Objects on high-level SIL")
+SWIFT_FUNCTION_PASS(RunUnitTests, "run-unit-tests",
+     "Runs the compiler internal unit tests")
+SWIFT_FUNCTION_PASS(SILPrinter, "sil-printer",
+     "Test pass which prints the SIL of a function")
 PASS(SROA, "sroa",
-     "SIL scalar replacement of aggregates")
+     "Scalar Replacement of Aggregate Stack Objects")
 PASS(SROABBArgs, "sroa-bb-args",
-     "SIL scalar replacement of aggregates of bb arguments")
+     "Scalar Replacement of Aggregate SIL Block Arguments")
 PASS(SimplifyBBArgs, "simplify-bb-args",
-     "Simplify basic block arguments")
-// TODO: What should this be called. We are just following what was previously in SILOpt.
-PASS(SimplifyCFG, "normal-simplify-cfg",
-     "Clean up the CFG of SIL functions")
+     "SIL Block Argument Simplification")
+PASS(SimplifyCFG, "simplify-cfg",
+     "SIL CFG Simplification")
 PASS(SpeculativeDevirtualization, "specdevirt",
-     "Speculate targets of virtual calls")
+     "Speculative Devirtualization via Guarded Calls")
 PASS(SplitAllCriticalEdges, "split-critical-edges",
-     "Split all critical edges")
+     "Split all Critical Edges in the SIL CFG")
 PASS(SplitNonCondBrCriticalEdges, "split-non-cond_br-critical-edges",
-     "Split all critical edges that do not involve cond_br")
-PASS(StackPromotion, "stack-promotion",
-     "Promote allocated objects on the stack")
+     "Split all Critical Edges not from SIL cond_br")
+SWIFT_FUNCTION_PASS(StackPromotion, "stack-promotion",
+     "Stack Promotion of Class Objects")
 PASS(StripDebugInfo, "strip-debug-info",
-     "Strip debug info")
-PASS(SwiftArrayOpts, "array-specialize",
-     "Specialize arrays")
+     "Strip Debug Information")
+PASS(StringOptimization, "string-optimization",
+     "Optimization for String operations")
+PASS(SwiftArrayPropertyOpt, "array-property-opt",
+     "Loop Specialization for Array Properties")
 PASS(UsePrespecialized, "use-prespecialized",
-     "Use pre-specialized functions")
-PASS_RANGE(AllPasses, AADumper, UsePrespecialized)
+     "Use Pre-Specialized Functions")
+PASS(OwnershipDumper, "ownership-dumper",
+     "Print Ownership information for Testing")
+PASS(OwnershipVerifierTextualErrorDumper, "ownership-verifier-textual-error-dumper",
+     "Run ownership verification on all functions, emitting FileCheck-able textual errors instead of asserting")
+PASS(SemanticARCOpts, "semantic-arc-opts",
+     "Semantic ARC Optimization")
+PASS(SimplifyUnreachableContainingBlocks, "simplify-unreachable-containing-blocks",
+     "Utility pass. Removes all non-term insts from blocks with unreachable terms")
+PASS(SerializeSILPass, "serialize-sil",
+     "Utility pass. Serializes the current SILModule")
+PASS(YieldOnceCheck, "yield-once-check",
+    "Check correct usage of yields in yield-once coroutines")
+PASS(OSLogOptimization, "os-log-optimization", "Optimize os log calls")
+PASS(ForEachLoopUnroll, "for-each-loop-unroll",
+     "Unroll forEach loops over array literals")
+PASS(MandatoryCombine, "mandatory-combine",
+    "Perform mandatory peephole combines")
+PASS(OptimizedMandatoryCombine, "optimized-mandatory-combine",
+    "Perform -O level mandatory peephole combines")
+PASS(BugReducerTester, "bug-reducer-tester",
+     "sil-bug-reducer Tool Testing by Asserting on a Sentinel Function")
+PASS(AssemblyVisionRemarkGenerator, "assembly-vision-remark-generator",
+     "Emit assembly vision remarks that provide source level guidance of where runtime calls ended up")
+PASS(MoveOnlyObjectChecker, "sil-move-only-object-checker",
+     "Pass that enforces move only invariants on raw SIL for objects")
+PASS(MoveKillsCopyableValuesChecker, "sil-move-kills-copyable-values-checker",
+     "Pass that checks that any copyable (non-move only) value that is passed "
+     "to _move do not have any uses later than the _move")
+PASS(TrivialMoveOnlyTypeEliminator, "sil-trivial-move-only-type-eliminator",
+     "Pass that rewrites SIL to remove move only types from values of trivial type")
+PASS(MoveOnlyTypeEliminator, "sil-move-only-type-eliminator",
+     "Pass that rewrites SIL to remove move only types from all values")
+PASS(LexicalLifetimeEliminator, "sil-lexical-lifetime-eliminator",
+     "Pass that removes lexical lifetime markers from borrows and alloc stack")
+PASS(MoveKillsCopyableAddressesChecker, "sil-move-kills-copyable-addresses-checker",
+     "Pass that checks that any copyable (non-move only) address that is passed "
+     "to _move do not have any uses later than the _move")
+PASS(MoveFunctionCanonicalization, "sil-move-function-canon",
+     "Pass that canonicalizes certain parts of the IR before we perform move "
+     "function checking.")
+PASS(DebugInfoCanonicalizer, "sil-onone-debuginfo-canonicalizer",
+     "Canonicalize debug info at -Onone by propagating debug info into coroutine funclets")
+PASS(PartialApplySimplification, "partial-apply-simplification",
+     "Transform partial_apply instructions into explicit closure box constructions")
+PASS(MovedAsyncVarDebugInfoPropagator, "sil-moved-async-var-dbginfo-propagator",
+     "Propagate debug info from moved async vars after coroutine funclet boundaries")
+PASS(PruneVTables, "prune-vtables",
+     "Mark class methods that do not require vtable dispatch")
+PASS_RANGE(AllPasses, AADumper, PruneVTables)
 
+SWIFT_INSTRUCTION_PASS(BeginCOWMutationInst, "simplify-begin_cow_mutation")
+SWIFT_INSTRUCTION_PASS_WITH_LEGACY(GlobalValueInst, "simplify-global_value")
+SWIFT_INSTRUCTION_PASS_WITH_LEGACY(StrongRetainInst, "simplify-strong_retain")
+SWIFT_INSTRUCTION_PASS_WITH_LEGACY(StrongReleaseInst, "simplify-strong_release")
+
+#undef IRGEN_PASS
+#undef SWIFT_FUNCTION_PASS
+#undef SWIFT_FUNCTION_PASS_WITH_LEGACY
+#undef SWIFT_INSTRUCTION_PASS
+#undef SWIFT_INSTRUCTION_PASS_WITH_LEGACY
 #undef PASS
 #undef PASS_RANGE

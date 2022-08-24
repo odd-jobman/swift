@@ -1,7 +1,8 @@
-// RUN: %target-run-simple-swift | FileCheck %s
+// RUN: %target-run-simple-swift | %FileCheck %s
 // REQUIRES: executable_test
 
 // REQUIRES: objc_interop
+// REQUIRES: rdar80079617
 
 import Foundation
 

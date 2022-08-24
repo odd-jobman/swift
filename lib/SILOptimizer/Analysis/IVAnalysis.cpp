@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,8 +19,12 @@ using namespace swift;
 using namespace swift::PatternMatch;
 
 #if !defined(NDEBUG)
-static bool inSCC(ValueBase *Value, IVInfo::SCCType &SCC) {
-  return std::find(SCC.begin(), SCC.end(), Value) != SCC.end();
+static bool inSCC(ValueBase *value, IVInfo::SCCType &SCC) {
+  for (SILNode *node : SCC) {
+    if (node == value)
+      return true;
+  }
+  return false;
 }
 #endif
 
@@ -48,9 +52,11 @@ SILArgument *IVInfo::isInductionSequence(SCCType &SCC) {
       continue;
     }
 
+    // TODO: MultiValueInstruction
+
     auto *I = cast<SILInstruction>(SCC[i]);
     switch (I->getKind()) {
-    case ValueKind::BuiltinInst: {
+    case SILInstructionKind::BuiltinInst: {
       if (FoundBuiltin)
         return nullptr;
 
@@ -69,7 +75,7 @@ SILArgument *IVInfo::isInductionSequence(SCCType &SCC) {
       break;
     }
 
-    case ValueKind::TupleExtractInst: {
+    case SILInstructionKind::TupleExtractInst: {
       assert(inSCC(cast<TupleExtractInst>(I)->getOperand(), SCC) &&
              "TupleExtract operand not an induction var");
       break;
@@ -93,6 +99,8 @@ void IVInfo::visit(SCCType &SCC) {
   if (!(IV = isInductionSequence(SCC)))
     return;
 
-  for (auto V : SCC)
-    InductionVariableMap[V] = IV;
+  for (auto node : SCC) {
+    if (auto value = dyn_cast<ValueBase>(node))
+      InductionVariableMap[value] = IV;
+  }
 }

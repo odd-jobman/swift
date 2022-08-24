@@ -1,6 +1,7 @@
-// RUN: rm -rf %t  &&  mkdir %t
+// RUN: %empty-directory(%t)
 // RUN: %target-build-swift %s -o %t/a.out
-// RUN: %target-run %t/a.out | FileCheck %s
+// RUN: %target-codesign %t/a.out
+// RUN: %target-run %t/a.out | %FileCheck %s
 // REQUIRES: executable_test
 
 protocol MyPrintable {
@@ -54,7 +55,7 @@ enum State : MyPrintable {
   }
 }
 
-func printPair<A: MyPrintable, B: MyPrintable>(p: BufferedPair<A,B>) {
+func printPair<A: MyPrintable, B: MyPrintable>(_ p: BufferedPair<A,B>) {
   print("\(p.front) ", terminator: "")
   p.first.myPrint()
   print(" ", terminator: "")
@@ -78,7 +79,7 @@ class AwkwardTriple<V, W, X> : BufferedPair<V, W> {
 
 func printTriple
   <D: MyPrintable, E: MyPrintable, F: MyPrintable>
-  (p: AwkwardTriple<D, E, F>)
+  (_ p: AwkwardTriple<D, E, F>)
 {
   print("\(p.front) ", terminator: "")
   p.first.myPrint()
@@ -108,7 +109,7 @@ class FourthWheel<P, Q, R, S> : AwkwardTriple<P, Q, R> {
 
 func printQuad
   <G: MyPrintable, H: MyPrintable, I: MyPrintable, J: MyPrintable>
-  (p: FourthWheel<G, H, I, J>)
+  (_ p: FourthWheel<G, H, I, J>)
 {
   print("\(p.front) ", terminator: "")
   p.first.myPrint()
@@ -153,11 +154,11 @@ class SemiConcreteTriple<O> : ConcretePair {
   }
 }
 
-func printConcretePair(p: ConcretePair) {
+func printConcretePair(_ p: ConcretePair) {
   print("\(p.first) \(p.second)")
 }
 
-func printSemiTriple<O : MyPrintable>(p: SemiConcreteTriple<O>) {
+func printSemiTriple<O : MyPrintable>(_ p: SemiConcreteTriple<O>) {
   print("\(p.first) \(p.second) ", terminator: "")
   p.third.myPrint()
   print("")
@@ -183,10 +184,16 @@ class MoreConcreteQuadruple : SemiConcreteTriple<State> {
   }
 }
 
-var u = MoreConcreteQuadruple(10, 17, State.CA, "Hella")
+// This check triggers SR-815 (rdar://problem/25318716) on macOS 10.9 and iOS 7.
+// Disable it for now when testing on those versions.
+if #available(macOS 10.10, iOS 8, *) {
+  var u = MoreConcreteQuadruple(10, 17, State.CA, "Hella")
 
-// CHECK: 10 17
-printConcretePair(u)
+  // CHECK: 10 17
+  printConcretePair(u)
+} else {
+  print("10 17") // Hack to satisfy FileCheck.
+}
 
 class RootGenericFixedLayout<T> {
   let a: [T]
@@ -198,7 +205,7 @@ class RootGenericFixedLayout<T> {
   }
 }
 
-func checkRootGenericFixedLayout<T>(r: RootGenericFixedLayout<T>) {
+func checkRootGenericFixedLayout<T>(_ r: RootGenericFixedLayout<T>) {
   print(r.a)
   print(r.b)
 }
@@ -220,7 +227,7 @@ class GenericInheritsGenericFixedLayout<T> : RootGenericFixedLayout<T> {
 
 let gg = GenericInheritsGenericFixedLayout<Int>(a: [1, 2, 3], b: 4, c: 5)
 
-func checkGenericInheritsGenericFixedLayout<T>(g: GenericInheritsGenericFixedLayout<T>) {
+func checkGenericInheritsGenericFixedLayout<T>(_ g: GenericInheritsGenericFixedLayout<T>) {
   print(g.a)
   print(g.b)
   print(g.c)

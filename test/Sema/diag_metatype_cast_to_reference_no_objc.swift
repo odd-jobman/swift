@@ -1,8 +1,8 @@
-// RUN: %target-swift-frontend -disable-objc-interop -parse %s -verify
+// RUN: %target-swift-frontend -disable-objc-interop -typecheck %s -verify
 
 class C {}
 
 func test(c: AnyClass) {
-  let _: AnyObject = c // expected-error {{value of type 'AnyClass' (aka 'AnyObject.Type') does not conform to specified type 'AnyObject'}}
-  let _: AnyObject = C.self // expected-error {{value of type 'C.Type' does not conform to specified type 'AnyObject'}}
+  let _: AnyObject = c // expected-error {{value of type 'AnyClass' (aka 'any AnyObject.Type') expected to be instance of class or class-constrained type}}
+  let _: AnyObject = C.self // expected-error {{value of type 'C.Type' expected to be instance of class or class-constrained type}}
 }

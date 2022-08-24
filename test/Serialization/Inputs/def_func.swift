@@ -2,7 +2,7 @@ public func getZero() -> Int {
   return 0
 }
 
-public func getInput(x x: Int) -> Int {
+public func getInput(x: Int) -> Int {
   return x
 }
 
@@ -12,29 +12,29 @@ public func getSecond(_: Int, y: Int) -> Int {
 
 public func useNested(_: (x: Int, y: Int), n: Int) {}
 
-public func variadic(x x: Double, _ y: Int...) {}
-public func variadic2(y: Int..., x: Double) {}
+public func variadic(x: Double, _ y: Int...) {}
+public func variadic2(_ y: Int..., x: Double) {}
 
-public func slice(x x: [Int]) {}
-public func optional(x x: Int?) {}
+public func slice(x: [Int]) {}
+public func optional(x: Int?) {}
 
-public func overloaded(x x: Int) {}
-public func overloaded(x x: Bool) {}
+public func overloaded(x: Int) {}
+public func overloaded(x: Bool) {}
 
 // Generic functions.
-public func makePair<A, B>(a a: A, b: B) -> (A, B) {
+public func makePair<A, B>(a: A, b: B) -> (A, B) {
   return (a, b)
 }
 
-public func different<T : Equatable>(a a: T, b: T) -> Bool {
+public func different<T : Equatable>(a: T, b: T) -> Bool {
   return a != b
 }
 
-public func different2<T where T : Equatable>(a a: T, b: T) -> Bool {
+public func different2<T>(a: T, b: T) -> Bool where T : Equatable {
   return a != b
 }
 
-public func selectorFunc1(a a: Int, b x: Int) {}
+public func selectorFunc1(a: Int, b x: Int) {}
 
 public protocol Wrapped {
   associatedtype Value : Equatable
@@ -45,35 +45,23 @@ public protocol Wrapped {
 
 public func differentWrapped<
   T : Wrapped, U : Wrapped
-  where
-  T.Value == U.Value
->(a a: T, b: U) -> Bool {
+>(a: T, b: U) -> Bool
+  where T.Value == U.Value
+{
   return a.getValue() != b.getValue()
 }
 
-@noreturn @_silgen_name("exit") public func exit () -> ()
+@_silgen_name("exit") public func exit () -> Never
 
-@noreturn public func testNoReturnAttr() -> () { exit() }
-@noreturn public func testNoReturnAttrPoly<T>(x x: T) -> () { exit() }
+public func testNoReturnAttr() -> Never { exit() }
+public func testNoReturnAttrPoly<T>(x: T) -> Never { exit() }
 
 
 @_silgen_name("primitive") public func primitive()
 
 public protocol EqualOperator {
-  func ==(x: Self, y: Self) -> Bool
+  static func ==(x: Self, y: Self) -> Bool
 }
 
 public func throws1() throws {}
-public func throws2<T>(t: T) throws -> T { return t }
-
-@warn_unused_result(message="you might want to keep it")
-public func mineGold() -> Int { return 1 }
-
-public struct Foo {
-  public init() { }
-
-  @warn_unused_result(mutable_variant="reverseInPlace")
-  public func reverse() -> Foo { return self }
-
-  public mutating func reverseInPlace() { }
-}
+public func throws2<T>(_ t: T) throws -> T { return t }

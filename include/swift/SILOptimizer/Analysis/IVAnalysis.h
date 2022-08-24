@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,8 +25,8 @@ namespace swift {
 
 class IVInfo : public SCCVisitor<IVInfo> {
 public:
-  typedef llvm::SmallVectorImpl<ValueBase *> SCCType;
-  friend class SCCVisitor;
+  typedef llvm::SmallVectorImpl<SILNode *> SCCType;
+  friend SCCVisitor;
 
 public:
 
@@ -82,16 +82,16 @@ private:
 class IVAnalysis final : public FunctionAnalysisBase<IVInfo> {
 public:
   IVAnalysis(SILModule *)
-      : FunctionAnalysisBase<IVInfo>(AnalysisKind::InductionVariable) {}
+      : FunctionAnalysisBase<IVInfo>(SILAnalysisKind::InductionVariable) {}
   IVAnalysis(const IVAnalysis &) = delete;
   IVAnalysis &operator=(const IVAnalysis &) = delete;
 
   static bool classof(const SILAnalysis *S) {
-    return S->getKind() == AnalysisKind::InductionVariable;
+    return S->getKind() == SILAnalysisKind::InductionVariable;
   }
 
-  IVInfo *newFunctionAnalysis(SILFunction *F) override {
-    return new IVInfo(*F);
+  std::unique_ptr<IVInfo> newFunctionAnalysis(SILFunction *F) override {
+    return std::make_unique<IVInfo>(*F);
   }
 
   /// For now we always invalidate.

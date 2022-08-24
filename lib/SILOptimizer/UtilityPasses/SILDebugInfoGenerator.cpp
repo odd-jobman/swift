@@ -2,15 +2,15 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "gsil-gen"
+#define DEBUG_TYPE "sil-based-debuginfo-gen"
 #include "swift/AST/SILOptions.h"
 #include "swift/SIL/SILPrintContext.h"
 #include "swift/SIL/SILModule.h"
@@ -25,12 +25,12 @@ namespace {
 /// A pass for generating debug info on SIL level.
 ///
 /// This pass is only enabled if SILOptions::SILOutputFileNameForDebugging is
-/// set (i.e. if the -gsil command line option is specified).
+/// set (i.e. if the -sil-based-debuginfo frontend option is specified).
 /// The pass writes all SIL functions into one or multiple output files,
 /// depending on the size of the SIL. The names of the output files are derived
 /// from the main output file.
 ///
-///     output file name = <main-output-filename>.gsil_<n>.sil
+///     output file name = <main-output-filename>.sil_dbg_<n>.sil
 ///
 /// Where <n> is a consecutive number. The files are stored in the same
 /// same directory as the main output file.
@@ -51,7 +51,7 @@ class SILDebugInfoGenerator : public SILModuleTransform {
     uint64_t Pos = 0;
 
     void write_impl(const char *Ptr, size_t Size) override {
-      for (size_t Idx = 0; Idx < Size; Idx++) {
+      for (size_t Idx = 0; Idx < Size; ++Idx) {
         char c = Ptr[Idx];
         if (c == '\n')
         ++LineNum;
@@ -66,7 +66,7 @@ class SILDebugInfoGenerator : public SILModuleTransform {
       llvm::raw_ostream(/* unbuffered = */ true),
       Underlying(Underlying) { }
     
-    ~LineCountStream() {
+    ~LineCountStream() override {
       flush();
     }
   };
@@ -86,7 +86,7 @@ class SILDebugInfoGenerator : public SILModuleTransform {
 
     PrintContext(llvm::raw_ostream &OS) : SILPrintContext(LCS), LCS(OS) { }
 
-    virtual ~PrintContext() { }
+    ~PrintContext() override { }
   };
 
   void run() override {
@@ -95,7 +95,7 @@ class SILDebugInfoGenerator : public SILModuleTransform {
     if (FileBaseName.empty())
       return;
 
-    DEBUG(llvm::dbgs() << "** SILDebugInfoGenerator **\n");
+    LLVM_DEBUG(llvm::dbgs() << "** SILDebugInfoGenerator **\n");
 
     std::vector<SILFunction *> PrintedFuncs;
     int FileIdx = 0;
@@ -104,17 +104,17 @@ class SILDebugInfoGenerator : public SILModuleTransform {
 
       std::string FileName;
       llvm::raw_string_ostream NameOS(FileName);
-      NameOS << FileBaseName << ".gsil_" << FileIdx++ << ".sil";
+      NameOS << FileBaseName << ".sil_dbg_" << FileIdx++ << ".sil";
       NameOS.flush();
 
       char *FileNameBuf = (char *)M->allocate(FileName.size() + 1, 1);
       strcpy(FileNameBuf, FileName.c_str());
 
-      DEBUG(llvm::dbgs() << "Write debug SIL file " << FileName << '\n');
+      LLVM_DEBUG(llvm::dbgs() << "Write debug SIL file " << FileName << '\n');
 
       std::error_code EC;
       llvm::raw_fd_ostream OutFile(FileName, EC,
-                                   llvm::sys::fs::OpenFlags::F_None);
+                                   llvm::sys::fs::OpenFlags::OF_None);
       assert(!OutFile.has_error() && !EC && "Can't write SIL debug file");
 
       PrintContext Ctx(OutFile);
@@ -125,10 +125,10 @@ class SILDebugInfoGenerator : public SILModuleTransform {
         PrintedFuncs.push_back(F);
 
         // Set the debug scope for the function.
-        SILLocation::DebugLoc DL(Ctx.LCS.LineNum, 1, FileNameBuf);
-        RegularLocation Loc(DL);
+        RegularLocation Loc(SILLocation::FilenameAndLocation::alloc(
+             Ctx.LCS.LineNum, 1,FileNameBuf, *M));
         SILDebugScope *Scope = new (*M) SILDebugScope(Loc, F);
-        F->setDebugScope(Scope);
+        F->setSILDebugScope(Scope);
 
         // Ensure that the function is visible for debugging.
         F->setBare(IsNotBare);
@@ -141,16 +141,34 @@ class SILDebugInfoGenerator : public SILModuleTransform {
       for (SILFunction *F : PrintedFuncs) {
         const SILDebugScope *Scope = F->getDebugScope();
         for (SILBasicBlock &BB : *F) {
-          for (SILInstruction &I : BB) {
-            SILLocation Loc = I.getLoc();
-            SILLocation::DebugLoc DL(Ctx.LineNums[&I], 1, FileNameBuf);
-            assert(DL.Line && "no line set for instruction");
-            if (Loc.is<ReturnLocation>() || Loc.is<ImplicitReturnLocation>()) {
-              Loc.setDebugInfoLoc(DL);
-              I.setDebugLocation(SILDebugLocation(Loc, Scope));
+          for (auto iter = BB.begin(), end = BB.end(); iter != end;) {
+            SILInstruction *I = &*iter;
+            ++iter;
+            if (isa<DebugValueInst>(I)) {
+              // debug_value instructions are not needed anymore.
+              // Also, keeping them might trigger a verifier error.
+              I->eraseFromParent();
+              continue;
+            }
+            if (auto *ASI = dyn_cast<AllocStackInst>(I))
+              // Remove the debug variable scope enclosed
+              // within the SILDebugVariable such that we won't
+              // trigger a verification error.
+              ASI->setDebugVarScope(nullptr);
+
+            SILLocation Loc = I->getLoc();
+            auto *filePos = SILLocation::FilenameAndLocation::alloc(
+                Ctx.LineNums[I], 1, FileNameBuf, *M);
+            assert(filePos->line && "no line set for instruction");
+            if (Loc.is<ReturnLocation>()) {
+              I->setDebugLocation(
+                SILDebugLocation(ReturnLocation(filePos), Scope));
+            } else if (Loc.is<ImplicitReturnLocation>()) {
+              I->setDebugLocation(
+                SILDebugLocation(ImplicitReturnLocation(filePos), Scope));
             } else {
-              RegularLocation RLoc(DL);
-              I.setDebugLocation(SILDebugLocation(RLoc, Scope));
+              I->setDebugLocation(
+                SILDebugLocation(RegularLocation(filePos), Scope));
             }
           }
         }
@@ -159,7 +177,6 @@ class SILDebugInfoGenerator : public SILModuleTransform {
     }
   }
 
-  StringRef getName() override { return "SILDebugInfoGenerator"; }
 };
 
 } // end anonymous namespace

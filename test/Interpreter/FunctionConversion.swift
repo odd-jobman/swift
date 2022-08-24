@@ -2,28 +2,19 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 // RUN: %target-run-simple-swift
 // REQUIRES: executable_test
-// REQUIRES: rdar24874073
 //
-// XFAIL: interpret
 
 import StdlibUnittest
 
-// Also import modules which are used by StdlibUnittest internally. This
-// workaround is needed to link all required libraries in case we compile
-// StdlibUnittest with -sil-serialize-all.
-import SwiftPrivate
-#if _runtime(_ObjC)
-import ObjectiveC
-#endif
 
 var FunctionConversionTestSuite = TestSuite("FunctionConversion")
 
@@ -92,23 +83,19 @@ func a1(s: AddrOnly?) -> AddrOnly {
 }
 
 FunctionConversionTestSuite.test("Optional") {
-  let g11: Trivial -> Trivial? = t1
-  let g12: Trivial! -> Trivial? = t1
+  let g11: (Trivial) -> Trivial? = t1
+  let g12: (Trivial?) -> Trivial? = t1
 
   expectEqual(22, g11(Trivial(n: 11))?.n)
   expectEqual(24, g12(Trivial(n: 12))?.n)
 
-  let g21: Loadable? -> Loadable? = l1
-  let g22: Loadable! -> Loadable? = l1
+  let g21: (Loadable?) -> Loadable? = l1
 
   expectEqual(42, g21(Loadable(n: 21))?.n)
-  expectEqual(44, g22(Loadable(n: 22))?.n)
 
-  let g31: AddrOnly? -> AddrOnly? = a1
-  let g32: AddrOnly! -> AddrOnly? = a1
+  let g31: (AddrOnly?) -> AddrOnly? = a1
 
   expectEqual(62, g31(AddrOnly(n: 31))?.n)
-  expectEqual(64, g32(AddrOnly(n: 32))?.n)
 }
 
 func t2(s: Quilt) -> Trivial {
@@ -136,25 +123,25 @@ func a3(s: Quilt?) -> AddrOnly {
 }
 
 FunctionConversionTestSuite.test("Existential") {
-  let g11: Trivial -> Patchwork = t2
-  let g12: Trivial? -> Patchwork = t3
-  let g13: Patchwork -> Patchwork = t2
+  let g11: (Trivial) -> Patchwork = t2
+  let g12: (Trivial?) -> Patchwork = t3
+  let g13: (Patchwork) -> Patchwork = t2
 
   expectEqual(11, g11(Trivial(n: 11)).n)
   expectEqual(12, g12(Trivial(n: 12)).n)
   expectEqual(13, g13(Trivial(n: 13)).n)
 
-  let g21: Loadable -> Patchwork = l2
-  let g22: Loadable? -> Patchwork = l3
-  let g23: Patchwork -> Patchwork = l2
+  let g21: (Loadable) -> Patchwork = l2
+  let g22: (Loadable?) -> Patchwork = l3
+  let g23: (Patchwork) -> Patchwork = l2
 
   expectEqual(21, g21(Loadable(n: 21)).n)
   expectEqual(22, g22(Loadable(n: 22)).n)
   expectEqual(23, g23(Loadable(n: 23)).n)
 
-  let g31: AddrOnly -> Patchwork = a2
-  let g32: AddrOnly -> Patchwork = a3
-  let g33: Patchwork -> Patchwork = a2
+  let g31: (AddrOnly) -> Patchwork = a2
+  let g32: (AddrOnly) -> Patchwork = a3
+  let g33: (Patchwork) -> Patchwork = a2
 
   expectEqual(31, g31(AddrOnly(n: 31)).n)
   expectEqual(32, g32(AddrOnly(n: 32)).n)
@@ -166,10 +153,10 @@ func em(t: Quilt.Type?) -> Trivial.Type {
 }
 
 FunctionConversionTestSuite.test("ExistentialMetatype") {
-  let g1: Trivial.Type -> Patchwork.Type = em
-  let g2: Trivial.Type? -> Patchwork.Type = em
-  let g3: Patchwork.Type -> Patchwork.Type = em
-  let g4: Patchwork.Type -> Any = em
+  let g1: (Trivial.Type) -> Patchwork.Type = em
+  let g2: (Trivial.Type?) -> Patchwork.Type = em
+  let g3: (Patchwork.Type) -> Patchwork.Type = em
+  let g4: (Patchwork.Type) -> Any = em
 
   let result1 = g1(Trivial.self)
   let result2 = g2(Trivial.self)
@@ -191,8 +178,8 @@ func c2(p: Parent?) -> (Child, Trivial) {
 }
 
 FunctionConversionTestSuite.test("ClassUpcast") {
-  let g1: Child -> (Parent, Trivial?) = c1
-  let g2: Child -> (Parent?, Trivial?) = c2
+  let g1: (Child) -> (Parent, Trivial?) = c1
+  let g2: (Child) -> (Parent?, Trivial?) = c2
 
   expectEqual(g1(Child(n: 2)).0.n, 2)
   expectEqual(g2(Child(n: 4)).0!.n, 4)
@@ -207,9 +194,9 @@ func cm2(p: Parent.Type?) -> (Child.Type, Trivial) {
 }
 
 FunctionConversionTestSuite.test("ClassMetatypeUpcast") {
-  let g1: Child.Type -> (Parent.Type, Trivial?) = cm1
-  let g2: Child.Type -> (Parent.Type, Trivial?) = cm2
-  let g3: Child.Type? -> (Parent.Type?, Trivial?) = cm2
+  let g1: (Child.Type) -> (Parent.Type, Trivial?) = cm1
+  let g2: (Child.Type) -> (Parent.Type, Trivial?) = cm2
+  let g3: (Child.Type?) -> (Parent.Type?, Trivial?) = cm2
 
   let result1 = g1(Child.self)
   let result2 = g2(Child.self)
@@ -224,26 +211,30 @@ func sq(i: Int) -> Int {
   return i * i
 }
 
-func f1(f: Any) -> Int -> Int {
-  return f as! (Int -> Int)
+func f1(f: Any) -> (Int) -> Int {
+  return f as! ((Int) -> Int)
 }
 
 FunctionConversionTestSuite.test("FuncExistential") {
-  let g11: (Int -> Int) -> Any = f1
+  let g11: (@escaping (Int) -> Int) -> Any = f1
 
-  expectEqual(100, f1(g11(sq))(10))
+  // This used to be but a conversion from a noescape closure to Any is an
+  // oxymoron. The type checker should really forbid this.
+  // let g11: ((Int) -> Int) -> Any = f1
+
+  expectEqual(100, f1(f: g11(sq))(10))
 }
 
 func generic1<T>(t: Parent) -> (T, Trivial) {
   return (t as! T, Trivial(n: 0))
 }
 
-func generic2<T : Parent>(f: Parent -> (T, Trivial), t: T) -> Child -> (Parent, Trivial?) {
+func generic2<T : Parent>(f: @escaping (Parent) -> (T, Trivial), t: T) -> (Child) -> (Parent, Trivial?) {
   return f
 }
 
 FunctionConversionTestSuite.test("ClassArchetypeUpcast") {
-  let g11: Child -> (Parent, Trivial?) = generic2(generic1, t: Child(n: 10))
+  let g11: (Child) -> (Parent, Trivial?) = generic2(f: generic1, t: Child(n: 10))
   expectEqual(10, g11(Child(n: 10)).0.n)
 }
 
@@ -252,6 +243,85 @@ func doesNotThrow() {}
 FunctionConversionTestSuite.test("ThrowVariance") {
   let g: () throws -> () = doesNotThrow
   do { try print(g()) } catch {}
+}
+
+class A: Quilt {
+  var n: Int8 {
+    return 42
+  }
+}
+
+func rdar35702810_arr<T: Quilt>(type: T.Type, _ fn: ([T]?) -> Int8) -> Int8 {
+  let x: [T] = [A() as! T]
+  return fn(x)
+}
+
+func rdar35702810_map<T: Quilt>(type: T.Type, _ fn: ([String: T]) -> Int8) -> Int8 {
+  let x: [String: T] = ["ultimate question": A() as! T]
+  return fn(x)
+}
+
+FunctionConversionTestSuite.test("CollectionUpCastsInFuncParameters") {
+  let fn_arr: ([Quilt]?) -> Int8 = { v in v![0].n }
+  let fn_map: ([String: Quilt]) -> Int8 = { v in v["ultimate question"]!.n }
+
+  expectEqual(rdar35702810_arr(type: A.self, fn_arr), 42)
+  expectEqual(rdar35702810_map(type: A.self, fn_map), 42)
+}
+
+protocol X: Hashable {}
+class B: X {
+  var hashValue: Int { return 42 }
+  func hash(into hasher: inout Hasher) {}
+  static func == (lhs: B, rhs: B) -> Bool {
+    return true
+  }
+}
+
+func rdar35702810_arr_hashable<T: X>(type: T.Type, _ fn: ([T]?) -> Int) -> Int {
+  let x: [T] = [B() as! T]
+  return fn(x)
+}
+
+func rdar35702810_map_hashable<T: X>(type: T.Type, _ fn: ([String: T]) -> Int) -> Int {
+  let x: [String: T] = ["ultimate question": B() as! T]
+  return fn(x)
+}
+
+func rdar35702810_set_hashable<T: X>(type: T.Type, _ fn: (Set<T>) -> Int) -> Int {
+  let x: Set<T> = [B() as! T]
+  return fn(x)
+}
+
+FunctionConversionTestSuite.test("CollectionUpCastsWithHashableInFuncParameters") {
+  let fn_arr: ([AnyHashable]?) -> Int = { v in v![0].hashValue }
+  let fn_map: ([String: AnyHashable]) -> Int = { v in v["ultimate question"]!.hashValue }
+  let fn_set: (Set<AnyHashable>) -> Int = { v in v.first!.hashValue }
+
+  expectEqual(rdar35702810_arr_hashable(type: B.self, fn_arr), 42)
+  expectEqual(rdar35702810_map_hashable(type: B.self, fn_map), 42)
+  expectEqual(rdar35702810_set_hashable(type: B.self, fn_set), 42)
+}
+
+func takesTwo(_ fn: ((AnyObject, AnyObject)) -> (),
+              _ a: AnyObject,
+              _ b: AnyObject) {
+  fn((a, b))
+}
+
+func takesTwoGeneric<T>(_ fn: (T) -> (), _ a: T) {
+  fn(a)
+}
+
+FunctionConversionTestSuite.test("SE0110") {
+  func callback1(_: AnyObject, _: AnyObject) {}
+  func callback2(_: __owned AnyObject, _: __owned AnyObject) {}
+
+  takesTwo(callback1, LifetimeTracked(0), LifetimeTracked(0))
+  takesTwo(callback2, LifetimeTracked(0), LifetimeTracked(0))
+
+  takesTwoGeneric(callback1, (LifetimeTracked(0), LifetimeTracked(0)))
+  takesTwoGeneric(callback2, (LifetimeTracked(0), LifetimeTracked(0)))
 }
 
 runAllTests()

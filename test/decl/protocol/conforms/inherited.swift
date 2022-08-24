@@ -1,16 +1,23 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
-// Inheritable: method with 'Self' in its signature
+// Inheritable: method with 'Self' in contravariant position.
 protocol P1 {
-  func f1(x: Self?) -> Bool
+  func f1a(_ x: Self?) -> Bool
+
+  func f1b(_ x: [Self])
+
+  func f1c(_ x: [String : Self])
 }
 
-// Never inheritable: property with 'Self' in its signature.
+// Inheritable: property with 'Self' in its signature.
 protocol P2 {
-  var prop2: Self { get }
+  var prop2: Self { get set }
+}
+protocol P2a {
+  var prop2a: Self { get set }
 }
 
-// Never inheritable: subscript with 'Self' in its result type.
+// Inheritable: subscript with 'Self' in its result type.
 protocol P3 {
   subscript (i: Int) -> Self { get }
 }
@@ -23,6 +30,9 @@ protocol P4 {
 // Potentially inheritable: method returning Self
 protocol P5 {
   func f5() -> Self
+}
+protocol P5a {
+  func f5a() -> Self
 }
 
 // Inheritable: method returning Self
@@ -43,54 +53,79 @@ protocol P8 {
 
 // Inheritable: operator requirement.
 protocol P9 {
-  func ==(x: Self, y: Self) -> Bool 
+  static func ==(x: Self, y: Self) -> Bool 
 }
 
-// Never inheritable: method with 'Self' in a non-contravariant position.
+// Never inheritable: method with 'Self' in invariant position.
+struct G<T> {}
 protocol P10 {
-  func f10(arr: [Self])
+  func f10(_ arr: G<Self>)
+}
+protocol P10a {
+  func f10a(_ arr: G<Self>)
 }
 
 // Never inheritable: method with 'Self' in curried position.
 protocol P11 {
-  func f11() -> (x: Self) -> Int
+  func f11() -> (_ x: Self) -> Int
 }
 
 // Inheritable: parameter is a function returning 'Self'.
 protocol P12 {
-  func f12(s: () -> (Self, Self))
+  func f12(_ s: () -> (Self, Self))
 }
 
 // Never inheritable: parameter is a function accepting 'Self'.
 protocol P13 {
-  func f13(s: Self -> ())
+  func f13(_ s: (Self) -> ())
 }
 
 // Inheritable: parameter is a function accepting a function
 // accepting 'Self'.
 protocol P14 {
-  func f14(s: (Self -> ()) -> ())
+  func f14(_ s: ((Self) -> ()) -> ())
 }
 
 // Never inheritable: parameter is a function accepting a function
 // returning 'Self'.
+// Not Inheritable: method returning tuple containing 'Self'.
+// Not Inheritable: method returning array of 'Self'.
+// Not Inheritable: requirement with reference to covariant 'Self', if this
+// reference is not the uncurried type, stripped of any optionality.
 protocol P15 {
-  func f15(s: (() -> Self) -> ())
+  func f15(_ s: (() -> Self) -> ())
+  func f16() -> (Self, Self)
+  func f17() -> Array<Self>
+  func f18() -> (Never, Array<Self>)
+}
+extension P15 {
+  func f18() -> (Never, Array<Self>) {} // expected-note {{'f18()' declared here}}
 }
 
 // Class A conforms to everything that can be conformed to by a
 // non-final class.
 class A : P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 {
   // P1
-  func f1(x: A?) -> Bool { return true }
+  func f1a(_ x: A?) -> Bool { return true }
+
+  func f1b(_ x: [A]) { }
+
+  func f1c(_ x: [String : A]) { }
 
   // P2
-  var prop2: A { // expected-error{{protocol 'P2' requirement 'prop2' cannot be satisfied by a non-final class ('A') because it uses 'Self' in a non-parameter, non-result type position}}
-    return self
+  var prop2: A { // expected-error{{property 'prop2' in non-final class 'A' must specify type 'Self' to conform to protocol 'P2'}}
+    get { return self }
+    set {}
+  }
+
+  // P2a
+  var prop2a: A { // expected-note {{'prop2a' declared here}}
+    get { return self }
+    set {}
   }
 
   // P3
-  subscript (i: Int) -> A { // expected-error{{protocol 'P3' requirement 'subscript' cannot be satisfied by a non-final class ('A') because it uses 'Self' in a non-parameter, non-result type position}}
+  subscript (i: Int) -> A { // expected-error{{subscript 'subscript(_:)' in non-final class 'A' must return 'Self' to conform to protocol 'P3'}}
     get {
      return self
     }
@@ -104,7 +139,10 @@ class A : P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 {
   }
 
   // P5
-  func f5() -> A { return self } // expected-error{{method 'f5()' in non-final class 'A' must return `Self` to conform to protocol 'P5'}}
+  func f5() -> A { return self } // expected-error{{method 'f5()' in non-final class 'A' must return 'Self' to conform to protocol 'P5'}}
+
+  // P5a
+  func f5a() -> A { return self } // expected-note {{'f5a()' declared here}}
 
   // P6
   func f6() -> Self { return self }
@@ -116,11 +154,19 @@ class A : P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 {
   required init(int: Int) { }
 
   // P10
-  func f10(arr: [A]) { } // expected-error{{protocol 'P10' requirement 'f10' cannot be satisfied by a non-final class ('A') because it uses 'Self' in a non-parameter, non-result type position}}
+  func f10(_ arr: G<A>) { } // expected-error{{protocol 'P10' requirement 'f10' cannot be satisfied by a non-final class ('A') because it uses 'Self' in a non-parameter, non-result type position}}
+
+  // P10a
+  func f10a(_ arr: G<A>) { } // expected-note {{'f10a' declared here}}
 
   // P11
-  func f11() -> (x: A) -> Int { return { x in 5 } }
+  func f11() -> (_ x: A) -> Int { return { x in 5 } }
 }
+
+extension A: P2a, P5a, P10a {}
+// expected-error@-1 {{property 'prop2a' in non-final class 'A' must specify type 'Self' to conform to protocol 'P2a'}}
+// expected-error@-2 {{method 'f5a()' in non-final class 'A' must return 'Self' to conform to protocol 'P5a'}}
+// expected-error@-3 {{protocol 'P10a' requirement 'f10a' cannot be satisfied by a non-final class ('A') because it uses 'Self' in a non-parameter, non-result type position}}
 
 // P9
 func ==(x: A, y: A) -> Bool { return true }
@@ -130,14 +176,14 @@ class B : A {
   required init(int: Int) { }
 }
 
-func testB(b: B) {
-  var _: P1 = b // expected-error{{has Self or associated type requirements}}
-  var _: P4 = b // expected-error{{has Self or associated type requirements}}
-  var _: P5 = b
-  var _: P6 = b
-  var _: P7 = b // expected-error{{has Self or associated type requirements}}
-  var _: P8 = b // okay
-  var _: P9 = b // expected-error{{has Self or associated type requirements}}
+func testB(_ b: B) {
+  var _: any P1 = b
+  var _: any P4 = b
+  var _: any P5 = b
+  var _: any P6 = b
+  var _: any P7 = b
+  var _: any P8 = b
+  var _: any P9 = b
 }
 
 // Class A5 conforms to P5 in an inheritable manner.
@@ -149,7 +195,7 @@ class A5 : P5 {
 // Class B5 inherits A5; gets all of its conformances.
 class B5 : A5 { }
 
-func testB5(b5: B5) {
+func testB5(_ b5: B5) {
   var _: P5 = b5 // okay
 }
 
@@ -162,18 +208,23 @@ class B8 : A8 {
   required init(int: Int) { }
 }
 
-func testB8(b8: B8) {
+func testB8(_ b8: B8) {
   var _: P8 = b8 // okay
 }
 
 // Class A9 conforms to everything.
 final class A9 : P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 {
   // P1
-  func f1(x: A9?) -> Bool { return true }
+  func f1a(_ x: A9?) -> Bool { return true }
+
+  func f1b(_ x: [A9]) { }
+
+  func f1c(_ x: [String : A9]) { }
 
   // P2
   var prop2: A9 {
-    return self
+    get { return self }
+    set {}
   }
 
   // P3
@@ -203,28 +254,30 @@ final class A9 : P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 {
   required init(int: Int) { }
 
   // P10
-  func f10(arr: [A9]) { }
+  func f10(_ arr: G<A9>) { }
 
   // P11
-  func f11() -> (x: A9) -> Int { return { x in 5 } }
+  func f11() -> (_ x: A9) -> Int { return { x in 5 } }
 }
 
 // P9
 func ==(x: A9, y: A9) -> Bool { return true }
 
 class A12 : P12 {
-  func f12(s: () -> (A12, A12)) {}
+  func f12(_ s: () -> (A12, A12)) {}
 }
 
 class A13 : P13 {
-  func f13(s: A13 -> ()) {} // expected-error{{protocol 'P13' requirement 'f13' cannot be satisfied by a non-final class ('A13') because it uses 'Self' in a non-parameter, non-result type position}}
+  func f13(_ s: (A13) -> ()) {} // expected-error{{protocol 'P13' requirement 'f13' cannot be satisfied by a non-final class ('A13') because it uses 'Self' in a non-parameter, non-result type position}}
 }
 
 class A14 : P14 {
-  func f14(s: (A14 -> ()) -> ()) {}
+  func f14(_ s: ((A14) -> ()) -> ()) {}
 }
 
-class A15 : P15 {
-  func f15(s: (() -> A15) -> ()) {} // expected-error{{protocol 'P15' requirement 'f15' cannot be satisfied by a non-final class ('A15') because it uses 'Self' in a non-parameter, non-result type position}}
+class A15 : P15 { // expected-error{{protocol 'P15' requirement 'f18()' cannot be satisfied by a non-final class ('A15') because it uses 'Self' in a non-parameter, non-result type position}}
+  func f15(_ s: (() -> A15) -> ()) {} // expected-error{{protocol 'P15' requirement 'f15' cannot be satisfied by a non-final class ('A15') because it uses 'Self' in a non-parameter, non-result type position}}
+  func f16() -> (A15, A15) {} // expected-error{{protocol 'P15' requirement 'f16()' cannot be satisfied by a non-final class ('A15') because it uses 'Self' in a non-parameter, non-result type position}}
+  func f17() -> Array<A15> {} // expected-error{{protocol 'P15' requirement 'f17()' cannot be satisfied by a non-final class ('A15') because it uses 'Self' in a non-parameter, non-result type position}}
 }
 

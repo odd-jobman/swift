@@ -1,47 +1,68 @@
-set(swift_stdlib_unittest_platform_sources)
-set(swift_stdlib_unittest_module_depends
-  SwiftPrivate SwiftPrivatePthreadExtras SwiftPrivateLibcExtras)
-set(swift_stdlib_unittest_framework_depends)
-set(swift_stdlib_unittest_private_link_libraries)
+
 set(swift_stdlib_unittest_compile_flags
   "-Xfrontend" "-disable-objc-attr-requires-foundation-module")
-
-if(SWIFT_HOST_VARIANT MATCHES "${SWIFT_DARWIN_VARIANTS}")
-  list(APPEND swift_stdlib_unittest_platform_sources
-    GetOSVersion.mm)
-  list(APPEND swift_stdlib_unittest_module_depends
-    Darwin
-    Foundation)
-  list(APPEND swift_stdlib_unittest_framework_depends
-    Foundation)
-endif()
-if(SWIFT_HOST_VARIANT STREQUAL "linux" OR SWIFT_HOST_VARIANT STREQUAL "freebsd")
-  list(APPEND swift_stdlib_unittest_module_depends
-    Glibc)
-endif()
-if(SWIFT_SERIALIZE_STDLIB_UNITTEST)
-  list(APPEND swift_stdlib_unittest_compile_flags "-Xfrontend" "-sil-serialize-all")
+if (SWIFT_RUNTIME_ENABLE_LEAK_CHECKER)
+  list(APPEND swift_stdlib_unittest_compile_flags "-DSWIFT_RUNTIME_ENABLE_LEAK_CHECKER")
 endif()
 
-add_swift_library(swiftStdlibUnittest SHARED IS_STDLIB
+is_build_type_optimized("${SWIFT_STDLIB_BUILD_TYPE}" IS_BUILD_TYPE_OPTIMIZED)
+if (NOT IS_BUILD_TYPE_OPTIMIZED)
+  list(APPEND swift_stdlib_unittest_compile_flags "-DSWIFT_STDLIB_DEBUG")
+endif()
+
+if(SWIFT_ENABLE_REFLECTION)
+  list(APPEND swift_stdlib_unittest_compile_flags "-DSWIFT_ENABLE_REFLECTION")
+endif()
+
+if(SWIFT_STDLIB_STATIC_PRINT)
+  list(APPEND swift_stdlib_unittest_compile_flags "-D" "SWIFT_STDLIB_STATIC_PRINT")
+endif()
+
+set(swift_stdlib_unittest_link_libraries "")
+set(swift_stdlib_unittest_modules "")
+if (SWIFT_ENABLE_EXPERIMENTAL_CONCURRENCY)
+  list(APPEND swift_stdlib_unittest_link_libraries "swift_Concurrency")
+  list(APPEND swift_stdlib_unittest_modules "_Concurrency")
+endif()
+
+add_swift_target_library(swiftStdlibUnittest ${SWIFT_STDLIB_LIBRARY_BUILD_TYPES} IS_STDLIB
   # This file should be listed the first.  Module name is inferred from the
   # filename.
-  StdlibUnittest.swift.gyb
+  StdlibUnittest.swift
 
+  CheckStrideable.swift
+  InspectValue.cpp
+  InspectValue.swift
   InterceptTraps.cpp
   LifetimeTracked.swift
+  MinimalTypes.swift
   OpaqueIdentityFunctions.cpp
   OpaqueIdentityFunctions.swift
   RaceTest.swift
   Statistics.swift
   StdlibCoreExtras.swift
+  StringConvertible.swift
+  StringTestHelpers.swift
+  SymbolLookup.swift
   TestHelpers.swift
   TypeIndexed.swift
-  ${swift_stdlib_unittest_platform_sources}
 
-  PRIVATE_LINK_LIBRARIES ${swift_stdlib_unittest_private_link_libraries}
-  SWIFT_MODULE_DEPENDS ${swift_stdlib_unittest_module_depends}
-  SWIFT_COMPILE_FLAGS ${swift_stdlib_unittest_compile_flags}
-  FRAMEWORK_DEPENDS ${swift_stdlib_unittest_framework_depends}
-  INSTALL_IN_COMPONENT stdlib-experimental)
+  SWIFT_MODULE_DEPENDS SwiftPrivate SwiftPrivateThreadExtras SwiftPrivateLibcExtras ${swift_stdlib_unittest_modules}
+  SWIFT_MODULE_DEPENDS_IOS Darwin
+  SWIFT_MODULE_DEPENDS_OSX Darwin
+  SWIFT_MODULE_DEPENDS_TVOS Darwin
+  SWIFT_MODULE_DEPENDS_WATCHOS Darwin
+  SWIFT_MODULE_DEPENDS_FREESTANDING "${SWIFT_FREESTANDING_TEST_DEPENDENCIES}"
+  SWIFT_MODULE_DEPENDS_LINUX Glibc
+  SWIFT_MODULE_DEPENDS_FREEBSD Glibc
+  SWIFT_MODULE_DEPENDS_OPENBSD Glibc
+  SWIFT_MODULE_DEPENDS_CYGWIN Glibc
+  SWIFT_MODULE_DEPENDS_HAIKU Glibc
+  SWIFT_MODULE_DEPENDS_WINDOWS CRT WinSDK
+  C_COMPILE_FLAGS -I${SWIFT_SOURCE_DIR}/stdlib/include
+  SWIFT_COMPILE_FLAGS ${swift_stdlib_unittest_compile_flags} ${SWIFT_STANDARD_LIBRARY_SWIFT_FLAGS}
+  INSTALL_IN_COMPONENT stdlib-experimental
+  DARWIN_INSTALL_NAME_DIR "${SWIFT_DARWIN_STDLIB_PRIVATE_INSTALL_NAME_DIR}"
+  LINK_LIBRARIES ${swift_stdlib_unittest_link_libraries})
+set_source_files_properties(InspectValue.cpp PROPERTIES COMPILE_FLAGS -std=c++14)
 

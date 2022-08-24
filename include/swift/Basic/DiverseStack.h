@@ -2,25 +2,28 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
-//
-// This file defines a data structure for representing a stack of
-// variably-sized objects.  It is a requirement that the object type
-// be trivially movable, meaning that it has a trivial move
-// constructor and a trivial destructor.
-//
+///
+/// \file
+///
+/// This file defines a data structure for representing a stack of
+/// variably-sized objects.  It is a requirement that the object type
+/// be trivially movable, meaning that it has a trivial move
+/// constructor and a trivial destructor.
+///
 //===----------------------------------------------------------------------===//
 
-#ifndef SWIFT_IRGEN_DIVERSESTACK_H
-#define SWIFT_IRGEN_DIVERSESTACK_H
+#ifndef SWIFT_BASIC_DIVERSESTACK_H
+#define SWIFT_BASIC_DIVERSESTACK_H
 
 #include "swift/Basic/Malloc.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/PointerLikeTypeTraits.h"
 #include <cassert>
 #include <cstring>
@@ -115,6 +118,8 @@ public:
     bool isValid() const {
       return Depth != (std::size_t) -1;
     }
+
+    std::size_t getDepth() const { return Depth; }
 
     /// A helper class that wraps a stable_iterator as something that
     /// pretends to be a non-null pointer.
@@ -289,6 +294,15 @@ public:
     return stable_iterator(End - it.Ptr);
   } 
 
+  T &findAndAdvance(stable_iterator &i) {
+    auto unstable_i = find(i);
+    assert(unstable_i != end());
+    T &value = *unstable_i;
+    ++unstable_i;
+    i = stabilize(unstable_i);
+    return value;
+  }
+
   class const_iterator {
     const char *Ptr;
     friend class DiverseStackImpl;
@@ -356,6 +370,36 @@ public:
     assert(sizeof(U) == top().allocated_size());
     Begin += sizeof(U);
   }
+
+  /// Pop objects off of the stack until \p the object pointed to by stable_iter
+  /// is the top element of the stack.
+  void pop(stable_iterator stable_iter) {
+    iterator iter = find(stable_iter);
+    checkIterator(iter);
+#ifndef NDEBUG
+    while (Begin != iter.Ptr) {
+      pop();
+      checkIterator(iter);
+    }
+#else
+    Begin = iter.Ptr;
+#endif
+  }
+};
+
+/// A helper class for copying value off a DiverseStack.
+template <class T>
+class DiverseValueBuffer {
+  llvm::SmallVector<char, sizeof(T) + 10 * sizeof(void*)> data;
+
+public:
+  DiverseValueBuffer(const T &value) {
+    size_t size = value.allocated_size();
+    data.resize_for_overwrite(size);
+    memcpy(data.data(), reinterpret_cast<const void *>(&value), size);
+  }
+
+  T &getCopy() { return *reinterpret_cast<T *>(data.data()); }
 };
 
 } // end namespace swift
@@ -363,7 +407,7 @@ public:
 /// Allow stable_iterators to be put in things like TinyPtrVectors.
 namespace llvm {
   template <>
-  class PointerLikeTypeTraits<
+  struct PointerLikeTypeTraits<
                       swift::DiverseStackBase::stable_iterator::AsPointer> {
     using AsPointer = swift::DiverseStackBase::stable_iterator::AsPointer;
   public:
@@ -380,4 +424,4 @@ namespace llvm {
   };
 }
 
-#endif
+#endif // SWIFT_BASIC_DIVERSESTACK_H

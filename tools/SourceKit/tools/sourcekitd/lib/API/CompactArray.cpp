@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -43,8 +43,12 @@ void CompactArrayBuilderImpl::addImpl(StringRef Val) {
 }
 
 void CompactArrayBuilderImpl::addImpl(UIdent Val) {
-  sourcekitd_uid_t uid = SKDUIDFromUIdent(Val);
-  addScalar(uid, EntriesBuffer);
+  if (Val.isValid()) {
+    sourcekitd_uid_t uid = SKDUIDFromUIdent(Val);
+    addScalar(uid, EntriesBuffer);
+  } else {
+    addScalar(sourcekitd_uid_t(nullptr), EntriesBuffer);
+  }
 }
 
 void CompactArrayBuilderImpl::addImpl(Optional<llvm::StringRef> Val) {
@@ -66,26 +70,45 @@ unsigned CompactArrayBuilderImpl::getOffsetForString(StringRef Str) {
 }
 
 std::unique_ptr<llvm::MemoryBuffer>
-CompactArrayBuilderImpl::createBuffer() const {
-  size_t EntriesBufSize = EntriesBuffer.size();
-  std::unique_ptr<llvm::MemoryBuffer> Buf;
-  Buf = llvm::MemoryBuffer::getNewUninitMemBuffer(
-      sizeof(uint64_t) +
-      EntriesBufSize +
-      StringBuffer.size());
+CompactArrayBuilderImpl::createBuffer(CustomBufferKind Kind) const {
+  auto bodySize = sizeInBytes();
+  std::unique_ptr<llvm::WritableMemoryBuffer> Buf;
+  Buf = llvm::WritableMemoryBuffer::getNewUninitMemBuffer(
+      sizeof(uint64_t) + bodySize);
+  *reinterpret_cast<uint64_t*>(Buf->getBufferStart()) = (uint64_t)Kind;
+  copyInto(Buf->getBufferStart() + sizeof(uint64_t), bodySize);
+  return std::move(Buf);
+}
 
-  char *BufPtr = (char*)Buf->getBufferStart();
-  *reinterpret_cast<uint64_t*>(BufPtr) = EntriesBufSize;
-  BufPtr += sizeof(uint64_t);
+void CompactArrayBuilderImpl::appendTo(SmallVectorImpl<char> &Buf) const {
+  size_t OrigSize = Buf.size();
+  size_t NewSize = OrigSize + sizeInBytes();
+  Buf.resize(NewSize);
+  copyInto(Buf.data() + OrigSize, NewSize - OrigSize);
+}
+
+void CompactArrayBuilderImpl::copyInto(char *BufPtr, size_t Length) const {
+  uint64_t EntriesBufSize = EntriesBuffer.size();
+  assert(Length >= sizeInBytes());
+  memcpy(BufPtr, &EntriesBufSize, sizeof(EntriesBufSize));
+  BufPtr += sizeof(EntriesBufSize);
   memcpy(BufPtr, EntriesBuffer.data(), EntriesBufSize);
   BufPtr += EntriesBufSize;
   memcpy(BufPtr, StringBuffer.data(), StringBuffer.size());
+}
 
-  return Buf;
+unsigned CompactArrayBuilderImpl::copyInto(char *BufPtr) const {
+  size_t Length = sizeInBytes();
+  copyInto(BufPtr, Length);
+  return Length;
 }
 
 bool CompactArrayBuilderImpl::empty() const {
   return EntriesBuffer.empty();
+}
+
+size_t CompactArrayBuilderImpl::sizeInBytes() const {
+  return sizeof(uint64_t) + EntriesBuffer.size() + StringBuffer.size();
 }
 
 template <typename T>

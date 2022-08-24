@@ -8,21 +8,21 @@ The Swift Array Design
 
 .. raw:: html
 
-   <style>
-   tt {
-     background-color: #f2f2f2;
-   }
-   div.content ul > li {
-    background: none;
-    padding: 0 0 0 0.5em;
-    list-style-image: none;
-    list-style-type: disc;
+    <style>
+    tt {
+      background-color: #f2f2f2;
     }
-   a:link {
-       color: #AB6023;
-       font-weight: normal
-   }
-   </style>
+    div.content ul > li {
+      background: none;
+      padding: 0 0 0 0.5em;
+      list-style-image: none;
+      list-style-type: disc;
+    }
+    a:link {
+      color: #AB6023;
+      font-weight: normal
+    }
+    </style>
 
 Goals
 -----
@@ -53,14 +53,14 @@ Swift provides three generic array types, all of which have amortized
 O(1) growth.  In this document, statements about **ArrayType** apply
 to all three of the components.
 
-* ``ContiguousArray<Element>`` is the fastest and simplest of the three—use
+* ``ContiguousArray<Element>`` is the fastest and simplest of the three--use
   this when you need "C array" performance.  The elements of a
   ``ContiguousArray`` are always stored contiguously in memory.
 
   .. image:: ContiguousArray.png
 
 * ``Array<Element>`` is like ``ContiguousArray<Element>``, but optimized for
-  efficient conversions from Cocoa and back—when ``Element`` can be a class
+  efficient conversions from Cocoa and back--when ``Element`` can be a class
   type, ``Array<Element>`` can be backed by the (potentially non-contiguous)
   storage of an arbitrary ``NSArray`` rather than by a Swift
   ``ContiguousArray``.  ``Array<Element>`` also supports up- and downcasts
@@ -227,7 +227,7 @@ TODO: this section is outdated.
 
 When up-casting an ``[Derived]`` to ``[Base]``, a buffer of
 ``Derived`` object can simply be ``unsafeBitCast``\ 'ed to a buffer
-of elements of type ``Base``—as long as the resulting buffer is never
+of elements of type ``Base``--as long as the resulting buffer is never
 mutated.  For example, we cannot allow a ``Base`` element to be
 inserted in the buffer, because the buffer's destructor will destroy
 the elements with the (incorrect) static presumption that they have

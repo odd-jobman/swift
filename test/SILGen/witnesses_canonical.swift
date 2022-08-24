@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend -emit-silgen %s | FileCheck %s
+// RUN: %target-swift-emit-silgen %s | %FileCheck %s
 
 // rdar://problem/20714534 -- we need to canonicalize an associated type's
 // protocols when emitting witness method table for a conformance.
@@ -14,7 +14,7 @@ struct _S<T : _CDT> : CT {
 }
 
 extension _CDT {
-  final subscript(b: Int) -> _S<Self> {
+  subscript(b: Int) -> _S<Self> {
     return _S(a: self, b: b)
   }
 }
@@ -52,7 +52,7 @@ struct XQ3 : Q3 {
 }
 
 // CHECK: sil_witness_table hidden XQ3: Q3 module witnesses_canonical {
-// CHECK:  associated_type Assoc: XP
 // CHECK:  associated_type_protocol (Assoc: P1): XP: P1 module witnesses_canonical
 // CHECK:  associated_type_protocol (Assoc: P2): XP: P2 module witnesses_canonical
+// CHECK:  associated_type Assoc: XP
 // CHECK: }

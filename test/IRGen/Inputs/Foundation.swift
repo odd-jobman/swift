@@ -3,55 +3,23 @@
 
 @_exported import ObjectiveC
 
-// String/NSString bridging functions.
-@_silgen_name("swift_StringToNSString") internal
-func _convertStringToNSString(string: String) -> NSString
-
-@_silgen_name("swift_NSStringToString") internal
-func _convertNSStringToString(nsstring: NSString?) -> String
-
-@_silgen_name("swift_ArrayToNSArray") internal
-func _convertArrayToNSArray<T>(array: Array<T>) -> NSArray
-
-@_silgen_name("swift_NSArrayToArray") internal
-func _convertNSArrayToArray<T>(nsstring: NSArray?) -> Array<T>
-
-@_silgen_name("swift_DictionaryToNSDictionary") internal
-func _convertDictionaryToNSDictionary<K: Hashable, V>(array: Dictionary<K, V>) -> NSDictionary
-
-@_silgen_name("swift_NSDictionaryToDictionary") internal
-func _convertNSDictionaryToDictionary<K: Hashable, V>(nsstring: NSDictionary?) -> Dictionary<K, V>
-
-// NSSet bridging entry points
-func _convertSetToNSSet<T: Hashable>(s: Set<T>) -> NSSet {
-  return NSSet()
-}
-
-func _convertNSSetToSet<T: NSObject>(s: NSSet?) -> Set<T> {
-  return Set<T>()
-}
-
 extension String : _ObjectiveCBridgeable {
-  public static func _isBridgedToObjectiveC() -> Bool {
-    return true
-  }
-
   public func _bridgeToObjectiveC() -> NSString {
     return NSString()
   }
   public static func _forceBridgeFromObjectiveC(
-    x: NSString,
+    _ x: NSString,
     result: inout String?
   ) {
   }
   public static func _conditionallyBridgeFromObjectiveC(
-    x: NSString,
+    _ x: NSString,
     result: inout String?
   ) -> Bool {
     return true
   }
   public static func _unconditionallyBridgeFromObjectiveC(
-    x: NSString?
+    _ x: NSString?
   ) -> String {
     return String()
   }
@@ -62,23 +30,20 @@ extension Array : _ObjectiveCBridgeable {
     return NSArray()
   }
   public static func _forceBridgeFromObjectiveC(
-    x: NSArray,
+    _ x: NSArray,
     result: inout Array?
   ) {
   }
   public static func _conditionallyBridgeFromObjectiveC(
-    x: NSArray,
+    _ x: NSArray,
     result: inout Array?
   ) -> Bool {
     return true
   }
   public static func _unconditionallyBridgeFromObjectiveC(
-    x: NSArray?
+    _ x: NSArray?
   ) -> Array {
     return Array()
-  }
-  public static func _isBridgedToObjectiveC() -> Bool {
-    return Swift._isBridgedToObjectiveC(Element.self)
   }
 }
 
@@ -87,23 +52,20 @@ extension Dictionary : _ObjectiveCBridgeable {
     return NSDictionary()
   }
   public static func _forceBridgeFromObjectiveC(
-    x: NSDictionary,
+    _ x: NSDictionary,
   result: inout Dictionary?
   ) {
   }
   public static func _conditionallyBridgeFromObjectiveC(
-    x: NSDictionary,
+    _ x: NSDictionary,
     result: inout Dictionary?
   ) -> Bool {
     return true
   }
   public static func _unconditionallyBridgeFromObjectiveC(
-    x: NSDictionary?
+    _ x: NSDictionary?
   ) -> Dictionary {
     return Dictionary()
-  }
-  public static func _isBridgedToObjectiveC() -> Bool {
-    return Swift._isBridgedToObjectiveC(Key.self) && Swift._isBridgedToObjectiveC(Value.self)
   }
 }
 
@@ -112,31 +74,39 @@ extension Set : _ObjectiveCBridgeable {
     return NSSet()
   }
   public static func _forceBridgeFromObjectiveC(
-    x: NSSet,
+    _ x: NSSet,
     result: inout Set?
   ) {
   }
   public static func _conditionallyBridgeFromObjectiveC(
-    x: NSSet,
+    _ x: NSSet,
     result: inout Set?
   ) -> Bool {
     return true
   }
   public static func _unconditionallyBridgeFromObjectiveC(
-    x: NSSet?
+    _ x: NSSet?
   ) -> Set {
     return Set()
   }
-  public static func _isBridgedToObjectiveC() -> Bool {
-    return Swift._isBridgedToObjectiveC(Element.self)
-  }
 }
 
-extension NSError: ErrorProtocol {
+extension NSError: Error {
   public var _domain: String { return domain }
   public var _code: Int { return code }
 }
 
-public func _convertErrorProtocolToNSError(x: ErrorProtocol) -> NSError {
-  return x as NSError
+public enum _GenericObjCError : Error {
+  case nilError
+}
+
+public func _convertNSErrorToError(_ error: NSError?) -> Error {
+  if let error = error {
+    return error
+  }
+  return _GenericObjCError.nilError
+}
+
+public func _convertErrorToNSError(_ error: Error) -> NSError {
+  return error as NSError
 }

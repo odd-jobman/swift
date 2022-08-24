@@ -1,30 +1,5 @@
-
-
-// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=PATTERN_IS_1 > %t.types.txt
-// RUN: FileCheck %s -check-prefix=GLOBAL_NEGATIVE < %t.types.txt
-
-// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=PATTERN_IS_2 > %t.types.txt
-// RUN: FileCheck %s -check-prefix=GLOBAL_NEGATIVE < %t.types.txt
-
-// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=PATTERN_IS_3 > %t.types.txt
-// RUN: FileCheck %s -check-prefix=GLOBAL_NEGATIVE < %t.types.txt
-
-
-// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=PATTERN_IS_GENERIC_1 > %t.types.txt
-// RUN: FileCheck %s -check-prefix=GLOBAL_NEGATIVE < %t.types.txt
-// RUN: FileCheck %s -check-prefix=PATTERN_IS_GENERIC_1 < %t.types.txt
-
-// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=PATTERN_IS_GENERIC_2 > %t.types.txt
-// RUN: FileCheck %s -check-prefix=GLOBAL_NEGATIVE < %t.types.txt
-// RUN: FileCheck %s -check-prefix=PATTERN_IS_GENERIC_2 < %t.types.txt
-
-// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=AFTER_PATTERN_IS | FileCheck %s -check-prefix=AFTER_PATTERN_IS
-
-// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=MULTI_PATTERN_1 | FileCheck %s -check-prefix=MULTI_PATTERN_1
-// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=MULTI_PATTERN_2 | FileCheck %s -check-prefix=MULTI_PATTERN_2
-// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=MULTI_PATTERN_3 | FileCheck %s -check-prefix=MULTI_PATTERN_3
-// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=MULTI_PATTERN_4 | FileCheck %s -check-prefix=MULTI_PATTERN_4
-
+// RUN: %empty-directory(%t)
+// RUN: %target-swift-ide-test -batch-code-completion -source-filename %s -filecheck %raw-FileCheck -completion-output-dir %t
 
 //===--- Helper types that are used in this test
 
@@ -60,6 +35,14 @@ protocol BarProtocol {
 
 typealias FooTypealias = Int
 
+// GLOBAL: Begin completions
+// GLOBAL-DAG: fooObject
+// GLOBAL-DAG: fooFunc
+// GLOBAL-DAG: FooTypealias
+// GLOBAL-DAG: FooProtocol
+// GLOBAL-DAG: FooClass
+// GLOBAL: End completions
+
 // GLOBAL_NEGATIVE-NOT: fooObject
 // GLOBAL_NEGATIVE-NOT: fooFunc
 
@@ -67,12 +50,40 @@ typealias FooTypealias = Int
 //===--- Test that we don't try to suggest anything where pattern-atom is expected.
 //===---
 
-var #^PATTERN_ATOM_1^#
-var (#^PATTERN_ATOM_2^#
-var (a, #^PATTERN_ATOM_3^#
-var (a #^PATTERN_ATOM_4^#
-var ((#^PATTERN_ATOM_5^#
-var ((a, b), #^PATTERN_ATOM_6^#
+// NO_COMPLETIONS-NOT: Begin completions
+
+// Use do { } to reset the parser after broken syntax.
+do { var #^PATTERN_ATOM_1?check=NO_COMPLETIONS^# }
+do { var (#^PATTERN_ATOM_2?check=NO_COMPLETIONS^# }
+do {var (a, #^PATTERN_ATOM_3?check=NO_COMPLETIONS^# }
+do {var (a #^PATTERN_ATOM_4?check=NO_COMPLETIONS^# }
+do {var ((#^PATTERN_ATOM_5?check=NO_COMPLETIONS^# }
+do {var ((a, b), #^PATTERN_ATOM_6?check=NO_COMPLETIONS^# }
+do {guard var #^PATTERN_ATOM_7?check=NO_COMPLETIONS^# }
+do {guard var #^PATTERN_ATOM_8?check=NO_COMPLETIONS^# else { fatalError() } }
+do {guard let #^PATTERN_ATOM_9?check=NO_COMPLETIONS^# else { fatalError() } }
+do {guard let a = Optional(1), let #^PATTERN_ATOM_10?check=NO_COMPLETIONS^# else { fatalError() } }
+do {if let #^PATTERN_ATOM_11?check=NO_COMPLETIONS^# {} }
+do {if let a = Optional(1), let #^PATTERN_ATOM_12?check=NO_COMPLETIONS^# {} }
+do {if case #^PATTERN_IF_CASE_1?check=GLOBAL^# {} }
+do {if case let #^PATTERN_IF_CASE_2?check=NO_COMPLETIONS^# {} }
+
+func inFunc() {
+  do { var #^PATTERN_INFUNC_ATOM_1?check=NO_COMPLETIONS^# }
+  do { var (#^PATTERN_INFUNC_ATOM_2?check=NO_COMPLETIONS^# }
+  do {var (a, #^PATTERN_INFUNC_ATOM_3?check=NO_COMPLETIONS^# }
+  do {var (a #^PATTERN_INFUNC_ATOM_4?check=NO_COMPLETIONS^# }
+  do {var ((#^PATTERN_INFUNC_ATOM_5?check=NO_COMPLETIONS^# }
+  do {var ((a, b), #^PATTERN_INFUNC_ATOM_6?check=NO_COMPLETIONS^# }
+  do {guard var #^PATTERN_INFUNC_ATOM_7?check=NO_COMPLETIONS^# }
+  do {guard var #^PATTERN_INFUNC_ATOM_8?check=NO_COMPLETIONS^# else { fatalError() } }
+  do {guard let #^PATTERN_INFUNC_ATOM_9?check=NO_COMPLETIONS^# else { fatalError() } }
+  do {guard let a = Optional(1), let #^PATTERN_INFUNC_ATOM_10?check=NO_COMPLETIONS^# else { fatalError() } }
+  do {if let #^PATTERN_INFUNC_ATOM_11?check=NO_COMPLETIONS^# {} }
+  do {if let a = Optional(1), let #^PATTERN_INFUNC_ATOM_12?check=NO_COMPLETIONS^# {} }
+  do {if case #^PATTERN_INFUNC_IF_CASE_1?check=GLOBAL^# {} }
+  do {if case let #^PATTERN_INFUNC_IF_CASE_2?check=NO_COMPLETIONS^# {} }
+}
 
 //===---
 //===--- Test that we complete the type in 'is' pattern.
@@ -80,19 +91,19 @@ var ((a, b), #^PATTERN_ATOM_6^#
 
 func patternIs1(x: FooClass) {
   switch x {
-  case is #^PATTERN_IS_1^#
+  case is #^PATTERN_IS_1?check=GLOBAL_NEGATIVE^#
   }
 }
 
 func patternIs2() {
   switch unknown_var {
-  case is #^PATTERN_IS_2^#
+  case is #^PATTERN_IS_2?check=GLOBAL_NEGATIVE^#
   }
 }
 
 func patternIs3() {
   switch {
-  case is #^PATTERN_IS_3^#
+  case is #^PATTERN_IS_3?check=GLOBAL_NEGATIVE^#
   }
 }
 
@@ -100,10 +111,10 @@ func patternIs3() {
 
 func patternIsGeneric1<
     GenericFoo : FooProtocol,
-    GenericBar : protocol<FooProtocol, BarProtocol>,
+    GenericBar : FooProtocol & BarProtocol,
     GenericBaz>(x: FooClass) {
   switch x {
-  case is #^PATTERN_IS_GENERIC_1^#
+  case is #^PATTERN_IS_GENERIC_1?check=GLOBAL_NEGATIVE;check=PATTERN_IS_GENERIC_1^#
   }
 }
 
@@ -116,23 +127,23 @@ func patternIsGeneric1<
 
 struct PatternIsGeneric2<
     StructGenericFoo : FooProtocol,
-    StructGenericBar : protocol<FooProtocol, BarProtocol>,
+    StructGenericBar : FooProtocol & BarProtocol,
     StructGenericBaz> {
   func patternIsGeneric2<
       GenericFoo : FooProtocol,
-      GenericBar : protocol<FooProtocol, BarProtocol>,
+      GenericBar : FooProtocol & BarProtocol,
       GenericBaz>(x: FooClass) {
     switch x {
-    case is #^PATTERN_IS_GENERIC_2^#
+    case is #^PATTERN_IS_GENERIC_2?check=GLOBAL_NEGATIVE;check=PATTERN_IS_GENERIC_2^#
     }
   }
 }
 
 // PATTERN_IS_GENERIC_2: Begin completions
 // Generic parameters of the struct.
-// PATTERN_IS_GENERIC_2-DAG: Decl[GenericTypeParam]/CurrNominal: StructGenericFoo[#StructGenericFoo#]{{; name=.+$}}
-// PATTERN_IS_GENERIC_2-DAG: Decl[GenericTypeParam]/CurrNominal: StructGenericBar[#StructGenericBar#]{{; name=.+$}}
-// PATTERN_IS_GENERIC_2-DAG: Decl[GenericTypeParam]/CurrNominal: StructGenericBaz[#StructGenericBaz#]{{; name=.+$}}
+// PATTERN_IS_GENERIC_2-DAG: Decl[GenericTypeParam]/Local: StructGenericFoo[#StructGenericFoo#]{{; name=.+$}}
+// PATTERN_IS_GENERIC_2-DAG: Decl[GenericTypeParam]/Local: StructGenericBar[#StructGenericBar#]{{; name=.+$}}
+// PATTERN_IS_GENERIC_2-DAG: Decl[GenericTypeParam]/Local: StructGenericBaz[#StructGenericBaz#]{{; name=.+$}}
 // Generic parameters of the function.
 // PATTERN_IS_GENERIC_2-DAG: Decl[GenericTypeParam]/Local: GenericFoo[#GenericFoo#]{{; name=.+$}}
 // PATTERN_IS_GENERIC_2-DAG: Decl[GenericTypeParam]/Local: GenericBar[#GenericBar#]{{; name=.+$}}
@@ -195,3 +206,19 @@ func test_multiple_patterns4(x: Int) {
 // MULTI_PATTERN_4-DAG: Decl[LocalVar]/Local: x[#Int#]{{; name=.+$}}
 // MULTI_PATTERN_4: End completions
 
+enum IntHolder {
+  case hold(Int)
+}
+func ident(int: Int) -> Int { return int }
+func ident(double: Double) -> Int { return Double }
+
+func test_cc_in_pattern(subject: IntHolder, i1: Int) {
+  switch subject {
+  case .hold(#^CC_IN_PATTERN_1^#):
+    ()
+  }
+}
+
+// CC_IN_PATTERN_1: Begin completions
+// CC_IN_PATTERN_1-DAG: Decl[LocalVar]/Local/TypeRelation[Convertible]: i1[#Int#]; name=i1
+// CC_IN_PATTERN_1: End completions

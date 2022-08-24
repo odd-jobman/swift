@@ -2,11 +2,42 @@
   key.results: [
     {
       key.kind: source.lang.swift.keyword,
+      key.name: "_const",
+      key.sourcetext: "_const",
+      key.description: "_const",
+      key.typename: "",
+      key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
+      key.num_bytes_to_erase: 0
+    },
+    {
+      key.kind: source.lang.swift.keyword,
+      key.name: "actor",
+      key.sourcetext: "actor",
+      key.description: "actor",
+      key.typename: "",
+      key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
+      key.num_bytes_to_erase: 0
+    },
+    {
+      key.kind: source.lang.swift.keyword,
       key.name: "associatedtype",
       key.sourcetext: "associatedtype",
       key.description: "associatedtype",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
+      key.num_bytes_to_erase: 0
+    },
+    {
+      key.kind: source.lang.swift.keyword,
+      key.name: "async",
+      key.sourcetext: "async",
+      key.description: "async",
+      key.typename: "",
+      key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -16,6 +47,7 @@
       key.description: "class",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -25,6 +57,7 @@
       key.description: "convenience",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -34,6 +67,17 @@
       key.description: "deinit",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
+      key.num_bytes_to_erase: 0
+    },
+    {
+      key.kind: source.lang.swift.keyword,
+      key.name: "distributed",
+      key.sourcetext: "distributed",
+      key.description: "distributed",
+      key.typename: "",
+      key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -43,6 +87,7 @@
       key.description: "dynamic",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -52,6 +97,7 @@
       key.description: "enum",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -61,18 +107,30 @@
       key.description: "extension",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
       key.kind: source.lang.swift.decl.function.method.instance,
-      key.name: "f(getMe a: Int, b: Double)",
+      key.name: "f(getMe:b:)",
       key.sourcetext: "override func f(getMe a: Int, b: Double) {\n<#code#>\n}",
       key.description: "f(getMe a: Int, b: Double)",
       key.typename: "",
       key.context: source.codecompletion.context.superclass,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0,
-      key.associated_usrs: "s:FC17complete_override4Base1fFT5getMeSi1bSd_T_",
+      key.associated_usrs: "s:17complete_override4BaseC1f5getMe1bySi_SdtF",
       key.modulename: "complete_override"
+    },
+    {
+      key.kind: source.lang.swift.keyword,
+      key.name: "fileprivate",
+      key.sourcetext: "fileprivate",
+      key.description: "fileprivate",
+      key.typename: "",
+      key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
+      key.num_bytes_to_erase: 0
     },
     {
       key.kind: source.lang.swift.keyword,
@@ -81,6 +139,7 @@
       key.description: "final",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -90,6 +149,7 @@
       key.description: "func",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -99,6 +159,17 @@
       key.description: "import",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
+      key.num_bytes_to_erase: 0
+    },
+    {
+      key.kind: source.lang.swift.keyword,
+      key.name: "indirect",
+      key.sourcetext: "indirect",
+      key.description: "indirect",
+      key.typename: "",
+      key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -108,6 +179,7 @@
       key.description: "infix",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -117,17 +189,19 @@
       key.description: "init",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
       key.kind: source.lang.swift.decl.function.constructor,
       key.name: "init()",
-      key.sourcetext: "init() {\n<#code#>\n}",
+      key.sourcetext: "override init() {\n<#code#>\n}",
       key.description: "init()",
       key.typename: "",
       key.context: source.codecompletion.context.superclass,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0,
-      key.associated_usrs: "s:FC17complete_override4BasecFT_S0_",
+      key.associated_usrs: "s:17complete_override4BaseCACycfc",
       key.modulename: "complete_override"
     },
     {
@@ -137,6 +211,7 @@
       key.description: "inout",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -146,6 +221,17 @@
       key.description: "internal",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
+      key.num_bytes_to_erase: 0
+    },
+    {
+      key.kind: source.lang.swift.keyword,
+      key.name: "isolated",
+      key.sourcetext: "isolated",
+      key.description: "isolated",
+      key.typename: "",
+      key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -155,6 +241,7 @@
       key.description: "lazy",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -164,6 +251,7 @@
       key.description: "let",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -173,6 +261,17 @@
       key.description: "mutating",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
+      key.num_bytes_to_erase: 0
+    },
+    {
+      key.kind: source.lang.swift.keyword,
+      key.name: "nonisolated",
+      key.sourcetext: "nonisolated",
+      key.description: "nonisolated",
+      key.typename: "",
+      key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -182,6 +281,17 @@
       key.description: "nonmutating",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
+      key.num_bytes_to_erase: 0
+    },
+    {
+      key.kind: source.lang.swift.keyword,
+      key.name: "open",
+      key.sourcetext: "open",
+      key.description: "open",
+      key.typename: "",
+      key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -191,6 +301,7 @@
       key.description: "operator",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -200,6 +311,7 @@
       key.description: "optional",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -209,6 +321,7 @@
       key.description: "override",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -218,6 +331,17 @@
       key.description: "postfix",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
+      key.num_bytes_to_erase: 0
+    },
+    {
+      key.kind: source.lang.swift.keyword,
+      key.name: "precedencegroup",
+      key.sourcetext: "precedencegroup",
+      key.description: "precedencegroup",
+      key.typename: "",
+      key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -227,6 +351,7 @@
       key.description: "prefix",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -236,6 +361,7 @@
       key.description: "private",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -245,6 +371,7 @@
       key.description: "protocol",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -254,6 +381,7 @@
       key.description: "public",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -263,6 +391,7 @@
       key.description: "required",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -272,6 +401,7 @@
       key.description: "static",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -281,6 +411,7 @@
       key.description: "struct",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -290,6 +421,7 @@
       key.description: "subscript",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -299,6 +431,7 @@
       key.description: "typealias",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -308,6 +441,7 @@
       key.description: "unowned",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -317,6 +451,7 @@
       key.description: "var",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     },
     {
@@ -326,6 +461,7 @@
       key.description: "weak",
       key.typename: "",
       key.context: source.codecompletion.context.none,
+      key.typerelation: source.codecompletion.typerelation.notapplicable,
       key.num_bytes_to_erase: 0
     }
   ]

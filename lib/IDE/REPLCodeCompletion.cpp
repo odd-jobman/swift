@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -16,12 +16,12 @@
 
 #include "swift/IDE/REPLCodeCompletion.h"
 #include "swift/AST/ASTContext.h"
+#include "swift/AST/DiagnosticSuppression.h"
 #include "swift/AST/Module.h"
+#include "swift/AST/SourceFile.h"
 #include "swift/Basic/LLVM.h"
 #include "swift/Basic/SourceManager.h"
-#include "swift/Parse/DelayedParsingCallbacks.h"
 #include "swift/Parse/Parser.h"
-#include "swift/IDE/CodeCompletion.h"
 #include "swift/Subsystems.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -37,11 +37,13 @@ static std::string toInsertableString(CodeCompletionResult *Result) {
     switch (C.getKind()) {
     case CodeCompletionString::Chunk::ChunkKind::AccessControlKeyword:
     case CodeCompletionString::Chunk::ChunkKind::OverrideKeyword:
-    case CodeCompletionString::Chunk::ChunkKind::ThrowsKeyword:
-    case CodeCompletionString::Chunk::ChunkKind::RethrowsKeyword:
+    case CodeCompletionString::Chunk::ChunkKind::EffectsSpecifierKeyword:
     case CodeCompletionString::Chunk::ChunkKind::DeclAttrKeyword:
     case CodeCompletionString::Chunk::ChunkKind::DeclIntroducer:
+    case CodeCompletionString::Chunk::ChunkKind::Keyword:
+    case CodeCompletionString::Chunk::ChunkKind::Attribute:
     case CodeCompletionString::Chunk::ChunkKind::Text:
+    case CodeCompletionString::Chunk::ChunkKind::BaseName:
     case CodeCompletionString::Chunk::ChunkKind::LeftParen:
     case CodeCompletionString::Chunk::ChunkKind::RightParen:
     case CodeCompletionString::Chunk::ChunkKind::LeftBracket:
@@ -58,24 +60,44 @@ static std::string toInsertableString(CodeCompletionResult *Result) {
     case CodeCompletionString::Chunk::ChunkKind::Whitespace:
     case CodeCompletionString::Chunk::ChunkKind::DynamicLookupMethodCallTail:
     case CodeCompletionString::Chunk::ChunkKind::OptionalMethodCallTail:
+    case CodeCompletionString::Chunk::ChunkKind::TypeIdSystem:
+    case CodeCompletionString::Chunk::ChunkKind::TypeIdUser:
       if (!C.isAnnotation())
         Str += C.getText();
       break;
 
-    case CodeCompletionString::Chunk::ChunkKind::CallParameterName:
-    case CodeCompletionString::Chunk::ChunkKind::CallParameterInternalName:
-    case CodeCompletionString::Chunk::ChunkKind::CallParameterColon:
+    case CodeCompletionString::Chunk::ChunkKind::CallArgumentName:
+    case CodeCompletionString::Chunk::ChunkKind::CallArgumentInternalName:
+    case CodeCompletionString::Chunk::ChunkKind::CallArgumentColon:
+    case CodeCompletionString::Chunk::ChunkKind::CallArgumentType:
+    case CodeCompletionString::Chunk::ChunkKind::CallArgumentClosureType:
+    case CodeCompletionString::Chunk::ChunkKind::CallArgumentBegin:
+    case CodeCompletionString::Chunk::ChunkKind::CallArgumentTypeBegin:
+    case CodeCompletionString::Chunk::ChunkKind::CallArgumentDefaultBegin:
+    case CodeCompletionString::Chunk::ChunkKind::ParameterDeclBegin:
+    case CodeCompletionString::Chunk::ChunkKind::ParameterDeclExternalName:
+    case CodeCompletionString::Chunk::ChunkKind::ParameterDeclLocalName:
+    case CodeCompletionString::Chunk::ChunkKind::ParameterDeclColon:
+    case CodeCompletionString::Chunk::ChunkKind::ParameterDeclTypeBegin:
+    case CodeCompletionString::Chunk::ChunkKind::DefaultArgumentClauseBegin:
+    case CodeCompletionString::Chunk::ChunkKind::GenericParameterClauseBegin:
+    case CodeCompletionString::Chunk::ChunkKind::GenericRequirementClauseBegin:
     case CodeCompletionString::Chunk::ChunkKind::DeclAttrParamKeyword:
-    case CodeCompletionString::Chunk::ChunkKind::DeclAttrParamEqual:
-    case CodeCompletionString::Chunk::ChunkKind::CallParameterType:
-    case CodeCompletionString::Chunk::ChunkKind::CallParameterClosureType:
+    case CodeCompletionString::Chunk::ChunkKind::DeclAttrParamColon:
     case CodeCompletionString::Chunk::ChunkKind::OptionalBegin:
-    case CodeCompletionString::Chunk::ChunkKind::CallParameterBegin:
     case CodeCompletionString::Chunk::ChunkKind::GenericParameterBegin:
     case CodeCompletionString::Chunk::ChunkKind::GenericParameterName:
+    case CodeCompletionString::Chunk::ChunkKind::EffectsSpecifierClauseBegin:
+    case CodeCompletionString::Chunk::ChunkKind::DeclResultTypeClauseBegin:
     case CodeCompletionString::Chunk::ChunkKind::TypeAnnotation:
+    case CodeCompletionString::Chunk::ChunkKind::TypeAnnotationBegin:
+    case CodeCompletionString::Chunk::ChunkKind::AttributeAndModifierListBegin:
       return Str;
 
+    case CodeCompletionString::Chunk::ChunkKind::CallArgumentClosureExpr:
+      Str += " {";
+      Str += C.getText();
+      break;
     case CodeCompletionString::Chunk::ChunkKind::BraceStmtWithCursor:
       Str += " {";
       break;
@@ -97,11 +119,14 @@ static void toDisplayString(CodeCompletionResult *Result,
       OS << C.getText();
       continue;
     }
-    if (C.getKind() == CodeCompletionString::Chunk::ChunkKind::TypeAnnotation) {
-      if (Result->getKind() == CodeCompletionResult::Declaration) {
+    if (C.is(CodeCompletionString::Chunk::ChunkKind::TypeAnnotation) ||
+        C.is(CodeCompletionString::Chunk::ChunkKind::TypeAnnotationBegin)) {
+      if (Result->getKind() == CodeCompletionResultKind::Declaration) {
         switch (Result->getAssociatedDeclKind()) {
         case CodeCompletionDeclKind::Module:
+        case CodeCompletionDeclKind::PrecedenceGroup:
         case CodeCompletionDeclKind::Class:
+        case CodeCompletionDeclKind::Actor:
         case CodeCompletionDeclKind::Struct:
         case CodeCompletionDeclKind::Enum:
           continue;
@@ -138,7 +163,8 @@ static void toDisplayString(CodeCompletionResult *Result,
       } else {
         OS << ": ";
       }
-      OS << C.getText();
+      if (C.hasText())
+        OS << C.getText();
     }
   }
 }
@@ -151,9 +177,10 @@ public:
   REPLCodeCompletionConsumer(REPLCompletions &Completions)
       : Completions(Completions) {}
 
-  void handleResults(MutableArrayRef<CodeCompletionResult *> Results) override {
-    CodeCompletionContext::sortCompletionResults(Results);
-    for (auto Result : Results) {
+  void handleResults(CodeCompletionContext &context) override {
+    auto SortedResults = CodeCompletionContext::sortCompletionResults(
+        context.getResultSink().Results);
+    for (auto Result : SortedResults) {
       std::string InsertableString = toInsertableString(Result);
       if (StringRef(InsertableString).startswith(Completions.Prefix)) {
         llvm::SmallString<128> PrintedResult;
@@ -184,7 +211,7 @@ REPLCompletions::REPLCompletions()
   // Consumer.
   CompletionCallbacksFactory.reset(
       ide::makeCodeCompletionCallbacksFactory(CompletionContext,
-                                              *Consumer.get()));
+                                              *Consumer));
 }
 
 static void
@@ -192,7 +219,7 @@ doCodeCompletion(SourceFile &SF, StringRef EnteredCode, unsigned *BufferID,
                  CodeCompletionCallbacksFactory *CompletionCallbacksFactory) {
   // Temporarily disable printing the diagnostics.
   ASTContext &Ctx = SF.getASTContext();
-  auto DiagnosticConsumers = Ctx.Diags.takeConsumers();
+  DiagnosticSuppression SuppressedDiags(Ctx.Diags);
 
   std::string AugmentedCode = EnteredCode.str();
   AugmentedCode += '\0';
@@ -202,32 +229,35 @@ doCodeCompletion(SourceFile &SF, StringRef EnteredCode, unsigned *BufferID,
 
   Ctx.SourceMgr.setCodeCompletionPoint(*BufferID, CodeCompletionOffset);
 
-  // Parse, typecheck and temporarily insert the incomplete code into the AST.
-  const unsigned OriginalDeclCount = SF.Decls.size();
+  // Import the last module.
+  auto *lastModule = SF.getParentModule();
 
-  unsigned CurElem = OriginalDeclCount;
-  PersistentParserState PersistentState;
-  std::unique_ptr<DelayedParsingCallbacks> DelayedCB(
-      new CodeCompleteDelayedCallbacks(Ctx.SourceMgr.getCodeCompletionLoc()));
-  bool Done;
-  do {
-    parseIntoSourceFile(SF, *BufferID, &Done, nullptr, &PersistentState,
-                        DelayedCB.get());
-    performTypeChecking(SF, PersistentState.getTopLevelContext(), None, 
-                        CurElem);
-    CurElem = SF.Decls.size();
-  } while (!Done);
+  ImplicitImportInfo implicitImports;
+  implicitImports.AdditionalImports.emplace_back(ImportedModule(lastModule));
 
-  performDelayedParsing(&SF, PersistentState, CompletionCallbacksFactory);
+  // Carry over the private imports from the last module.
+  SmallVector<ImportedModule, 8> imports;
+  lastModule->getImportedModules(imports,
+                                 ModuleDecl::ImportFilterKind::Default);
+  for (auto &import : imports) {
+    implicitImports.AdditionalImports.emplace_back(import);
+  }
 
-  // Now we are done with code completion.  Remove the declarations we
-  // temporarily inserted.
-  SF.Decls.resize(OriginalDeclCount);
+  // Create a new module and file for the code completion buffer, similar to how
+  // we handle new lines of REPL input.
+  auto *newModule = ModuleDecl::create(
+      Ctx.getIdentifier("REPL_Code_Completion"), Ctx, implicitImports);
+  auto &newSF =
+      *new (Ctx) SourceFile(*newModule, SourceFileKind::Main, *BufferID);
+  newModule->addFile(newSF);
 
-  // Add the diagnostic consumers back.
-  for (auto DC : DiagnosticConsumers)
-    Ctx.Diags.addConsumer(*DC);
+  performImportResolution(newSF);
+  bindExtensions(*newModule);
 
+  performCodeCompletionSecondPass(newSF, *CompletionCallbacksFactory);
+
+  // Reset the error state because it's only relevant to the code that we just
+  // processed, which now gets thrown away.
   Ctx.Diags.resetHadAnyError();
 }
 
@@ -238,8 +268,6 @@ void REPLCompletions::populate(SourceFile &SF, StringRef EnteredCode) {
 
   CompletionStrings.clear();
   CookedResults.clear();
-
-  assert(SF.Kind == SourceFileKind::REPL && "Can't append to a non-REPL file");
 
   unsigned BufferID;
   doCodeCompletion(SF, EnteredCode, &BufferID,
@@ -254,7 +282,7 @@ void REPLCompletions::populate(SourceFile &SF, StringRef EnteredCode) {
   if (!Tokens.empty()) {
     Token &LastToken = Tokens.back();
     if (LastToken.is(tok::identifier) || LastToken.isKeyword()) {
-      Prefix = LastToken.getText();
+      Prefix = LastToken.getText().str();
 
       unsigned Offset = Ctx.SourceMgr.getLocOffsetInBuffer(LastToken.getLoc(),
                                                            BufferID);
@@ -281,7 +309,7 @@ StringRef REPLCompletions::getRoot() const {
     return Root.getValue();
   }
 
-  std::string RootStr = CookedResults[0].InsertableString;
+  std::string RootStr = CookedResults[0].InsertableString.str();
   for (auto R : CookedResults) {
     if (R.NumBytesToErase != 0) {
       RootStr.resize(0);
@@ -308,7 +336,7 @@ REPLCompletions::CookedResult REPLCompletions::getNextStem() {
   if (CookedResults.empty())
     return {};
 
-  CurrentCompletionIdx++;
+  ++CurrentCompletionIdx;
   if (CurrentCompletionIdx >= CookedResults.size())
     CurrentCompletionIdx = 0;
 

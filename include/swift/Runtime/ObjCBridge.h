@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -34,19 +34,20 @@ struct HeapObject;
 #if SWIFT_OBJC_INTEROP
 #include <objc/objc.h>
 #include <objc/runtime.h>
+#include <objc/objc-api.h>
 
 // Redeclare APIs from the Objective-C runtime.
 // These functions are not available through public headers, but are guaranteed
 // to exist on OS X >= 10.9 and iOS >= 7.0.
 
-extern "C" id objc_retain(id);
-extern "C" void objc_release(id);
-extern "C" id _objc_rootAutorelease(id);
-extern "C" void objc_moveWeak(id*, id*);
-extern "C" void objc_copyWeak(id*, id*);
-extern "C" id objc_initWeak(id*, id);
-extern "C" void objc_destroyWeak(id*);
-extern "C" id objc_loadWeakRetained(id*);
+OBJC_EXPORT id objc_retain(id);
+OBJC_EXPORT void objc_release(id);
+OBJC_EXPORT id _objc_rootAutorelease(id);
+OBJC_EXPORT void objc_moveWeak(id*, id*);
+OBJC_EXPORT void objc_copyWeak(id*, id*);
+OBJC_EXPORT id objc_initWeak(id*, id);
+OBJC_EXPORT void objc_destroyWeak(id*);
+OBJC_EXPORT id objc_loadWeakRetained(id*);
 
 // Description of an Objective-C image.
 // __DATA,__objc_imageinfo stores one of these.
@@ -67,6 +68,9 @@ OBJC_EXPORT Class objc_readClassPair(Class cls,
                                      const struct objc_image_info *info)
     __OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0);
 
+// Magic symbol whose _address_ is the runtime's isa mask.
+OBJC_EXPORT const struct { char c; } objc_absolute_packed_isa_class_mask;
+
 
 namespace swift {
 
@@ -76,10 +80,15 @@ namespace swift {
 // for the object will have already been deallocated by the time
 // this function returns.
 SWIFT_RUNTIME_EXPORT
-extern "C" void swift_rootObjCDealloc(HeapObject *self);
+void swift_rootObjCDealloc(HeapObject *self);
+
+// Uses Swift bridging to box a C string into an NSString without introducing
+// a link-time dependency on NSString.
+SWIFT_CC(swift) SWIFT_RUNTIME_STDLIB_API
+id swift_stdlib_NSStringFromUTF8(const char *cstr, int len);
 
 }
 
-#endif /* SWIFT_OBJC_INTEROP */
+#endif // SWIFT_OBJC_INTEROP
 
-#endif /* SWIFT_ABI_OBJCBRIDGE_H */
+#endif // SWIFT_ABI_OBJCBRIDGE_H

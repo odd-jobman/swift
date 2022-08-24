@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2021 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,7 +14,16 @@
 // references. It is meant to be a baseline for comparison against
 // ArrayOfGenericRef.
 //
-// For comparison, we always create four arrays of 10,000 words.
+// For comparison, we always create four arrays of 1,000 words.
+
+import TestsUtils
+
+public let benchmarks =
+  BenchmarkInfo(
+    name: "ArrayOfRef",
+    runFunction: run_ArrayOfRef,
+    tags: [.validation, .api, .Array],
+    legacyFactor: 10)
 
 protocol Constructible {
   associatedtype Element
@@ -25,9 +34,9 @@ class ConstructibleArray<T:Constructible> {
 
   init(_ e:T.Element) {
     array = [T]()
-    array.reserveCapacity(10_000)
-    for _ in 0...10_000 {
-      array.append(T(e:e) as T)
+    array.reserveCapacity(1_000)
+    for _ in 0...1_000 {
+      array.append(T(e:e))
     }
   }
 }
@@ -35,13 +44,13 @@ class ConstructibleArray<T:Constructible> {
 // Reference to a POD class.
 class POD : Constructible {
   typealias Element=Int
-  var x : Int
+  var x: Int
   required init(e:Int) { self.x = e }
 }
 
 @inline(never)
 func genPODRefArray() {
-  _ = ConstructibleArray<POD>(3)
+  blackHole(ConstructibleArray<POD>(3))
   // should be a nop
 }
 
@@ -50,14 +59,14 @@ class Dummy {}
 // Reference to a reference. The nested reference is shared across elements.
 class CommonRef : Constructible {
   typealias Element=Dummy
-  var d : Dummy
+  var d: Dummy
   required init(e:Dummy) { self.d = e }
 }
 
 @inline(never)
 func genCommonRefArray() {
   let d = Dummy()
-  _ = ConstructibleArray<CommonRef>(d)
+  blackHole(ConstructibleArray<CommonRef>(d))
   // should be a nop
 }
 
@@ -70,7 +79,7 @@ enum RefEnum {
 class RefArray<T> {
   var array : [T]
 
-  init(_ i:T, count:Int = 10_000) {
+  init(_ i:T, count:Int = 1_000) {
     array = [T](repeating: i, count: count)
   }
 }
@@ -78,27 +87,27 @@ class RefArray<T> {
 @inline(never)
 func genRefEnumArray() {
   let e = RefEnum.Some(Dummy())
-  _ = RefArray<RefEnum>(e)
+  blackHole(RefArray<RefEnum>(e))
   // should be a nop
 }
 
 // Struct holding a reference.
 struct S : Constructible {
   typealias Element=Dummy
-  var d : Dummy
+  var d: Dummy
   init(e:Dummy) { self.d = e }
 }
 
 @inline(never)
 func genRefStructArray() {
   let d = Dummy()
-  _ = ConstructibleArray<S>(d)
+  blackHole(ConstructibleArray<S>(d))
   // should be a nop
 }
 
 @inline(never)
-public func run_ArrayOfRef(N: Int) {
-  for _ in 0...N {
+public func run_ArrayOfRef(_ n: Int) {
+  for _ in 0..<n {
     genPODRefArray()
     genCommonRefArray()
     genRefEnumArray()

@@ -1,6 +1,4 @@
-// RUN: %target-swift-frontend -sdk %S/Inputs %s -emit-silgen | FileCheck %s
-
-// REQUIRES: objc_interop
+// RUN: %target-swift-emit-silgen -sdk %S/Inputs %s -enable-objc-interop | %FileCheck %s
 
 import ansible
 
@@ -10,36 +8,36 @@ var anse = NSAnse
 
 hasNoPrototype()
 
-// CHECK-LABEL: sil @main
+// CHECK-LABEL: sil [ossa] @main
 // -- Foreign function is referenced with C calling conv and ownership semantics
-// CHECK:   [[NSANSE:%.*]] = function_ref @NSAnse : $@convention(c) (ImplicitlyUnwrappedOptional<Ansible>) -> @autoreleased ImplicitlyUnwrappedOptional<Ansible>
-// CHECK:   [[ANSIBLE_CTOR:%.*]] = function_ref @_TFCSo7AnsibleC
-// CHECK:   [[NSOBJECT_CTOR:%.*]] = function_ref @_TFCSo8NSObjectC{{.*}} : $@convention(thin) (@thick NSObject.Type) -> @owned NSObject
+// CHECK:   [[NSOBJECT_CTOR:%.*]] = function_ref @$sSo8NSObjectC{{[_0-9a-zA-Z]*}}fC : $@convention(method) (@thick NSObject.Type) -> @owned NSObject
+// CHECK:   [[ANSIBLE_CTOR:%.*]] = function_ref @$sSo7AnsibleC{{[_0-9a-zA-Z]*}}fC
 // CHECK:   [[ANSIBLE:%.*]] = apply [[ANSIBLE_CTOR]]
+// CHECK:   [[NSANSE:%.*]] = function_ref @NSAnse : $@convention(c) (Optional<Ansible>) -> @autoreleased Optional<Ansible>
 // CHECK:   [[NSANSE_RESULT:%.*]] = apply [[NSANSE]]([[ANSIBLE]])
-// CHECK:   release_value [[ANSIBLE]] : $ImplicitlyUnwrappedOptional<Ansible>
+// CHECK:   destroy_value [[ANSIBLE]] : $Optional<Ansible>
 // -- Referencing unapplied C function goes through a thunk
-// CHECK:   [[NSANSE:%.*]] = function_ref @_TTOFSC6NSAnseFGSQCSo7Ansible_GSQS__ : $@convention(thin) (@owned ImplicitlyUnwrappedOptional<Ansible>) -> @owned ImplicitlyUnwrappedOptional<Ansible>
+// CHECK:   [[NSANSE:%.*]] = function_ref @$sSo6NSAnseySo7AnsibleCSgADFTO : $@convention(thin) (@guaranteed Optional<Ansible>) -> @owned Optional<Ansible>
 // -- Referencing unprototyped C function passes no parameters
 // CHECK:   [[NOPROTO:%.*]] = function_ref @hasNoPrototype : $@convention(c) () -> ()
 // CHECK:   apply [[NOPROTO]]()
 
-// -- Constructors for imported Ansible
-// CHECK-LABEL: sil  shared @_TFCSo7AnsibleC{{.*}} : $@convention(thin) (@owned ImplicitlyUnwrappedOptional<AnyObject>, @thick Ansible.Type) -> @owned ImplicitlyUnwrappedOptional<Ansible>
-
-
 // -- Constructors for imported NSObject
-// CHECK-LABEL: sil  shared @_TFCSo8NSObjectC{{.*}} : $@convention(thin) (@thick NSObject.Type) -> @owned NSObject
+// CHECK-LABEL: sil shared [serialized] [ossa] @$sSo8NSObjectC{{[_0-9a-zA-Z]*}}fC : $@convention(method) (@thick NSObject.Type) -> @owned NSObject
+
+// -- Constructors for imported Ansible
+// CHECK-LABEL: sil shared [serialized] [ossa] @$sSo7AnsibleC{{[_0-9a-zA-Z]*}}fC : $@convention(method) (@in Optional<Any>, @thick Ansible.Type) -> @owned Optional<Ansible>
 
 // -- Native Swift thunk for NSAnse
-// CHECK: sil shared [thunk] @_TTOFSC6NSAnseFGSQCSo7Ansible_GSQS__ : $@convention(thin) (@owned ImplicitlyUnwrappedOptional<Ansible>) -> @owned ImplicitlyUnwrappedOptional<Ansible> {
-// CHECK: bb0(%0 : $ImplicitlyUnwrappedOptional<Ansible>):
-// CHECK:   %1 = function_ref @NSAnse : $@convention(c) (ImplicitlyUnwrappedOptional<Ansible>) -> @autoreleased ImplicitlyUnwrappedOptional<Ansible>
-// CHECK:   %2 = apply %1(%0) : $@convention(c) (ImplicitlyUnwrappedOptional<Ansible>) -> @autoreleased ImplicitlyUnwrappedOptional<Ansible>
-// CHECK:   release_value %0 : $ImplicitlyUnwrappedOptional<Ansible>
-// CHECK:   return %2 : $ImplicitlyUnwrappedOptional<Ansible>
+// CHECK: sil shared [serialized] [thunk] [ossa] @$sSo6NSAnseySo7AnsibleCSgADFTO : $@convention(thin) (@guaranteed Optional<Ansible>) -> @owned Optional<Ansible> {
+// CHECK: bb0([[ARG0:%.*]] : @guaranteed $Optional<Ansible>):
+// CHECK:   [[ARG0_COPY:%.*]] = copy_value [[ARG0]]
+// CHECK:   [[FUNC:%.*]] = function_ref @NSAnse : $@convention(c) (Optional<Ansible>) -> @autoreleased Optional<Ansible>
+// CHECK:   [[RESULT:%.*]] = apply [[FUNC]]([[ARG0_COPY]]) : $@convention(c) (Optional<Ansible>) -> @autoreleased Optional<Ansible>
+// CHECK:   destroy_value [[ARG0_COPY]] : $Optional<Ansible>
+// CHECK:   return [[RESULT]] : $Optional<Ansible>
 // CHECK: }
 
 // -- Constructor for imported Ansible was unused, should not be emitted.
-// CHECK-NOT: sil  shared @_TFCSo7AnsibleC{{.*}} : $@convention(thin) (@thick Ansible.Type) -> @owned Ansible
+// CHECK-NOT: sil {{.*}} [ossa] @$sSo7AnsibleC{{[_0-9a-zA-Z]*}}fC : $@convention(method) (@thick Ansible.Type) -> @owned Ansible
 

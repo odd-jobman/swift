@@ -1,19 +1,19 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 func statement_starts() {
-  var f : Int -> ()
+  var f : (Int) -> ()
   f = { (x : Int) -> () in }
 
   f(0)
   f (0)
-  f // expected-error{{expression resolves to an unused l-value}}
-  (0)
+  f // expected-warning{{variable is unused}}
+  (0) // expected-warning {{integer literal is unused}}
 
   var a = [1,2,3]
   a[0] = 1
   a [0] = 1
-  a // expected-error{{expression resolves to an unused l-value}}
-  [0, 1, 2]
+  a // expected-warning{{variable is unused}}
+  [0, 1, 2] // expected-warning {{expression of type '[Int]' is unused}}
 }
 
 // Within a function

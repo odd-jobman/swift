@@ -2,10 +2,15 @@
 
 // REQUIRES: objc_interop
 
-// RUN: FileCheck %s -check-prefix=PRINTC -strict-whitespace < %t.printed.C.txt
+// RUN: %FileCheck %s -check-prefix=PRINTC -strict-whitespace < %t.printed.C.txt
 
 // PRINTC:      extension CCPowerSupply {
 // PRINTC-NEXT:   /*not inherited*/ init(watts watts: Double)
+// PRINTC-NEXT:   class let semiModular: CCPowerSupply!
+// PRINTC-NEXT:   /*not inherited*/ init(dangerous dangerous: ())
+// PRINTC-NEXT:   class let defaultPower: Double
+// PRINTC-NEXT:   class let AC: CCPowerSupply
+// PRINTC-NEXT:   class let DC: CCPowerSupply?
 // PRINTC-NEXT: }
 
 // PRINTC:      extension CCRefrigerator {
@@ -18,7 +23,7 @@
 // PRINTC-NEXT:   /*not inherited*/ init(powerSupply power: CCPowerSupply)
 // PRINTC-NEXT: }
 
-// RUN: %target-parse-verify-swift -I %S/Inputs/custom-modules
+// RUN: %target-typecheck-verify-swift -I %S/Inputs/custom-modules
 
 import ImportAsMember.C
 

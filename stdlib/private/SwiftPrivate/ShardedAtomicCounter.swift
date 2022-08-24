@@ -2,14 +2,15 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
+import Swift
 import SwiftShims
 
 public func _stdlib_getHardwareConcurrency() -> Int {
@@ -33,9 +34,9 @@ public struct _stdlib_ShardedAtomicCounter {
   public init() {
     let hardwareConcurrency = _stdlib_getHardwareConcurrency()
     let count = max(8, hardwareConcurrency * hardwareConcurrency)
-    let shards = UnsafeMutablePointer<Int>(allocatingCapacity: count)
+    let shards = UnsafeMutablePointer<Int>.allocate(capacity: count)
     for i in 0..<count {
-      (shards + i).initialize(with: 0)
+      (shards + i).initialize(to: 0)
     }
     self._shardsPtr = shards
     self._shardsCount = count
@@ -43,12 +44,12 @@ public struct _stdlib_ShardedAtomicCounter {
 
   public func `deinit`() {
     self._shardsPtr.deinitialize(count: self._shardsCount)
-    self._shardsPtr.deallocateCapacity(self._shardsCount)
+    self._shardsPtr.deallocate()
   }
 
-  public func add(operand: Int, randomInt: Int) {
+  public func add(_ operand: Int, randomInt: Int) {
     let shardIndex = Int(UInt(bitPattern: randomInt) % UInt(self._shardsCount))
-    _swift_stdlib_atomicFetchAddInt(
+    _ = _swift_stdlib_atomicFetchAddInt(
       object: self._shardsPtr + shardIndex, operand: operand)
   }
 
@@ -67,12 +68,12 @@ public struct _stdlib_ShardedAtomicCounter {
     var _state: Int
 
     public init() {
-      _state = Int(Int32(bitPattern: rand32()))
+      _state = Int.random(in: .min ... .max)
     }
 
     public mutating func randomInt() -> Int {
       var result = 0
-      for _ in 0..<Int._sizeInBits {
+      for _ in 0..<Int.bitWidth {
         result = (result << 1) | (_state & 1)
         _state = (_state >> 1) ^ (-(_state & 1) & Int(bitPattern: 0xD0000001))
       }

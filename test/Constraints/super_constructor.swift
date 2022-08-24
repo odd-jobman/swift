@@ -1,4 +1,4 @@
-// RUN: %target-parse-verify-swift -parse-as-library 
+// RUN: %target-typecheck-verify-swift -parse-as-library 
 
 struct S {
   init() {
@@ -20,8 +20,7 @@ class D : B {
   }
 
   init(g:Int) {
-    super.init("aoeu") // expected-error{{argument labels '(_:)' do not match any available overloads}}
-    // expected-note @-1 {{overloads for 'B.init' exist with these partially matching parameter lists: (x: Int), (a: UnicodeScalar), (b: UnicodeScalar), (z: Float)}}
+    super.init("aoeu") // expected-error{{no exact matches in call to initializer}}
   }
 
   init(h:Int) {
@@ -40,16 +39,37 @@ class B {
   init() {
   }
 
-  init(x:Int) {
+  init(x:Int) { // expected-note{{candidate expects value of type 'Int' for parameter #1}}
   }
 
-  init(a:UnicodeScalar) {
+  init(a:UnicodeScalar) { // expected-note {{candidate expects value of type 'UnicodeScalar' (aka 'Unicode.Scalar') for parameter #1}}
   }
-  init(b:UnicodeScalar) {
+  init(b:UnicodeScalar) { // expected-note {{candidate expects value of type 'UnicodeScalar' (aka 'Unicode.Scalar') for parameter #1}}
   }
 
-  init(z:Float) {
+  init(z:Float) { // expected-note{{candidate expects value of type 'Float' for parameter #1}}
     super.init() // expected-error{{'super' members cannot be referenced in a root class}}
   }
 }
 
+/// https://github.com/apple/swift/issues/45089
+/// Bad diagnostic for incorrectly calling private `init`
+
+class C_45089 {
+  private init() {} // expected-note {{'init()' declared here}}
+  private init(a: Int) {}
+}
+
+class Impl_45089 : C_45089 {
+  init() {
+    super.init() // expected-error {{'C_45089' initializer is inaccessible due to 'private' protection level}}
+  }
+}
+
+class A_Priv<T> {
+  private init(_ foo: T) {}
+}
+
+class B_Override<U> : A_Priv<[U]> {
+  init(_ foo: [U]) { fatalError() } // Ok, because effectively overrides init from parent which is invisible
+}

@@ -48,4 +48,24 @@ func bar() {}
 // mailto:thisisnotmail
 // unknownprotocol://awesomeguy.com
 
-_ = -123
+let a = -123
+let b = -a
+
+func testArgumentLabels(in class: Int, _ case: (_ default: Int) -> Void) -> (in: Int, String) {
+  let result: (in: Int, String) = (0, "test")
+  return something ? result : (in: 2, "foo")
+}
+
+// https://bugs.swift.org/browse/SR-9576
+func someFunc(input :Int?, completion: () throws -> Void) rethrows {}
+
+// https://bugs.swift.org/browse/SR-9740
+enum A {
+    case noArguments
+    case namedArguments(param1: String, param2: Int)
+    case mutedArguments(String, Int)
+}
+
+protocol AsyncPropTest {
+  var protoAsyncProp: Int { get async }
+}

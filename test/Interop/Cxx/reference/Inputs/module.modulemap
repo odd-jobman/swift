@@ -1,0 +1,9 @@
+module Reference {
+  header "reference.h"
+  requires cplusplus
+}
+
+module Closures {
+  header "closures.h"
+  requires cplusplus
+}

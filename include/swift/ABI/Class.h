@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -40,6 +40,10 @@ enum class ObjCClassFlags : uint32_t {
   /// This class has the exception attribute.
   Exception            = 0x00020,
 
+  /// This class provides a metadata update callback trailing the ro-data.
+  /// Note that we're re-using the obsolete flag above.
+  HasMetadataUpdateCallback = 0x00040,
+
   /// (Obsolete) ARC-specific: this class has a .release_ivars method.
   HasIvarReleaser      = 0x00040,
 
@@ -49,7 +53,12 @@ enum class ObjCClassFlags : uint32_t {
   /// This class provides a non-trivial .cxx_destruct method, but
   /// its .cxx_construct is trivial.  For backwards compatibility,
   /// when setting this flag, HasCXXStructors must be set as well.
-  HasCXXDestructorOnly = 0x00100
+  HasCXXDestructorOnly = 0x00100,
+
+  /// This class does not allow associated objects on instances.
+  ///
+  /// Will cause the objc runtime to trap in objc_setAssociatedObject.
+  ForbidsAssociatedObjects = 0x00400,
 };
 inline ObjCClassFlags &operator|=(ObjCClassFlags &lhs, ObjCClassFlags rhs) {
   lhs = ObjCClassFlags(uint32_t(lhs) | uint32_t(rhs));
@@ -61,4 +70,4 @@ inline ObjCClassFlags operator|(ObjCClassFlags lhs, ObjCClassFlags rhs) {
 
 }
 
-#endif /* SWIFT_ABI_CLASS_H */
+#endif // SWIFT_ABI_CLASS_H

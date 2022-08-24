@@ -1,6 +1,5 @@
 :orphan:
 
-.. @raise litre.TestsAreMissing
 .. default-role:: code
 
 ====================================
@@ -14,7 +13,7 @@ taxonomy exists and how it is structured.
 Sequences
 =========
 
-It all begins with Swift's `for`\ …\ `in` loop::
+It all begins with Swift's `for`\ ...\ `in` loop::
 
   for x in s {
     doSomethingWith(x)
@@ -42,8 +41,8 @@ represented by the `SequenceType` protocol::
 
 .. sidebar:: Hiding Iterator Type Details
 
-  A sequence's iterator is an associated type—rather than something
-  like |AnyIterator|__ that depends only on the element type—for
+  A sequence's iterator is an associated type--rather than something
+  like |AnyIterator|__ that depends only on the element type--for
   performance reasons.  Although the alternative design has
   significant usability benefits, it requires one dynamic
   allocation/deallocation pair and *N* dynamic dispatches to traverse
@@ -54,7 +53,7 @@ represented by the `SequenceType` protocol::
 
   .. |AnyIterator| replace:: `AnyIterator<T>`
 
-  __ http://swiftdoc.org/type/AnyIterator/
+  __ http://swiftdoc.org/v3.0/type/AnyIterator/
 
 As you can see, sequence does nothing more than deliver an iterator.
 To understand the need for iterators, it's important to distinguish
@@ -65,7 +64,7 @@ the two kinds of sequences.
   are traversed.
 
 * **Stable** sequences, like arrays, should *not* be mutated by `for`\
-  …\ `in`, and thus require *separate traversal state*.
+  ...\ `in`, and thus require *separate traversal state*.
 
 To get an initial traversal state for an arbitrary sequence `x`, Swift
 calls `x.makeIterator()`.  The sequence delivers that state, along with
@@ -74,7 +73,7 @@ traversal logic, in the form of an **iterator**.
 Iterators
 ==========
 
-`for`\ …\ `in` needs three operations from the iterator:
+`for`\ ...\ `in` needs three operations from the iterator:
 
 * get the current element
 * advance to the next element
@@ -86,7 +85,7 @@ something like this::
   protocol NaiveIteratorProtocol {
     typealias Element
     var current() -> Element      // get the current element
-    mutating func advance()       // advance to the next element       
+    mutating func advance()       // advance to the next element
     var isExhausted: Bool         // detect whether there are more elements
   }
 
@@ -114,7 +113,7 @@ returning `nil` when the iterator is exhausted::
   }
 
 Combined with `SequenceType`, we now have everything we need to
-implement a generic `for`\ …\ `in` loop.
+implement a generic `for`\ ...\ `in` loop.
 
 .. sidebar:: Adding a Buffer
 
@@ -123,7 +122,7 @@ implement a generic `for`\ …\ `in` loop.
   support for buffering would fit nicely into the scheme, should it
   prove important::
 
-    public protocol BufferedIteratorProtocol 
+    public protocol BufferedIteratorProtocol
       : IteratorProtocol {
       var latest: Element? {get}
     }
@@ -140,23 +139,23 @@ implement a generic `for`\ …\ `in` loop.
       }
       public func next() -> Element? {
         latest = _baseIterator.next() ?? latest
-        return latest 
+        return latest
       }
-      public private(set) var latest: I.Element? = nil
+      public private(set) var latest: I.Element?
       private var _baseIterator: I
     }
 
 Operating on Sequences Generically
 ----------------------------------
 
-Given an arbitrary `SequenceType`, aside from a simple `for`\ …\ `in` loop,
+Given an arbitrary `SequenceType`, aside from a simple `for`\ ...\ `in` loop,
 you can do anything that requires reading elements from beginning to
 end.  For example::
 
   // Return an array containing the elements of `source`, with
   // `separator` interposed between each consecutive pair.
   func array<S: SequenceType>(
-    source: S, 
+    _ source: S,
     withSeparator separator: S.Iterator.Element
   ) -> [S.Iterator.Element] {
     var result: [S.Iterator.Element] = []
@@ -174,7 +173,7 @@ end.  For example::
   let s = String(array("Swift", withSeparator: "|"))
   print(s)        // "S|w|i|f|t"
 
-Because sequences may be volatile, though, you can—in general—only
+Because sequences may be volatile, though, you can--in general--only
 make a single traversal.  This capability is quite enough for many
 languages: the iteration abstractions of Java, C#, Python, and Ruby
 all go about as far as `SequenceType`, and no further.  In Swift,
@@ -215,7 +214,7 @@ Collections
 
 A **collection** is a stable sequence with addressable "positions,"
 represented by an associated `Index` type::
- 
+
   protocol CollectionType : SequenceType {
     typealias Index : ForwardIndexType             // a position
     subscript(i: Index) -> Iterator.Element {get}
@@ -230,7 +229,7 @@ how we interact with arrays: we subscript the collection using its
 
   let ith = c[i]
 
-An **index**\ —which must model `ForwardIndexType`\ —is a type with a
+An **index**\ --which must model `ForwardIndexType`\ --is a type with a
 linear series of discrete values that can be compared for equality:
 
 .. sidebar:: Dictionary Keys
@@ -286,7 +285,7 @@ stable indices, the element order within the collection itself is stable; the
 order sometimes does not have a meaning and is not chosen by the code that uses
 the collection, but by the implementation details of the collection itself.)
 
-`MutableCollectionType` protocol allows the to replace a specific element,
+`MutableCollectionType` protocol allows the caller to replace a specific element,
 identified by an index, with another one in the same position.  This capability
 essentially allows to rearrange the elements inside the collection in any
 order, thus types that conform to `MutableCollectionType` can represent
@@ -309,7 +308,7 @@ range of elements, denoted by two indices, by elements from a collection with a
     mutating func replaceSubrange<
       C: CollectionType where C.Iterator.Element == Self.Iterator.Element
     >(
-      subRange: Range<Index>, with newElements: C
+      _ subRange: Range<Index>, with newElements: C
     )
   }
 
@@ -356,7 +355,7 @@ features such as `Comparable` conformance, index subtraction, and
 addition/subtraction of integers to/from indices.
 
 The indices of a `deque
-<http://en.wikipedia.org/wiki/Double-ended_queue>`_ can provide random
+<https://en.wikipedia.org/wiki/Double-ended_queue>`_ can provide random
 access, as do the indices into `String.UTF16View` (when Foundation is
 loaded) and, of course, array indices.  Many common sorting and
 selection algorithms, among others, depend on these capabilities.
@@ -365,7 +364,7 @@ All direct operations on indices are intended to be lightweight, with
 amortized O(1) complexity.  In fact, indices into `Dictionary` and
 `Set` *could* be bidirectional, but are limited to modeling
 `ForwardIndexType` because the APIs of `NSDictionary` and
-`NSSet`—which can act as backing stores of `Dictionary` and `Set`—do
+`NSSet`--which can act as backing stores of `Dictionary` and `Set`--do
 not efficiently support reverse traversal.
 
 Conclusion

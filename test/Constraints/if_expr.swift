@@ -1,13 +1,7 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
-struct MyLogicValue : Boolean {
-  var boolValue: Bool {
-    return true
-  }
-}
-
-func useInt(x: Int) {}
-func useDouble(x: Double) {}
+func useInt(_ x: Int) {}
+func useDouble(_ x: Double) {}
 
 class B {
   init() {} 
@@ -19,9 +13,9 @@ class D2 : B {
   override init() { super.init() } 
 }
 
-func useB(x: B) {}
-func useD1(x: D1) {}
-func useD2(x: D2) {}
+func useB(_ x: B) {}
+func useD1(_ x: D1) {}
+func useD2(_ x: D2) {}
 
 var a = true ? 1 : 0 // should infer Int
 var b : Double = true ? 1 : 0 // should infer Double
@@ -34,7 +28,7 @@ useDouble(c)
 useDouble(d)
 
 var z = true ? a : b // expected-error{{result values in '? :' expression have mismatching types 'Int' and 'Double'}}
-var _ = a ? b : b // expected-error{{type 'Int' does not conform to protocol 'Boolean'}}
+var _ = a ? b : b // expected-error{{type 'Int' cannot be used as a boolean; test for '!= 0' instead}}
 
 
 
@@ -56,9 +50,38 @@ useB(i)
 useD1(i) // expected-error{{cannot convert value of type 'B' to expected argument type 'D1'}}
 useD2(i) // expected-error{{cannot convert value of type 'B' to expected argument type 'D2'}}
 
-var x = MyLogicValue() ? 1 : 0
-var y = 22 ? 1 : 0 // expected-error{{type 'Int' does not conform to protocol 'Boolean'}}
+var x = true ? 1 : 0
+var y = 22 ? 1 : 0 // expected-error{{type 'Int' cannot be used as a boolean; test for '!= 0' instead}}
 
-_ = x ? x : x // expected-error {{type 'Int' does not conform to protocol 'Boolean'}}
+_ = x ? x : x // expected-error {{type 'Int' cannot be used as a boolean; test for '!= 0' instead}}
 _ = true ? x : 1.2 // expected-error {{result values in '? :' expression have mismatching types 'Int' and 'Double'}}
 
+_ = (x: true) ? true : false // expected-error {{cannot convert value of type '(x: Bool)' to expected condition type 'Bool'}}
+_ = (x: 1) ? true : false // expected-error {{cannot convert value of type '(x: Int)' to expected condition type 'Bool'}}
+
+let ib: Bool! = false
+let eb: Bool? = .some(false)
+let conditional = ib ? "Broken" : "Heart" // should infer Bool!
+let conditional = eb ? "Broken" : "Heart" // expected-error {{value of optional type 'Bool?' must be unwrapped}}
+// expected-note@-1{{coalesce using '??' to provide a default when the optional value contains 'nil'}}
+// expected-note@-2{{force-unwrap using '!' to abort execution if the optional value contains 'nil'}}
+
+// <rdar://problem/39586166> - crash when IfExpr has UnresolvedType in condition
+struct Delegate {
+  var shellTasks: [ShellTask]
+}
+
+extension Array {
+  subscript(safe safe: Int) -> Element? {
+    get { }
+    set { }
+  }
+}
+
+struct ShellTask {
+  var commandLine: [String]
+}
+
+let delegate = Delegate(shellTasks: [])
+_ = delegate.shellTasks[safe: 0]?.commandLine.compactMap({ $0.asString.hasPrefix("") ? $0 : nil }).count ?? 0
+// expected-error@-1 {{value of type 'String' has no member 'asString'}}

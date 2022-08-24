@@ -1,9 +1,15 @@
-// RUN: rm -rf %t && mkdir %t
+// RUN: %empty-directory(%t)
 // RUN: echo '%S/Inputs/filelist-other.swift' >> %t/input.txt
 // RUN: echo '%s' >> %t/input.txt
 // RUN: echo '%S/../Inputs/empty.swift' >> %t/input.txt
-// RUN: not %target-swift-frontend -parse -filelist %t/input.txt -primary-file %s 2>&1 | FileCheck %s
-// RUN: not %target-swift-frontend -parse -filelist %t/input.txt 2>&1 | FileCheck %s
+// RUN: not %target-swift-frontend -typecheck -filelist %t/input.txt -primary-file %s 2>&1 | %FileCheck %s
+// RUN: not %target-swift-frontend -typecheck -filelist %t/input.txt 2>&1 | %FileCheck %s
+
+// RUN: not %target-swift-frontend -emit-bc -filelist %t/nonexistent-input.txt 2>&1 | %FileCheck -check-prefix=CHECK-BADFILE %s
+// CHECK-BADFILE: error: cannot open file
+
+// RUN: not %target-swift-frontend -emit-bc -filelist %t/input.txt -primary-file nonexistent.swift 2>&1 | %FileCheck -check-prefix=CHECK-BADPRIMARYFILE %s
+// CHECK-BADPRIMARYFILE: error: primary file 'nonexistent.swift' was not found in file list
 
 // RUN: echo '%t/filelist-other.bc' >> %t/output.txt
 // RUN: echo '%t/filelist.bc' >> %t/output.txt

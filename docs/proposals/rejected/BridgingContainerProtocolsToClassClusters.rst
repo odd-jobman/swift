@@ -41,7 +41,7 @@ guarantees.  Many ``NSArray`` implementations are lazy,
 such as those over KVO properties or Core Data aggregates, and
 transforming them to concrete ``Array``\ s would have unintended semantic
 effects. And on the other side, the overhead of having to accommodate an
-arbitrary ``NSArray`` implementation inside ``Array`` destroys ``Array`` 
+arbitrary ``NSArray`` implementation inside ``Array`` destroys ``Array``
 as a simple, high-performance container. Attempting to bridge these two types
 will result in an unattractive compromise to both sides, weakening the
 algorithmic guarantees of Array while forgoing the full flexibility of
@@ -88,7 +88,7 @@ inheritance to hide the concrete implementing type behind an abstract base::
     var startIndex: Int { fatal() }
     var endIndex: Int { fatal() }
 
-    func __getitem__(i: Int) -> T { fatal() }
+    func __getitem__(_ i: Int) -> T { fatal() }
 
     // For COW
     func _clone() -> Self { fatal() }
@@ -101,7 +101,7 @@ inheritance to hide the concrete implementing type behind an abstract base::
     var value: ArrayT
     var startIndex: Int { return value.startIndex }
     var endIndex: Int { return value.endIndex }
-    func __getitem__(i: Int) -> T { return __getitem__(i) }
+    func __getitem__(_ i: Int) -> T { return __getitem__(i) }
 
     // For COW
     func _clone() -> Self { return self(value) }
@@ -114,7 +114,7 @@ inheritance to hide the concrete implementing type behind an abstract base::
 
     var startIndex: Int { return value.startIndex }
     var endIndex: Int { return value.endIndex }
-    func __getitem__(i: Int) -> T { return value.__getitem__(i) }
+    func __getitem__(_ i: Int) -> T { return value.__getitem__(i) }
 
     init<ArrayT : Array where ArrayT.Element == T>(arr: ArrayT) {
       value = ArrayOfImpl<T, ArrayT>(arr)
@@ -126,7 +126,7 @@ The mutable variant can use COW optimization to preserve value semantics::
   struct MutableArrayOf<T> : MutableArray {
     /* ...other forwarding methods... */
 
-    func __setitem__(i: Int, x: T) {
+    func __setitem__(_ i: Int, x: T) {
       if !isUniquelyReferenced(value) {
         value = value._clone()
       }
@@ -168,7 +168,7 @@ naturally with generic Swift containers. Assuming we had support for
     }
   }
 
-``NSArray`` has reference semantics in ObjC, which is a mismatch with 
+``NSArray`` has reference semantics in ObjC, which is a mismatch with
 Swift's value semantics, but because ``NSArray`` is a value class, this is
 probably not a problem in practice, because it will be ``copy``-ed as
 necessary as a best practice. There also needs to be a special case for bridging

@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 // Extern C functions
@@ -14,18 +14,10 @@
 
 // FIXME: Once we have an FFI interface, make these have proper function bodies
 
-@_transparent
-@warn_unused_result
-public // @testable
-func _countLeadingZeros(value: Int64) -> Int64 {
-    return Int64(Builtin.int_ctlz_Int64(value._value, false._value))
-}
-
 /// Returns if `x` is a power of 2.
 @_transparent
-@warn_unused_result
 public // @testable
-func _isPowerOf2(x: UInt) -> Bool {
+func _isPowerOf2(_ x: UInt) -> Bool {
   if x == 0 {
     return false
   }
@@ -36,9 +28,8 @@ func _isPowerOf2(x: UInt) -> Bool {
 
 /// Returns if `x` is a power of 2.
 @_transparent
-@warn_unused_result
 public // @testable
-func _isPowerOf2(x: Int) -> Bool {
+func _isPowerOf2(_ x: Int) -> Bool {
   if x <= 0 {
     return false
   }
@@ -49,118 +40,117 @@ func _isPowerOf2(x: Int) -> Bool {
 
 #if _runtime(_ObjC)
 @_transparent
-public func _autorelease(x: AnyObject) {
+public func _autorelease(_ x: AnyObject) {
   Builtin.retain(x)
   Builtin.autorelease(x)
 }
 #endif
 
-/// Invoke `body` with an allocated, but uninitialized memory suitable for a
-/// `String` value.
-///
-/// This function is primarily useful to call various runtime functions
-/// written in C++.
-func _withUninitializedString<R>(
-  body: (UnsafeMutablePointer<String>) -> R
-) -> (R, String) {
-  let stringPtr = UnsafeMutablePointer<String>(allocatingCapacity: 1)
-  let bodyResult = body(stringPtr)
-  let stringResult = stringPtr.move()
-  stringPtr.deallocateCapacity(1)
-  return (bodyResult, stringResult)
-}
 
-@_silgen_name("swift_getTypeName")
-public func _getTypeName(type: Any.Type, qualified: Bool)
-  -> (UnsafePointer<UInt8>, Int)
+@available(SwiftStdlib 5.7, *)
+@_silgen_name("swift_getFunctionFullNameFromMangledName")
+public // SPI (Distributed)
+func _getFunctionFullNameFromMangledNameImpl(
+  _ mangledName: UnsafePointer<UInt8>, _ mangledNameLength: UInt
+) -> (UnsafePointer<UInt8>, UInt)
 
-/// Returns the demangled qualified name of a metatype.
-@warn_unused_result
-public // @testable
-func _typeName(type: Any.Type, qualified: Bool = true) -> String {
-  let (stringPtr, count) = _getTypeName(type, qualified: qualified)
-  return ._fromWellFormedCodeUnitSequence(UTF8.self,
-    input: UnsafeBufferPointer(start: stringPtr, count: count))
-}
+/// Given a function's mangled name, return a human readable name.
+/// Used e.g. by Distributed.RemoteCallTarget to hide mangled names.
+@available(SwiftStdlib 5.7, *)
+public // SPI (Distributed)
+func _getFunctionFullNameFromMangledName(mangledName: String) -> String? {
+  let mangledNameUTF8 = Array(mangledName.utf8)
+  let (stringPtr, count) =
+    mangledNameUTF8.withUnsafeBufferPointer { (mangledNameUTF8) in
+    return _getFunctionFullNameFromMangledNameImpl(
+      mangledNameUTF8.baseAddress!,
+      UInt(mangledNameUTF8.endIndex))
+  }
 
-@_silgen_name("swift_getTypeByMangledName")
-func _getTypeByMangledName(
-    name: UnsafePointer<UInt8>,
-    _ nameLength: UInt)
-  -> Any.Type?
-
-/// Lookup a class given a name. Until the demangled encoding of type
-/// names is stabilized, this is limited to top-level class names (Foo.bar).
-@warn_unused_result
-public // SPI(Foundation)
-func _typeByName(name: String) -> Any.Type? {
-  let components = name.characters.split{$0 == "."}.map(String.init)
-  guard components.count == 2 else {
+  guard count > 0 else {
     return nil
   }
 
-  // Note: explicitly build a class name to match on, rather than matching
-  // on the result of _typeName(), to ensure the type we are resolving is
-  // actually a class.
-  var name = "C"
-  if components[0] == "Swift" {
-    name += "s"
-  } else {
-    name += String(components[0].characters.count) + components[0]
-  }
-  name += String(components[1].characters.count) + components[1]
+  return String._fromUTF8Repairing(
+    UnsafeBufferPointer(start: stringPtr, count: Int(count))).0
+}
 
+// FIXME(ABI)#51 : this API should allow controlling different kinds of
+// qualification separately: qualification with module names and qualification
+// with type names that we are nested in.
+// But we can place it behind #if _runtime(_Native) and remove it from ABI on
+// Apple platforms, deferring discussions mentioned above.
+@_silgen_name("swift_getTypeName")
+public func _getTypeName(_ type: Any.Type, qualified: Bool)
+  -> (UnsafePointer<UInt8>, Int)
+
+/// Returns the demangled qualified name of a metatype.
+@_semantics("typeName")
+public // @testable
+func _typeName(_ type: Any.Type, qualified: Bool = true) -> String {
+  let (stringPtr, count) = _getTypeName(type, qualified: qualified)
+  return String._fromUTF8Repairing(
+    UnsafeBufferPointer(start: stringPtr, count: count)).0
+}
+
+@available(SwiftStdlib 5.3, *)
+@_silgen_name("swift_getMangledTypeName")
+public func _getMangledTypeName(_ type: Any.Type)
+  -> (UnsafePointer<UInt8>, Int)
+
+/// Returns the mangled name for a given type.
+@available(SwiftStdlib 5.3, *)
+public // SPI
+func _mangledTypeName(_ type: Any.Type) -> String? {
+  let (stringPtr, count) = _getMangledTypeName(type)
+  guard count > 0 else {
+    return nil
+  }
+
+  let (result, repairsMade) = String._fromUTF8Repairing(
+      UnsafeBufferPointer(start: stringPtr, count: count))
+
+  _precondition(!repairsMade, "repairs made to _mangledTypeName, this is not expected since names should be valid UTF-8")
+
+  return result
+}
+
+/// Lookup a class given a name. Until the demangled encoding of type
+/// names is stabilized, this is limited to top-level class names (Foo.bar).
+public // SPI(Foundation)
+func _typeByName(_ name: String) -> Any.Type? {
   let nameUTF8 = Array(name.utf8)
   return nameUTF8.withUnsafeBufferPointer { (nameUTF8) in
-    let type = _getTypeByMangledName(nameUTF8.baseAddress,
-                                     UInt(nameUTF8.endIndex))
-
-    return type
-  }
-}
- 
-@warn_unused_result
-@_silgen_name("swift_stdlib_demangleName")
-func _stdlib_demangleNameImpl(
-  mangledName: UnsafePointer<UInt8>,
-  _ mangledNameLength: UInt,
-  _ demangledName: UnsafeMutablePointer<String>)
-
-// NB: This function is not used directly in the Swift codebase, but is
-// exported for Xcode support. Please coordinate before changing.
-@warn_unused_result
-public // @testable
-func _stdlib_demangleName(mangledName: String) -> String {
-  let mangledNameUTF8 = Array(mangledName.utf8)
-  return mangledNameUTF8.withUnsafeBufferPointer {
-    (mangledNameUTF8) in
-    let (_, demangledName) = _withUninitializedString {
-      _stdlib_demangleNameImpl(
-        mangledNameUTF8.baseAddress, UInt(mangledNameUTF8.endIndex),
-        $0)
-    }
-    return demangledName
+    return  _getTypeByMangledNameUntrusted(nameUTF8.baseAddress!,
+                                  UInt(nameUTF8.endIndex))
   }
 }
 
-/// Returns `floor(log(x))`.  This equals to the position of the most
-/// significant non-zero bit, or 63 - number-of-zeros before it.
-///
-/// The function is only defined for positive values of `x`.
-///
-/// Examples:
-///
-///      floorLog2(1) == 0
-///      floorLog2(2) == floorLog2(3) == 1
-///      floorLog2(9) == floorLog2(15) == 3
-///
-/// TODO: Implement version working on Int instead of Int64.
-@warn_unused_result
-@_transparent
-public // @testable
-func _floorLog2(x: Int64) -> Int {
-  _sanityCheck(x > 0, "_floorLog2 operates only on non-negative integers")
-  // Note: use unchecked subtraction because we this expression cannot
-  // overflow.
-  return 63 &- Int(_countLeadingZeros(x))
+@_silgen_name("swift_stdlib_getTypeByMangledNameUntrusted")
+internal func _getTypeByMangledNameUntrusted(
+  _ name: UnsafePointer<UInt8>,
+  _ nameLength: UInt)
+  -> Any.Type?
+
+@_silgen_name("swift_getTypeByMangledNameInEnvironment")
+public func _getTypeByMangledNameInEnvironment(
+  _ name: UnsafePointer<UInt8>,
+  _ nameLength: UInt,
+  genericEnvironment: UnsafeRawPointer?,
+  genericArguments: UnsafeRawPointer?)
+  -> Any.Type?
+
+@_silgen_name("swift_getTypeByMangledNameInContext")
+public func _getTypeByMangledNameInContext(
+  _ name: UnsafePointer<UInt8>,
+  _ nameLength: UInt,
+  genericContext: UnsafeRawPointer?,
+  genericArguments: UnsafeRawPointer?)
+  -> Any.Type?
+
+/// Prevents performance diagnostics in the passed closure.
+@_alwaysEmitIntoClient
+@_semantics("no_performance_analysis")
+public func _unsafePerformance<T>(_ c: () -> T) -> T {
+  return c()
 }

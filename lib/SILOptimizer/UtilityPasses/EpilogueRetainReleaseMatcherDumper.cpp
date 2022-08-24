@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -39,12 +39,13 @@ namespace {
 class SILEpilogueRetainReleaseMatcherDumper : public SILModuleTransform {
 
   void run() override {
-    auto *AA = PM->getAnalysis<AliasAnalysis>();
     auto *RCIA = getAnalysis<RCIdentityAnalysis>();
     for (auto &Fn: *getModule()) {
       // Function is not definition.
       if (!Fn.isDefinition())
         continue;
+
+      auto *AA = PM->getAnalysis<AliasAnalysis>(&Fn);
 
       llvm::outs() << "START: sil @" << Fn.getName() << "\n";
 
@@ -67,7 +68,6 @@ class SILEpilogueRetainReleaseMatcherDumper : public SILModuleTransform {
     }
   }
 
-  StringRef getName() override { return "Epilogue Retain/Release Matcher Dumper"; }
 };
         
 } // end anonymous namespace

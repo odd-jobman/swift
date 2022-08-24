@@ -1,10 +1,16 @@
 // RUN: %target-swift-ide-test(mock-sdk: %clang-importer-sdk) -I %t -I %S/Inputs/custom-modules -print-module -source-filename %s -module-to-print=ImportAsMember.A -always-argument-labels > %t.printed.A.txt
 // RUN: %target-swift-ide-test(mock-sdk: %clang-importer-sdk) -I %t -I %S/Inputs/custom-modules -print-module -source-filename %s -module-to-print=ImportAsMember.B -always-argument-labels > %t.printed.B.txt
-// RUN: %target-swift-ide-test(mock-sdk: %clang-importer-sdk) -I %t -I %S/Inputs/custom-modules -print-module -source-filename %s -module-to-print=ImportAsMember.Proto -always-argument-labels > %t.printed.Proto.txt
 
-// RUN: FileCheck %s -check-prefix=PRINT -strict-whitespace < %t.printed.A.txt
-// RUN: FileCheck %s -check-prefix=PRINTB -strict-whitespace < %t.printed.B.txt
-// RUN: FileCheck %s -check-prefix=PRINT-PROTO -strict-whitespace < %t.printed.Proto.txt
+// RUN: %FileCheck %s -check-prefix=PRINT -strict-whitespace < %t.printed.A.txt
+// RUN: %FileCheck %s -check-prefix=PRINTB -strict-whitespace < %t.printed.B.txt
+
+// RUN: %target-swift-ide-test(mock-sdk: %clang-importer-sdk) -I %t -I %S/Inputs/custom-modules -print-module -source-filename %s -module-to-print=ImportAsMember.APINotes -swift-version 4 -always-argument-labels | %FileCheck %s -check-prefix=PRINT-APINOTES-3 -strict-whitespace
+// RUN: %target-swift-ide-test(mock-sdk: %clang-importer-sdk) -I %t -I %S/Inputs/custom-modules -print-module -source-filename %s -module-to-print=ImportAsMember.APINotes -swift-version 5 -always-argument-labels | %FileCheck %s -check-prefix=PRINT-APINOTES-4 -strict-whitespace
+
+// RUN: %target-typecheck-verify-swift -I %S/Inputs/custom-modules
+
+// Assertion failed: (I != F.TypeRemap.end() && "Invalid index into type index remap"))
+// REQUIRES: rdar70691386
 
 // PRINT: struct Struct1 {
 // PRINT-NEXT:   var x: Double
@@ -20,6 +26,7 @@
 // PRINT:      extension Struct1 {
 // PRINT-NEXT:   static var globalVar: Double
 // PRINT-NEXT:   init(value value: Double)
+// PRINT-NEXT:   init(specialLabel specialLabel: ())
 // PRINT-NEXT:   func inverted() -> Struct1
 // PRINT-NEXT:   mutating func invert()
 // PRINT-NEXT:   func translate(radians radians: Double) -> Struct1
@@ -50,39 +57,77 @@
 
 // PRINTB-NOT: static var globalVar: Double
 
-// PRINT-PROTO-LABEL: protocol ImportedProtocolBase : NSObjectProtocol {
-// PRINT-PROTO-NEXT:  }
-// PRINT-PROTO-NEXT:  typealias ImportedProtocolBase_t = ImportedProtocolBase
-// PRINT-PROTO-NEXT:  protocol IAMProto : ImportedProtocolBase {
-// PRINT-PROTO-NEXT:  }
-// PRINT-PROTO-NEXT:  typealias IAMProto_t = IAMProto
-// PRINT-PROTO-NEXT:  extension IAMProto {
-// PRINT-PROTO-NEXT:    func mutateSomeState()
-// PRINT-PROTO-NEXT:    func mutateSomeState(otherProto other: IAMProto_t!)
-// PRINT-PROTO-NEXT:    var someValue: Int32
-// PRINT-PROTO-NEXT:  }
+// PRINT-APINOTES-3:      @available(swift, obsoleted: 3, renamed: "Struct1.oldApiNoteVar")
+// PRINT-APINOTES-3-NEXT: var IAMStruct1APINoteVar: Double
+// PRINT-APINOTES-3:      extension Struct1 {
+// PRINT-APINOTES-3-NEXT:   var oldApiNoteVar: Double
+// PRINT-APINOTES-3-NEXT:   @available(swift, introduced: 4.2, renamed: "Struct1.oldApiNoteVar")
+// PRINT-APINOTES-3-NEXT:   var newApiNoteVar: Double
+// PRINT-APINOTES-3-NEXT:   @available(swift, introduced: 4.2, renamed: "IAMStruct1APINoteVarInSwift4")
+// PRINT-APINOTES-3-NEXT:   var apiNoteVarInSwift4: Double
+// PRINT-APINOTES-3-NEXT:   static func oldApiNoteMethod()
+// PRINT-APINOTES-3-NEXT:   @available(swift, introduced: 4.2, renamed: "Struct1.oldApiNoteMethod()")
+// PRINT-APINOTES-3-NEXT:   static func newApiNoteMethod()
+// PRINT-APINOTES-3-NEXT:   init(oldLabel _: Int32)
+// PRINT-APINOTES-3-NEXT:   @available(swift, introduced: 4.2, renamed: "Struct1.init(oldLabel:)")
+// PRINT-APINOTES-3-NEXT:   init(newLabel _: Int32)
+// PRINT-APINOTES-3-NEXT:   typealias OldApiNoteType = Struct1.NewApiNoteType
+// PRINT-APINOTES-3-NEXT:   typealias NewApiNoteType = Double
+// PRINT-APINOTES-3-NEXT: }
+// PRINT-APINOTES-3-NOT: @available
+// PRINT-APINOTES-3:     var IAMStruct1APINoteVarInSwift4: Double
+// PRINT-APINOTES-3:     @available(swift, obsoleted: 3, renamed: "Struct1.oldApiNoteMethod()")
+// PRINT-APINOTES-3-NEXT: func IAMStruct1APINoteFunction()
+// PRINT-APINOTES-3:     @available(swift, obsoleted: 3, renamed: "Struct1.init(oldLabel:)")
+// PRINT-APINOTES-3-NEXT: func IAMStruct1APINoteCreateFunction(_ _: Int32) -> Struct1
+// PRINT-APINOTES-3:      @available(swift, obsoleted: 3, renamed: "Struct1.OldApiNoteType")
+// PRINT-APINOTES-3-NEXT: typealias IAMStruct1APINoteType = Struct1.OldApiNoteType
 
-// RUN: %target-parse-verify-swift -I %S/Inputs/custom-modules
-// RUN: %target-swift-frontend %s -parse -I %S/Inputs/custom-modules -verify
+// PRINT-APINOTES-4:      @available(swift, obsoleted: 3, renamed: "Struct1.newApiNoteVar")
+// PRINT-APINOTES-4-NEXT: var IAMStruct1APINoteVar: Double
+// PRINT-APINOTES-4:      extension Struct1 {
+// PRINT-APINOTES-4-NEXT:   var newApiNoteVar: Double
+// PRINT-APINOTES-4-NEXT:   @available(swift, obsoleted: 4.2, renamed: "Struct1.newApiNoteVar")
+// PRINT-APINOTES-4-NEXT:   var oldApiNoteVar: Double
+// PRINT-APINOTES-4-NEXT:   var apiNoteVarInSwift4: Double
+// PRINT-APINOTES-4-NEXT:   static func newApiNoteMethod()
+// PRINT-APINOTES-4-NEXT:   @available(swift, obsoleted: 4.2, renamed: "Struct1.newApiNoteMethod()")
+// PRINT-APINOTES-4-NEXT:   static func oldApiNoteMethod()
+// PRINT-APINOTES-4-NEXT:   init(newLabel _: Int32)
+// PRINT-APINOTES-4-NEXT:   @available(swift, obsoleted: 4.2, renamed: "Struct1.init(newLabel:)")
+// PRINT-APINOTES-4-NEXT:   init(oldLabel _: Int32)
+// PRINT-APINOTES-4-NEXT:   typealias NewApiNoteType = Double
+// PRINT-APINOTES-4-NEXT:   @available(swift, obsoleted: 4.2, renamed: "Struct1.NewApiNoteType")
+// PRINT-APINOTES-4-NEXT:   typealias OldApiNoteType = Struct1.NewApiNoteType
+// PRINT-APINOTES-4-NEXT: }
+// PRINT-APINOTES-4:      @available(swift, obsoleted: 4.2, renamed: "Struct1.apiNoteVarInSwift4")
+// PRINT-APINOTES-4-NEXT: var IAMStruct1APINoteVarInSwift4: Double
+// PRINT-APINOTES-4:     @available(swift, obsoleted: 3, renamed: "Struct1.newApiNoteMethod()")
+// PRINT-APINOTES-4-NEXT: func IAMStruct1APINoteFunction()
+// PRINT-APINOTES-4:     @available(swift, obsoleted: 3, renamed: "Struct1.init(newLabel:)")
+// PRINT-APINOTES-4-NEXT: func IAMStruct1APINoteCreateFunction(_ _: Int32) -> Struct1
+// PRINT-APINOTES-4:      @available(swift, obsoleted: 3, renamed: "Struct1.NewApiNoteType")
+// PRINT-APINOTES-4-NEXT: typealias IAMStruct1APINoteType = Struct1.NewApiNoteType
 
-// REQUIRES: objc_interop
-
-import ImportAsMember
+#if canImport(Foundation)
+import Foundation
+#endif
+import ImportAsMember.A
 import ImportAsMember.B
-import ImportAsMember.ProtoErr
+import ImportAsMember.APINotes
 
 let iamStructFail = IAMStruct1CreateSimple()
-  // expected-error@-1{{use of unresolved identifier 'IAMStruct1CreateSimple'}}
+  // expected-error@-1{{missing argument for parameter #1 in call}}
 var iamStruct = Struct1(x: 1.0, y: 1.0, z: 1.0)
 
 let gVarFail = IAMStruct1GlobalVar
-  // expected-error@-1{{use of unresolved identifier 'IAMStruct1GlobalVar'}}
+  // expected-error@-1{{IAMStruct1GlobalVar' has been renamed to 'Struct1.globalVar'}}
 let gVar = Struct1.globalVar
 print("\(gVar)")
 
 let iamStructInitFail = IAMStruct1CreateSimple(42)
-  // expected-error@-1{{use of unresolved identifier 'IAMStruct1CreateSimple'}}
-let iamStructInitFail = Struct1(value: 42)
+  // expected-error@-1{{'IAMStruct1CreateSimple' has been replaced by 'Struct1.init(value:)'}}
+let iamStructInitFail2 = Struct1(value: 42)
 
 let gVar2 = Struct1.static2
 
@@ -95,20 +140,3 @@ iamStruct = Struct1.zero
 
 // Global properties
 currentStruct1.x += 1.5
-
-// Protocols
-// class Foo : NSObject, IAMProto {}
-
-struct Bar : IAMProto {}
-  // expected-error@-1{{non-class type 'Bar' cannot conform to class protocol 'IAMProto'}}
-  // expected-error@-2{{non-class type 'Bar' cannot conform to class protocol 'ImportedProtocolBase'}}
-  // expected-error@-3{{non-class type 'Bar' cannot conform to class protocol 'NSObjectProtocol'}}
-
-
-// let foo = Foo()
-// foo.mutateSomeState()
-// Foo.mutateSomeStaticState()
-  // expected-not-error@-1{{type 'Foo' has no member 'mutateSomeStaticState'}}
-
-// TODO: error: "swift_name cannot be used to define static member on protocol"
-

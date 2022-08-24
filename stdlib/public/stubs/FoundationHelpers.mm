@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -16,80 +16,101 @@
 //
 //===----------------------------------------------------------------------===//
 
-#import <CoreFoundation/CoreFoundation.h>
 #include "swift/Runtime/Config.h"
 
-SWIFT_RUNTIME_STDLIB_INTERFACE
-extern "C"
-void _swift_stdlib_CFStringGetCharacters(CFStringRef theString,
-                                         CFRange range,
-                                         UniChar *buffer) {
-  return CFStringGetCharacters(theString, range, buffer);
+#if SWIFT_OBJC_INTEROP
+#import <CoreFoundation/CoreFoundation.h>
+#include "SwiftShims/CoreFoundationShims.h"
+#import <objc/runtime.h>
+#include "swift/Runtime/Once.h"
+#include <dlfcn.h>
+
+typedef enum {
+    dyld_objc_string_kind
+} DyldObjCConstantKind;
+
+using namespace swift;
+
+static CFHashCode(*_CFStringHashCString)(const uint8_t *bytes, CFIndex len);
+static CFHashCode(*_CFStringHashNSString)(id str);
+static CFTypeID(*_CFGetTypeID)(CFTypeRef obj);
+static CFTypeID _CFStringTypeID = 0;
+static swift_once_t initializeBridgingFuncsOnce;
+
+extern "C" bool _dyld_is_objc_constant(DyldObjCConstantKind kind,
+                                       const void *addr) SWIFT_RUNTIME_WEAK_IMPORT;
+
+static void _initializeBridgingFunctionsImpl(void *ctxt) {
+  auto getStringTypeID =
+    (CFTypeID(*)(void))
+    dlsym(RTLD_DEFAULT, "CFStringGetTypeID");
+  assert(getStringTypeID);
+  _CFStringTypeID = getStringTypeID();
+  
+  _CFGetTypeID = (CFTypeID(*)(CFTypeRef obj))dlsym(RTLD_DEFAULT, "CFGetTypeID");
+  _CFStringHashNSString = (CFHashCode(*)(id))dlsym(RTLD_DEFAULT,
+                                                   "CFStringHashNSString");
+  _CFStringHashCString = (CFHashCode(*)(const uint8_t *, CFIndex))dlsym(
+                                                   RTLD_DEFAULT,
+                                                   "CFStringHashCString");
 }
 
-SWIFT_RUNTIME_STDLIB_INTERFACE
-extern "C"
-const UniChar * _swift_stdlib_CFStringGetCharactersPtr(CFStringRef theString) {
-  return CFStringGetCharactersPtr(theString);
+static inline void initializeBridgingFunctions() {
+  swift_once(&initializeBridgingFuncsOnce,
+             _initializeBridgingFunctionsImpl,
+             nullptr);
 }
 
-SWIFT_RUNTIME_STDLIB_INTERFACE
-extern "C"
-CFIndex _swift_stdlib_CFStringGetLength(CFStringRef theString) {
-  return CFStringGetLength(theString);
+__swift_uint8_t
+_swift_stdlib_isNSString(id obj) {
+  initializeBridgingFunctions();
+  return _CFGetTypeID((CFTypeRef)obj) == _CFStringTypeID ? 1 : 0;
 }
 
-SWIFT_RUNTIME_STDLIB_INTERFACE
-extern "C"
-CFStringRef _swift_stdlib_CFStringCreateWithSubstring(CFAllocatorRef alloc,
-                                                      CFStringRef str,
-                                                      CFRange range) {
-  return CFStringCreateWithSubstring(alloc, str, range);
+_swift_shims_CFHashCode
+_swift_stdlib_CFStringHashNSString(id _Nonnull obj) {
+  initializeBridgingFunctions();
+  return _CFStringHashNSString(obj);
 }
 
-SWIFT_RUNTIME_STDLIB_INTERFACE
-extern "C"
-UniChar _swift_stdlib_CFStringGetCharacterAtIndex(CFStringRef theString,
-                                                  CFIndex idx) {
-  return CFStringGetCharacterAtIndex(theString, idx);
+_swift_shims_CFHashCode
+_swift_stdlib_CFStringHashCString(const _swift_shims_UInt8 * _Nonnull bytes,
+                                  _swift_shims_CFIndex length) {
+  initializeBridgingFunctions();
+  return _CFStringHashCString(bytes, length);
 }
 
-SWIFT_RUNTIME_STDLIB_INTERFACE
-extern "C"
-CFStringRef
-_swift_stdlib_CFStringCreateCopy(CFAllocatorRef alloc,
-                                 CFStringRef theString) {
-  return CFStringCreateCopy(alloc, theString);
+const __swift_uint8_t *
+_swift_stdlib_NSStringCStringUsingEncodingTrampoline(id _Nonnull obj,
+                                                  unsigned long encoding) {
+  typedef __swift_uint8_t * _Nullable (*cStrImplPtr)(id, SEL, unsigned long);
+  cStrImplPtr imp = (cStrImplPtr)class_getMethodImplementation([obj superclass],
+                                                               @selector(cStringUsingEncoding:));
+  return imp(obj, @selector(cStringUsingEncoding:), encoding);
 }
 
-SWIFT_RUNTIME_STDLIB_INTERFACE
-extern "C"
-const char *_swift_stdlib_CFStringGetCStringPtr(CFStringRef theString,
-                                                CFStringEncoding encoding) {
-  return CFStringGetCStringPtr(theString, encoding);
+__swift_uint8_t
+_swift_stdlib_NSStringGetCStringTrampoline(id _Nonnull obj,
+                                         _swift_shims_UInt8 *buffer,
+                                         _swift_shims_CFIndex maxLength,
+                                         unsigned long encoding) {
+  typedef __swift_uint8_t (*getCStringImplPtr)(id,
+                                             SEL,
+                                             _swift_shims_UInt8 *,
+                                             _swift_shims_CFIndex,
+                                             unsigned long);
+  SEL sel = @selector(getCString:maxLength:encoding:);
+  getCStringImplPtr imp = (getCStringImplPtr)class_getMethodImplementation([obj superclass], sel);
+  
+  return imp(obj, sel, buffer, maxLength, encoding);
+
 }
 
-SWIFT_RUNTIME_STDLIB_INTERFACE
-extern "C" CFComparisonResult
-_swift_stdlib_CFStringCompare(CFStringRef theString1,
-                              CFStringRef theString2,
-                              CFStringCompareFlags compareOptions) {
-  return CFStringCompare(theString1, theString2, compareOptions);
+__swift_uint8_t
+_swift_stdlib_dyld_is_objc_constant_string(const void *addr) {
+  return (SWIFT_RUNTIME_WEAK_CHECK(_dyld_is_objc_constant)
+          && SWIFT_RUNTIME_WEAK_USE(_dyld_is_objc_constant(dyld_objc_string_kind, addr))) ? 1 : 0;
 }
 
-SWIFT_RUNTIME_STDLIB_INTERFACE
-extern "C" Boolean
-_swift_stdlib_CFStringFindWithOptions(CFStringRef theString,
-                                      CFStringRef stringToFind,
-                                      CFRange rangeToSearch,
-                                      CFStringCompareFlags searchOptions,
-                                      CFRange *result) {
-  return CFStringFindWithOptions(theString, stringToFind, rangeToSearch,
-                                 searchOptions, result);
-}
+#endif
 
-SWIFT_RUNTIME_STDLIB_INTERFACE
-extern "C" CFStringRef
-_swift_stdlib_objcDebugDescription(id __nonnull nsObject) {
-  return (__bridge CFStringRef)[nsObject debugDescription];
-}

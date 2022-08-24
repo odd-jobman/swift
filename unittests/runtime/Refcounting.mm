@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,12 +33,12 @@ static HeapObject *make_objc_object() {
 
 TEST(RefcountingTest, objc_unknown_retain_release_n) {
   auto object = make_objc_object();
-  swift_unknownRetain_n(object, 32);
-  swift_unknownRetain(object);
-  swift_unknownRelease_n(object, 31);
-  swift_unknownRelease(object);
-  swift_unknownRelease_n(object, 1);
-  swift_unknownRelease(object);
+  swift_unknownObjectRetain_n(object, 32);
+  swift_unknownObjectRetain(object);
+  swift_unknownObjectRelease_n(object, 31);
+  swift_unknownObjectRelease(object);
+  swift_unknownObjectRelease_n(object, 1);
+  swift_unknownObjectRelease(object);
   // The object should be destroyed by now.
   EXPECT_EQ(1u, DestroyedObjCCount);
 }

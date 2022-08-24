@@ -1,21 +1,30 @@
+
+
 set(swiftDriver_sources
   Action.cpp
   Compilation.cpp
-  DependencyGraph.cpp
+  DarwinToolChains.cpp
   Driver.cpp
+  FineGrainedDependencyDriverGraph.cpp
   FrontendUtil.cpp
   Job.cpp
-  OutputFileMap.cpp
-  ParseableOutput.cpp
+  PrettyStackTrace.cpp
   ToolChain.cpp
   ToolChains.cpp
-  Types.cpp
+  UnixToolChains.cpp
+  WebAssemblyToolChains.cpp
+  WindowsToolChains.cpp
   )
 
 set(swiftDriver_targetDefines)
 
-add_swift_library(swiftDriver
-  ${swiftDriver_sources}
-  DEPENDS SwiftOptions
-  LINK_LIBRARIES swiftAST swiftBasic swiftFrontend swiftOption)
+add_swift_host_library(swiftDriver STATIC
+  ${swiftDriver_sources})
+add_dependencies(swiftDriver
+  SwiftOptions)
+target_link_libraries(swiftDriver PRIVATE
+  swiftAST
+  swiftBasic
+  swiftOption)
 
+set_swift_llvm_is_available(swiftDriver)

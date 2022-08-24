@@ -1,4 +1,4 @@
-// RUN: %target-run-simple-swift | FileCheck %s
+// RUN: %target-run-simple-swift | %FileCheck %s
 // REQUIRES: executable_test
 
 var foo: Int {
@@ -120,7 +120,7 @@ func test() {
   print(Bar.staticStoredBar)
   
 
-  func increment(x: inout Int) {
+  func increment(_ x: inout Int) {
     x += 1
   }
 
@@ -173,63 +173,6 @@ func test() {
 }
 test()
 
-func lazyInitFunction() -> Int {
-  print("lazy property initialized")
-  return 0
-}
-
-
-class LazyPropertyClass {
-  var id : Int
-  lazy var lazyProperty = lazyInitFunction()
-
-  lazy var lazyProperty2 : Int = {
-    print("other lazy property initialized")
-    return 0
-  }()
-
-
-  init(_ ident : Int) {
-    id = ident
-    print("LazyPropertyClass.init #\(id)")
-  }
-
-  deinit {
-    print("LazyPropertyClass.deinit #\(id)")
-  }
-  
-
-}
-
-
-func testLazyProperties() {
-  print("testLazyPropertiesStart") // CHECK: testLazyPropertiesStart
-  if true {
-    var a = LazyPropertyClass(1)      // CHECK-NEXT: LazyPropertyClass.init #1
-    _ = a.lazyProperty                // CHECK-NEXT: lazy property initialized
-    _ = a.lazyProperty    // executed only once, lazy init not called again.
-    a.lazyProperty = 42   // nothing interesting happens
-    _ = a.lazyProperty2               // CHECK-NEXT: other lazy property initialized
-
-    // CHECK-NEXT: LazyPropertyClass.init #2
-    // CHECK-NEXT: LazyPropertyClass.deinit #1
-    a = LazyPropertyClass(2)
-
-    a = LazyPropertyClass(3)
-    a.lazyProperty = 42   // Store don't trigger lazy init.
-
-    // CHECK-NEXT: LazyPropertyClass.init  #3
-    // CHECK-NEXT: LazyPropertyClass.deinit #2
-    // CHECK-NEXT: LazyPropertyClass.deinit #3
-  }
-  print("testLazyPropertiesDone")    // CHECK: testLazyPropertiesDone
-}
-
-
-
-testLazyProperties()
-
-
 
 /// rdar://16805609 - <rdar://problem/16805609> Providing a 'didSet' in a generic override doesn't work
 class rdar16805609Base<T> {
@@ -249,6 +192,30 @@ print("testing rdar://16805609")    // CHECK: testing rdar://16805609
 person.value = "foo"                  // CHECK-NEXT: reached me
 print("done rdar://16805609")       // CHECK-NEXT: done rdar://16805609
 
+
+
+protocol rdar38514252_ProtocolWithArray {
+  var arrayOfInt: [Int] { get set }
+}
+
+var rdar38514252_flag = false
+var rdar38514252_questionSet: rdar38514252_ProtocolWithArray? {
+  didSet {
+    rdar38514252_flag = true
+  }
+}
+
+func rdar38514252_fiddle() {
+  let ignored = rdar38514252_questionSet?.arrayOfInt[0]
+  if rdar38514252_flag || ignored != nil {
+    print("Failed. didSet was called on read.")
+  } else {
+    print("Awesomesauce.")
+  }
+}
+print("testing rdar://38514252")    // CHECK: testing rdar://38514252
+rdar38514252_fiddle()               // CHECK-NEXT: Awesomesauce.
+print("done rdar://38514252")       // CHECK-NEXT: done rdar://38514252
 
 
 

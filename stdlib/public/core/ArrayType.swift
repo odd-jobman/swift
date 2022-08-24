@@ -2,37 +2,27 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
-public // @testable
-protocol _ArrayProtocol
-  : RangeReplaceableCollection,
-    ArrayLiteralConvertible
-{
-  //===--- public interface -----------------------------------------------===//
-  /// The number of elements the Array stores.
-  var count: Int { get }
-
+@usableFromInline
+internal protocol _ArrayProtocol
+  : RangeReplaceableCollection, ExpressibleByArrayLiteral
+where Indices == Range<Int> {
   /// The number of elements the Array can store without reallocation.
   var capacity: Int { get }
-
-  /// `true` if and only if the Array is empty.
-  var isEmpty: Bool { get }
 
   /// An object that guarantees the lifetime of this array's elements.
   var _owner: AnyObject? { get }
 
   /// If the elements are stored contiguously, a pointer to the first
   /// element. Otherwise, `nil`.
-  var _baseAddressIfContiguous: UnsafeMutablePointer<Element> { get }
-
-  subscript(index: Int) -> Iterator.Element { get set }
+  var _baseAddressIfContiguous: UnsafeMutablePointer<Element>? { get }
 
   //===--- basic mutations ------------------------------------------------===//
 
@@ -42,12 +32,7 @@ protocol _ArrayProtocol
   ///   mutable contiguous storage.
   ///
   /// - Complexity: O(`self.count`).
-  mutating func reserveCapacity(minimumCapacity: Int)
-
-  /// Operator form of `append(contentsOf:)`.
-  func += <
-    S : Sequence where S.Iterator.Element == Iterator.Element
-  >(lhs: inout Self, rhs: S)
+  override mutating func reserveCapacity(_ minimumCapacity: Int)
 
   /// Insert `newElement` at index `i`.
   ///
@@ -55,23 +40,36 @@ protocol _ArrayProtocol
   ///
   /// - Complexity: O(`self.count`).
   ///
-  /// - Precondition: `i <= count`.
-  mutating func insert(newElement: Iterator.Element, at i: Int)
+  /// - Precondition: `startIndex <= i`, `i <= endIndex`.
+  override mutating func insert(_ newElement: __owned Element, at i: Int)
 
   /// Remove and return the element at the given index.
   ///
   /// - returns: The removed element.
   ///
-  /// - Complexity: Worst case O(N).
+  /// - Complexity: Worst case O(*n*).
   ///
   /// - Precondition: `count > index`.
-  mutating func remove(at index: Int) -> Iterator.Element
+  @discardableResult
+  override mutating func remove(at index: Int) -> Element
 
   //===--- implementation detail  -----------------------------------------===//
 
-  associatedtype _Buffer : _ArrayBufferProtocol
+  associatedtype _Buffer: _ArrayBufferProtocol where _Buffer.Element == Element
   init(_ buffer: _Buffer)
 
   // For testing.
   var _buffer: _Buffer { get }
+}
+
+extension _ArrayProtocol {
+  // Since RangeReplaceableCollection now has a version of filter that is less
+  // efficient, we should make the default implementation coming from Sequence
+  // preferred.
+  @inlinable
+  public __consuming func filter(
+    _ isIncluded: (Element) throws -> Bool
+  ) rethrows -> [Element] {
+    return try _filter(isIncluded)
+  }
 }

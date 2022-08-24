@@ -1,9 +1,11 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
-func markUsed<T>(t: T) {}
+func markUsed<T>(_ t: T) {}
 
 func f0(_: Float) -> Float {}
+// expected-note@-1 {{candidate expects value of type 'Float' for parameter #1 (got 'X')}}
 func f0(_: Int) -> Int {}
+// expected-note@-1 {{candidate expects value of type 'Int' for parameter #1 (got 'X')}}
 
 func f1(_: Int) {}
 
@@ -18,18 +20,17 @@ var x : X
 var i : Int
 var f : Float
 
-f0(i)
-f0(1.0)
-f0(1)
+_ = f0(i)
+_ = f0(1.0)
+_ = f0(1)
 f1(f0(1))
 f1(identity(1))
 
-f0(x) // expected-error{{cannot invoke 'f0' with an argument list of type '(X)'}}
-// expected-note @-1 {{overloads for 'f0' exist with these partially matching parameter lists: (Float), (Int)}}
+f0(x) // expected-error{{no exact matches in call to global function 'f0'}}
 
 _ = f + 1
-f2(i)
-f2((i, f))
+_ = f2(i)
+_ = f2((i, f))
 
 class A { 
   init() {} 
@@ -41,8 +42,8 @@ class C : B {
   override init() { super.init() } 
 }
 
-func bar(b: B) -> Int {} // #1
-func bar(a: A) -> Float {} // #2
+func bar(_ b: B) -> Int {} // #1
+func bar(_ a: A) -> Float {} // #2
 
 var barResult = bar(C()) // selects #1, which is more specialized
 i = barResult // make sure we got #1
@@ -73,7 +74,7 @@ struct X2d {
     return 7
   }
 
-  func foo(x : X2c) -> Int {
+  func foo(_ x : X2c) -> Int {
     return self[x]
   }
 }
@@ -81,23 +82,23 @@ struct X2d {
 // Invalid declarations
 // FIXME: Suppress the diagnostic for the call below, because the invalid
 // declaration would have matched.
-func f3(x: Intthingy) -> Int { } // expected-error{{use of undeclared type 'Intthingy'}}
+func f3(_ x: Intthingy) -> Int { } // expected-error{{cannot find type 'Intthingy' in scope}}
 
-func f3(x: Float) -> Float { }
+func f3(_ x: Float) -> Float { }
 f3(i) // expected-error{{cannot convert value of type 'Int' to expected argument type 'Float'}}
 
-func f4(i: Wonka) { } // expected-error{{use of undeclared type 'Wonka'}}
-func f4(j: Wibble) { } // expected-error{{use of undeclared type 'Wibble'}}
+func f4(_ i: Wonka) { } // expected-error{{cannot find type 'Wonka' in scope}}
+func f4(_ j: Wibble) { } // expected-error{{cannot find type 'Wibble' in scope}}
 f4(5)
 
 func f1() {
-  var c : Class // expected-error{{use of undeclared type 'Class'}}
+  var c : Class // expected-error{{cannot find type 'Class' in scope}}
   markUsed(c.x) // make sure error does not cascade here
 }
 
 // We don't provide return-type sensitivity unless there is context.
-func f5(i: Int) -> A { return A() } // expected-note{{candidate}}
-func f5(i: Int) -> B { return B() } // expected-note{{candidate}}
+func f5(_ i: Int) -> A { return A() } // expected-note{{candidate}}
+func f5(_ i: Int) -> B { return B() } // expected-note{{candidate}}
 
 f5(5) // expected-error{{ambiguous use of 'f5'}}
 
@@ -113,25 +114,31 @@ struct HasX1aProperty {
 
 // rdar://problem/16554496
 @available(*, unavailable)
-func availTest(x: Int) {}
-func availTest(x: Any) { markUsed("this one") }
-func doAvailTest(x: Int) {
+func availTest(_ x: Int) {}
+func availTest(_ x: Any) { markUsed("this one") }
+func doAvailTest(_ x: Int) {
   availTest(x)
 }
 
 // rdar://problem/20886179
-func test20886179(handlers: [(Int) -> Void], buttonIndex: Int) {
+func test20886179(_ handlers: [(Int) -> Void], buttonIndex: Int) {
     handlers[buttonIndex](buttonIndex)
 }
 
 // The problem here is that the call has a contextual result type incompatible
 // with *all* overload set candidates.  This is not an ambiguity.
-func overloaded_identity(a : Int) -> Int {}
-func overloaded_identity(b : Float) -> Float {}
+func overloaded_identity(_ a : Int) -> Int {} // expected-note {{'overloaded_identity' produces 'Int', not the expected contextual result type '()'}} expected-note {{'overloaded_identity' declared her}}
+func overloaded_identity(_ b : Float) -> Float {} // expected-note {{'overloaded_identity' produces 'Float', not the expected contextual result type '()'}}
 
-func test_contextual_result() {
-  return overloaded_identity()  // expected-error {{no 'overloaded_identity' candidates produce the expected contextual result type '()'}}
-  // expected-note @-1 {{overloads for 'overloaded_identity' exist with these result types: Int, Float}}
+func test_contextual_result_1() {
+  return overloaded_identity()  // expected-error {{missing argument for parameter #1 in call}}
+  // expected-error@-1 {{no 'overloaded_identity' candidates produce the expected contextual result type '()'}}
+}
+
+func test_contextual_result_2() {
+  return overloaded_identity(1)
+  // expected-error@-1 {{unexpected non-void return value in void function}}
+  // expected-note@-2 {{did you mean to add a return type?}}
 }
 
 // rdar://problem/24128153
@@ -149,7 +156,9 @@ struct X1 {
 }
 
 let x1 = X1(Int.self)
-let x1check: X1 = x1 // expected-error{{value of optional type 'X1?' not unwrapped; did you mean to use '!' or '?'?}}
+let x1check: X1 = x1 // expected-error{{value of optional type 'X1?' must be unwrapped}}
+  // expected-note@-1{{coalesce}}
+  // expected-note@-2{{force-unwrap}}
 
 
 struct X2 {
@@ -160,4 +169,119 @@ struct X2 {
 }
 
 let x2 = X2(Int.self)
-let x2check: X2 = x2 // expected-error{{value of optional type 'X2?' not unwrapped; did you mean to use '!' or '?'?}}
+let x2check: X2 = x2 // expected-error{{value of optional type 'X2?' must be unwrapped}}
+  // expected-note@-1{{coalesce}}
+  // expected-note@-2{{force-unwrap}}
+
+// rdar://problem/28051973
+struct R_28051973 {
+  mutating func f(_ i: Int) {}
+  @available(*, deprecated, message: "deprecated")
+  func f(_ f: Float) {}
+}
+
+let r28051973: Int = 42
+R_28051973().f(r28051973) // expected-error {{cannot use mutating member on immutable value: function call returns immutable value}}
+
+
+// Fix for CSDiag vs CSSolver disagreement on what constitutes a
+// valid overload.
+
+func overloadedMethod(n: Int) {}
+func overloadedMethod<T>() {} // expected-note {{in call to function 'overloadedMethod()'}}
+// expected-error@-1 {{generic parameter 'T' is not used in function signature}}
+
+overloadedMethod()
+// expected-error@-1 {{generic parameter 'T' could not be inferred}}
+
+/// https://github.com/apple/swift/issues/46402
+/// Ensure we select the overload of `??` returning `T?` rather than `T`.
+func f_46402(_ d: [String : Any], _ s: String, _ t: String) -> Any {
+  if let r = d[s] ?? d[t] {
+    return r
+  } else {
+    return 0
+  }
+}
+
+// Overloading with mismatched labels.
+func f6<T>(foo: T) { }
+func f6<T: P1>(bar: T) { }
+
+struct X6 {
+	init<T>(foo: T) { }
+	init<T: P1>(bar: T) { }
+}
+
+func test_f6() {
+	let _: (X1a) -> Void = f6
+	let _: (X1a) -> X6 = X6.init
+}
+
+func curry<LHS, RHS, R>(_ f: @escaping (LHS, RHS) -> R) -> (LHS) -> (RHS) -> R {
+  return { lhs in { rhs in f(lhs, rhs) } }
+}
+
+// We need to have an alternative version of this to ensure that there's an overload disjunction created.
+func curry<F, S, T, R>(_ f: @escaping (F, S, T) -> R) -> (F) -> (S) -> (T) -> R {
+  return { fst in { snd in { thd in f(fst, snd, thd) } } }
+}
+
+// Ensure that we consider these unambiguous
+let _ = curry(+)(1)
+let _ = [0].reduce(0, +)
+let _ = curry(+)("string vs. pointer")
+
+
+func autoclosure1<T>(_: T, _: @autoclosure () -> X) { }
+
+func autoclosure1<T>(_: [T], _: X) { }
+
+func test_autoclosure1(ia: [Int]) {
+  autoclosure1(ia, X()) // okay: resolves to the second function
+}
+
+// rdar://problem/64368545 - failed to produce diagnostic (hole propagated to func result without recording a fix)
+func test_no_hole_propagation() {
+  func test(withArguments arguments: [String]) -> String {
+    return arguments.reduce(0, +) // expected-error {{cannot convert value of type 'Int' to expected argument type 'String'}}
+  }
+}
+
+// rdar://79672230 - crash due to unsatisfied `: AnyObject` requirement
+func rdar79672230() {
+  struct MyType {}
+
+  func test(_ representation: MyType) -> Bool {} // expected-note {{found candidate with type 'MyType'}}
+  func test<T>(_ object: inout T) -> Bool where T : AnyObject {} // expected-note {{candidate requires that 'MyType' conform to 'AnyObject' (requirement specified as 'T' : 'AnyObject')}}
+
+  var t: MyType = MyType()
+  test(&t) // expected-error {{no exact matches in call to local function 'test'}}
+}
+
+// rdar://97396399 - crash in swift::DiagnosticEngine::formatDiagnosticText
+func rdar97396399() {
+  // Has to be overloaded to make sure that contextual type is not recorded during constraint generation
+  func test(_: () -> Void) {}
+  func test(_: (Int) -> Void) {}
+
+  // Multiple different overloads, none of which conform to Sequence
+  func fn(_: Int) -> Int {}
+  // expected-note@-1 {{found candidate with type '(Int) -> Int'}}
+  // expected-note@-2 {{result type 'Int' of 'fn' does not conform to 'Sequence'}}
+  func fn(_: Int) -> Double {}
+  // expected-note@-1 {{found candidate with type '(Int) -> Double'}}
+  // expected-note@-2 {{result type 'Double' of 'fn' does not conform to 'Sequence'}}
+
+  test {
+    for x in fn { // expected-error {{no 'fn' overloads produce result type that conforms to 'Sequence'}}
+      print(x)
+    }
+  }
+
+  test {
+    for x in fn(42) { // expected-error {{no 'fn' overloads produce result type that conforms to 'Sequence'}}
+      print(x)
+    }
+  }
+}

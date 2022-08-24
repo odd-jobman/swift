@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -112,7 +112,7 @@ public:
     return *LowerBound == Ptr;
   }
 
-  using iterator = typename decltype(Data)::iterator;
+  using iterator = typename ArrayRef<PtrTy>::iterator;
   iterator begin() const { return Data.begin(); }
   iterator end() const { return Data.end(); }
 
@@ -180,8 +180,9 @@ template <typename T> class ImmutablePointerSetFactory {
   using PtrTy = typename std::add_pointer<T>::type;
 
   using PtrSet = ImmutablePointerSet<T>;
-  static constexpr unsigned AllocAlignment =
-      (alignof(PtrSet) > alignof(PtrTy)) ? alignof(PtrSet) : alignof(PtrTy);
+  // This is computed out-of-line so that ImmutablePointerSetFactory is
+  // treated as a complete type.
+  static const unsigned AllocAlignment;
 
   llvm::BumpPtrAllocator &Allocator;
   llvm::FoldingSetVector<PtrSet> Set;
@@ -347,6 +348,13 @@ template <typename T>
 ImmutablePointerSet<T> ImmutablePointerSetFactory<T>::EmptyPtrSet =
     ImmutablePointerSet<T>(nullptr, {});
 
+template <typename T>
+#if !defined(_MSC_VER) || defined(__clang__)
+constexpr
+#endif
+const unsigned ImmutablePointerSetFactory<T>::AllocAlignment =
+    (alignof(PtrSet) > alignof(PtrTy)) ? alignof(PtrSet) : alignof(PtrTy);
+
 } // end swift namespace
 
-#endif
+#endif // SWIFT_BASIC_IMMUTABLEPOINTERSET_H

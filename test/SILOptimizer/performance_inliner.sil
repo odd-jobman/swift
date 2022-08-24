@@ -1,4 +1,4 @@
-// RUN: %target-sil-opt -enable-sil-verify-all %s -inline -sil-inline-test-threshold=50 -sil-combine | FileCheck %s
+// RUN: %target-sil-opt -parse-serialized-sil -enable-sil-verify-all %s -inline -sil-combine | %FileCheck %s
 
 sil_stage canonical
 
@@ -285,26 +285,36 @@ sil @trivial_fun : $@convention(thin) () -> (Builtin.Int64) {
   return %0 : $Builtin.Int64
 }
 
+protocol P {}
+extension Int64: P {}
+
 // We can inline function_refs with witness_method calling convention.
-sil @trivial_witness_method : $@convention(witness_method) (@inout Builtin.Int64) -> Builtin.Int64 {
-bb0(%0 : $*Builtin.Int64):
-  %1 = load %0 : $*Builtin.Int64
-  return %1 : $Builtin.Int64
+sil @trivial_witness_method : $@convention(witness_method: P) (@inout Int64) -> Int64 {
+bb0(%0 : $*Int64):
+  %1 = load %0 : $*Int64
+  return %1 : $Int64
 }
 
 // CHECK-LABEL: sil @trivial_witness_method_caller : $@convention(thin) () -> ()
-// CHECK-NOT: apply
+// CHECK-NOT: apply .*@convention(witness_method
 // CHECK: return
 sil @trivial_witness_method_caller : $@convention(thin) () -> () {
-  %0 = alloc_stack $Builtin.Int64
-  %1 = integer_literal $Builtin.Int64, 0
-  store %1 to %0 : $*Builtin.Int64
-  %2 = function_ref @trivial_witness_method : $@convention(witness_method) (@inout Builtin.Int64) -> Builtin.Int64
-  apply %2 (%0) : $@convention(witness_method) (@inout Builtin.Int64) -> Builtin.Int64
-  dealloc_stack %0 : $*Builtin.Int64
-  %3 = tuple()
-  return %3 : $()
+  %0 = alloc_box ${ var Int64 }, var, name "x"
+  %1 = project_box %0 : ${ var Int64 }, 0
+  %2 = function_ref @$ss5Int64V22_builtinIntegerLiteralABBI__tcfC : $@convention(method) (Builtin.IntLiteral, @thin Int64.Type) -> Int64 // user: %5
+  %3 = metatype $@thin Int64.Type
+  %4 = integer_literal $Builtin.IntLiteral, 0
+  %5 = apply %2(%4, %3) : $@convention(method) (Builtin.IntLiteral, @thin Int64.Type) -> Int64
+  store %5 to %1 : $*Int64
+  %6 = function_ref @trivial_witness_method : $@convention(witness_method: P) (@inout Int64) -> Int64
+  %7 = apply %6 (%1) : $@convention(witness_method: P) (@inout Int64) -> Int64
+  %8 = tuple()
+  return %8 : $()
 }
+
+// Int64.init(_builtinIntegerLiteral:)
+sil [transparent] [serialized] @$ss5Int64V22_builtinIntegerLiteralABBI__tcfC : $@convention(method) (Builtin.IntLiteral, @thin Int64.Type) -> Int64
+
 
 // We can inline function_refs with c calling convention.
 sil @trivial_c : $@convention(c) (@inout Builtin.Int64) -> Builtin.Int64 {
@@ -412,25 +422,25 @@ entry:
   return undef : $()
 }
 
-sil [fragile] @fragile_function : $@convention(thin) () -> () {
+sil [serialized] @fragile_function : $@convention(thin) () -> () {
 entry:
   return undef : $()
 }
 
-// CHECK-LABEL: sil [fragile] @fragile_calls_resilient : $@convention(thin) () -> () {
+// CHECK-LABEL: sil [serialized] @fragile_calls_resilient : $@convention(thin) () -> () {
 // CHECK: function_ref @resilient_function
 // CHECK: return
-sil [fragile] @fragile_calls_resilient : $@convention(thin) () -> () {
+sil [serialized] @fragile_calls_resilient : $@convention(thin) () -> () {
 entry:
   %f = function_ref @resilient_function : $@convention(thin) () -> ()
   %z = apply %f() : $@convention(thin) () -> ()
   return %z : $()
 }
 
-// CHECK-LABEL: sil [fragile] @fragile_calls_fragile : $@convention(thin) () -> () {
+// CHECK-LABEL: sil [serialized] @fragile_calls_fragile : $@convention(thin) () -> () {
 // CHECK-NOT: function_ref @resilient_function
 // CHECK: return
-sil [fragile] @fragile_calls_fragile : $@convention(thin) () -> () {
+sil [serialized] @fragile_calls_fragile : $@convention(thin) () -> () {
 entry:
   %f = function_ref @fragile_function : $@convention(thin) () -> ()
   %z = apply %f() : $@convention(thin) () -> ()
@@ -639,30 +649,6 @@ sil @public_function_test : $@convention(thin) () -> () {
   return %8 : $()
 }
 
-// CHECK-LABEL: sil hidden_external @hidden_external_function_test : $@convention(thin) () -> () {
-// CHECK-NOT: function_ref
-// CHECK: return
-sil hidden_external @hidden_external_function_test : $@convention(thin) () -> () {
-  %0 = function_ref @references_public_function : $@convention(thin) () -> ()
-  %1 = function_ref @references_shared_function : $@convention(thin) () -> ()
-  %2 = function_ref @references_hidden_function : $@convention(thin) () -> ()
-  %3 = function_ref @references_private_function : $@convention(thin) () -> ()
-  %4 = function_ref @references_public_global : $@convention(thin) () -> ()
-  %5 = function_ref @references_shared_global : $@convention(thin) () -> ()
-  %6 = function_ref @references_hidden_global : $@convention(thin) () -> ()
-  %7 = function_ref @references_private_global : $@convention(thin) () -> ()
-  apply %0() : $@convention(thin) () -> ()
-  apply %1() : $@convention(thin) () -> ()
-  apply %2() : $@convention(thin) () -> ()
-  apply %3() : $@convention(thin) () -> ()
-  apply %4() : $@convention(thin) () -> ()
-  apply %5() : $@convention(thin) () -> ()
-  apply %6() : $@convention(thin) () -> ()
-  apply %7() : $@convention(thin) () -> ()
-  %8 = tuple()
-  return %8 : $()
-}
-
 // CHECK-LABEL: sil public_external @public_external_function_test : $@convention(thin) () -> () {
 // CHECK-NOT: function_ref
 // CHECK: return
@@ -700,35 +686,59 @@ bb0:
 // CHECK-LABEL: [noinline] @noinline_callee
 sil [noinline] @noinline_callee : $@convention(thin) () -> Int {
 bb0:
-  %0 = function_ref @_TFSi33_convertFromBuiltinIntegerLiteralfMSiFBi2048_Si : $@convention(thin) (Builtin.Int2048, @thin Int.Type) -> Int
+  %0 = function_ref @_TFSi33_convertFromBuiltinIntegerLiteralfMSiFBI_Si : $@convention(thin) (Builtin.IntLiteral, @thin Int.Type) -> Int
   %1 = metatype $@thin Int.Type
-  %2 = integer_literal $Builtin.Int2048, 0
-  %3 = apply %0(%2, %1) : $@convention(thin) (Builtin.Int2048, @thin Int.Type) -> Int
+  %2 = integer_literal $Builtin.IntLiteral, 0
+  %3 = apply %0(%2, %1) : $@convention(thin) (Builtin.IntLiteral, @thin Int.Type) -> Int
   return %3 : $Int
 }
-sil [transparent] @_TFSi33_convertFromBuiltinIntegerLiteralfMSiFBi2048_Si : $@convention(thin) (Builtin.Int2048, @thin Int.Type) -> Int
+sil [transparent] @_TFSi33_convertFromBuiltinIntegerLiteralfMSiFBI_Si : $@convention(thin) (Builtin.IntLiteral, @thin Int.Type) -> Int
+
+sil @unknown_function : $@convention(thin) () -> ()
 
 sil @coldcall : $@convention(thin) () -> () {
 bb0:
+  // make it a non-trivial function
+  %f = function_ref @unknown_function : $@convention(thin) () -> ()
+  %a1 = apply %f() : $@convention(thin) () -> ()
+  %a2 = apply %f() : $@convention(thin) () -> ()
+  %a3 = apply %f() : $@convention(thin) () -> ()
+  %a4 = apply %f() : $@convention(thin) () -> ()
+  %a5 = apply %f() : $@convention(thin) () -> ()
+  %a6 = apply %f() : $@convention(thin) () -> ()
+  %a7 = apply %f() : $@convention(thin) () -> ()
+  %a8 = apply %f() : $@convention(thin) () -> ()
+  %a9 = apply %f() : $@convention(thin) () -> ()
+  %a10 = apply %f() : $@convention(thin) () -> ()
+  %a11 = apply %f() : $@convention(thin) () -> ()
+  %a12 = apply %f() : $@convention(thin) () -> ()
+  %a13 = apply %f() : $@convention(thin) () -> ()
+  %a14 = apply %f() : $@convention(thin) () -> ()
+  %a15 = apply %f() : $@convention(thin) () -> ()
+  %a16 = apply %f() : $@convention(thin) () -> ()
+  %a17 = apply %f() : $@convention(thin) () -> ()
+  %a18 = apply %f() : $@convention(thin) () -> ()
+  %a19 = apply %f() : $@convention(thin) () -> ()
+  %a20 = apply %f() : $@convention(thin) () -> ()
+  %a21 = apply %f() : $@convention(thin) () -> ()
+  %a22 = apply %f() : $@convention(thin) () -> ()
   %0 = tuple ()                                   // user: %1
   return %0 : $()                                 // id: %1
 }
 
 // Generic call to "branchHint" for use in specialized @slowPath
-sil public_external [transparent] [_semantics "branchhint"] @_TFs11_branchHintUs7Boolean__FTQ_Sb_Sb : $@convention(thin) <C where C : Boolean> (@in C, Bool) -> Bool {
-bb0(%0 : $*C, %1 : $Bool):
-  %2 = witness_method $C, #Boolean.boolValue!getter.1 : $@convention(witness_method) <τ_0_0 where τ_0_0 : Boolean> (@inout τ_0_0) -> Bool // user: %4
-  %3 = apply %2<C>(%0) : $@convention(witness_method) <τ_0_0 where τ_0_0 : Boolean> (@inout τ_0_0) -> Bool
-  return %3 : $Bool
+sil public_external [transparent] @_TFs11_branchHintUs7Boolean__FTQ_Sb_Sb : $@convention(thin)(Bool, Bool) -> Bool {
+bb0(%0 : $Bool, %1 : $Bool):
+  return %0 : $Bool
 }
 
 // Specialized call to "slowPath" for use in @coldcall_caller
-sil shared [noinline] [transparent] [_semantics "slowpath"] @_TTSgSbSbs7Boolean___TFs9_slowPathUs7Boolean__FQ_Sb : $@convention(thin) (@in Bool) -> Bool {
-bb0(%0 : $*Bool):
+sil shared [noinline] [transparent] [_semantics "slowpath"] @_TTSgSbSbs7Boolean___TFs9_slowPathUs7Boolean__FQ_Sb : $@convention(thin) (Bool) -> Bool {
+bb0(%0 : $Bool):
   %3 = integer_literal $Builtin.Int1, 0
   %4 = struct $Bool (%3 : $Builtin.Int1)
-  %5 = function_ref @_TFs11_branchHintUs7Boolean__FTQ_Sb_Sb : $@convention(thin) <τ_0_0 where τ_0_0 : Boolean> (@in τ_0_0, Bool) -> Bool
-  %6 = apply %5<Bool>(%0, %4) : $@convention(thin) <τ_0_0 where τ_0_0 : Boolean> (@in τ_0_0, Bool) -> Bool
+  %5 = function_ref @_TFs11_branchHintUs7Boolean__FTQ_Sb_Sb : $@convention(thin) (Bool, Bool) -> Bool
+  %6 = apply %5(%0, %4) : $@convention(thin) (Bool, Bool) -> Bool
   return %6 : $Bool
 }
 
@@ -746,8 +756,8 @@ bb0(%0 : $Int32):
   %5 = builtin "cmp_eq_Word"(%4 : $Builtin.Int32, %2 : $Builtin.Int32) : $Builtin.Int1 // user: %6
   %6 = struct $Bool (%5 : $Builtin.Int1)          // user: %7
   store %6 to %1 : $*Bool                       // id: %7
-  %8 = function_ref @_TTSgSbSbs7Boolean___TFs9_slowPathUs7Boolean__FQ_Sb : $@convention(thin) (@in Bool) -> Bool // user: %9
-  %9 = apply %8(%1) : $@convention(thin) (@in Bool) -> Bool // user: %10
+  %8 = function_ref @_TTSgSbSbs7Boolean___TFs9_slowPathUs7Boolean__FQ_Sb : $@convention(thin) (Bool) -> Bool // user: %9
+  %9 = apply %8(%6) : $@convention(thin) (Bool) -> Bool // user: %10
   %10 = struct_extract %9 : $Bool, #Bool._value    // user: %12
   dealloc_stack %1 : $*Bool      // id: %11
   cond_br %10, bb1, bb2                           // id: %12
@@ -762,13 +772,37 @@ bb2:                                              // Preds: bb0 bb1
   return %16 : $()                                // id: %17
 }
 
-sil [transparent] @slowHelper : $@convention(thin) () -> () {
+sil @slowHelper : $@convention(thin) () -> () {
 bb0:
+  // make it a non-trivial function
+  %f = function_ref @unknown_function : $@convention(thin) () -> ()
+  %a1 = apply %f() : $@convention(thin) () -> ()
+  %a2 = apply %f() : $@convention(thin) () -> ()
+  %a3 = apply %f() : $@convention(thin) () -> ()
+  %a4 = apply %f() : $@convention(thin) () -> ()
+  %a5 = apply %f() : $@convention(thin) () -> ()
+  %a6 = apply %f() : $@convention(thin) () -> ()
+  %a7 = apply %f() : $@convention(thin) () -> ()
+  %a8 = apply %f() : $@convention(thin) () -> ()
+  %a9 = apply %f() : $@convention(thin) () -> ()
+  %a10 = apply %f() : $@convention(thin) () -> ()
+  %a11 = apply %f() : $@convention(thin) () -> ()
+  %a12 = apply %f() : $@convention(thin) () -> ()
+  %a13 = apply %f() : $@convention(thin) () -> ()
+  %a14 = apply %f() : $@convention(thin) () -> ()
+  %a15 = apply %f() : $@convention(thin) () -> ()
+  %a16 = apply %f() : $@convention(thin) () -> ()
+  %a17 = apply %f() : $@convention(thin) () -> ()
+  %a18 = apply %f() : $@convention(thin) () -> ()
+  %a19 = apply %f() : $@convention(thin) () -> ()
+  %a20 = apply %f() : $@convention(thin) () -> ()
+  %a21 = apply %f() : $@convention(thin) () -> ()
+  %a22 = apply %f() : $@convention(thin) () -> ()
   %t = tuple ()
   return %t : $()
 }
 
-sil [transparent] [_semantics "fastpath"] @fastPathHelper : $@convention(thin) <τ_0_0 where τ_0_0 : Boolean> (@in τ_0_0) -> Bool
+sil [transparent] [_semantics "fastpath"] @fastPathHelper : $@convention(thin) (Bool) -> Bool
 
 // fastpath.closedTest0 () -> ()
 // From <rdar://problem/17611447> _fastPath kills optimizer
@@ -782,12 +816,12 @@ sil [transparent] [_semantics "fastpath"] @fastPathHelper : $@convention(thin) <
 // CHECK-LABEL: bb2:
 sil @testNoInlineSlow : $@convention(thin) () -> () {
 bb0:
-  %f1 = function_ref @fastPathHelper : $@convention(thin) <τ_0_0 where τ_0_0 : Boolean> (@in τ_0_0) -> Bool
+  %f1 = function_ref @fastPathHelper : $@convention(thin) (Bool) -> Bool
   %v9 = alloc_stack $Bool
   %v12 = integer_literal $Builtin.Int1, 0
   %v16 = struct $Bool (%v12 : $Builtin.Int1)
   store %v16 to %v9 : $*Bool                      // id: %17
-  %v18 = apply %f1<Bool>(%v9) : $@convention(thin) <τ_0_0 where τ_0_0 : Boolean> (@in τ_0_0) -> Bool
+  %v18 = apply %f1(%v16) : $@convention(thin) (Bool) -> Bool
   %v19 = struct_extract %v18 : $Bool, #Bool._value
   dealloc_stack %v9 : $*Bool      // id: %20
   cond_br %v19, bb2, bb1                           // id: %21
@@ -810,12 +844,12 @@ bb2:
 // CHECK-LABEL: bb2:
 sil @testInlineSlowTransparent : $@convention(thin) () -> () {
 bb0:
-  %f1 = function_ref @fastPathHelper : $@convention(thin) <τ_0_0 where τ_0_0 : Boolean> (@in τ_0_0) -> Bool
+  %f1 = function_ref @fastPathHelper : $@convention(thin) (Bool) -> Bool
   %v9 = alloc_stack $Bool
   %v12 = integer_literal $Builtin.Int1, 0
   %v16 = struct $Bool (%v12 : $Builtin.Int1)
   store %v16 to %v9 : $*Bool                      // id: %17
-  %v18 = apply %f1<Bool>(%v9) : $@convention(thin) <τ_0_0 where τ_0_0 : Boolean> (@in τ_0_0) -> Bool
+  %v18 = apply %f1(%v16) : $@convention(thin) (Bool) -> Bool
   %v19 = struct_extract %v18 : $Bool, #Bool._value
   dealloc_stack %v9 : $*Bool      // id: %20
   cond_br %v19, bb2, bb1                           // id: %21
@@ -834,30 +868,29 @@ bb2:
 // from the performance inliner doesn't result in an assert/crash.
 
 class C {
-  @inline(never) func callThrowing<T>(other: T, @noescape closure: () throws -> T) -> T
+  @inline(never) func callThrowing<T>(other: T, closure: @escaping () throws -> T) -> T
 }
 
 // CHECK-LABEL: sil [noinline] @callThrowing
-sil [noinline] @callThrowing : $@convention(method) <T> (@in T, @owned @callee_owned () -> (@out T, @error ErrorProtocol), @guaranteed C) -> @out T {
-bb0(%0 : $*T, %1 : $*T, %2 : $@callee_owned () -> (@out T, @error ErrorProtocol), %3 : $C):
-  strong_retain %2 : $@callee_owned () -> (@out T, @error ErrorProtocol)
-  try_apply %2(%0) : $@callee_owned () -> (@out T, @error ErrorProtocol), normal bb1, error bb4
+sil [noinline] @callThrowing : $@convention(method) <T> (@in_guaranteed T, @guaranteed @callee_owned () -> (@out T, @error Error), @guaranteed C) -> @out T {
+bb0(%0 : $*T, %1 : $*T, %2 : $@callee_owned () -> (@out T, @error Error), %3 : $C):
+  strong_retain %2 : $@callee_owned () -> (@out T, @error Error)
+  try_apply %2(%0) : $@callee_owned () -> (@out T, @error Error), normal bb1, error bb4
 
 bb1(%6 : $()):
   br bb2
 
 bb2:
-  strong_release %2 : $@callee_owned () -> (@out T, @error ErrorProtocol)
-  destroy_addr %1 : $*T
+  strong_release %2 : $@callee_owned () -> (@out T, @error Error)
   %10 = tuple ()
   return %10 : $()
 
 bb3:
   copy_addr %1 to [initialization] %0 : $*T
-  strong_release %15 : $ErrorProtocol
+  strong_release %15 : $Error
   br bb2
 
-bb4(%15 : $ErrorProtocol):
+bb4(%15 : $Error):
   br bb3
 }
 
@@ -869,13 +902,13 @@ bb0(%0 : $C):
   %2 = struct $Int32 (%1 : $Builtin.Int32)
   %3 = alloc_stack $Int32
   store %2 to %3 : $*Int32
-  %5 = function_ref @theClosure : $@convention(thin) () -> (Int32, @error ErrorProtocol)
-  %6 = thin_to_thick_function %5 : $@convention(thin) () -> (Int32, @error ErrorProtocol) to $@callee_owned () -> (Int32, @error ErrorProtocol)
-  %7 = function_ref @reabstractionThunk : $@convention(thin) (@owned @callee_owned () -> (Int32, @error ErrorProtocol)) -> (@out Int32, @error ErrorProtocol)
-  %8 = partial_apply %7(%6) : $@convention(thin) (@owned @callee_owned () -> (Int32, @error ErrorProtocol)) -> (@out Int32, @error ErrorProtocol)
+  %5 = function_ref @theClosure : $@convention(thin) () -> (Int32, @error Error)
+  %6 = thin_to_thick_function %5 : $@convention(thin) () -> (Int32, @error Error) to $@callee_owned () -> (Int32, @error Error)
+  %7 = function_ref @reabstractionThunk : $@convention(thin) (@owned @callee_owned () -> (Int32, @error Error)) -> (@out Int32, @error Error)
+  %8 = partial_apply %7(%6) : $@convention(thin) (@owned @callee_owned () -> (Int32, @error Error)) -> (@out Int32, @error Error)
   %9 = alloc_stack $Int32
-  %10 = function_ref @callThrowing : $@convention(method) <τ_0_0> (@in τ_0_0, @owned @callee_owned () -> (@out τ_0_0, @error ErrorProtocol), @guaranteed C) -> @out τ_0_0
-  %11 = apply %10<Int32>(%9, %3, %8, %0) : $@convention(method) <τ_0_0> (@in τ_0_0, @owned @callee_owned () -> (@out τ_0_0, @error ErrorProtocol), @guaranteed C) -> @out τ_0_0
+  %10 = function_ref @callThrowing : $@convention(method) <τ_0_0> (@in_guaranteed τ_0_0, @guaranteed @callee_owned () -> (@out τ_0_0, @error Error), @guaranteed C) -> @out τ_0_0
+  %11 = apply %10<Int32>(%9, %3, %8, %0) : $@convention(method) <τ_0_0> (@in_guaranteed τ_0_0, @guaranteed @callee_owned () -> (@out τ_0_0, @error Error), @guaranteed C) -> @out τ_0_0
   %12 = load %9 : $*Int32
   dealloc_stack %9 : $*Int32
   dealloc_stack %3 : $*Int32
@@ -886,7 +919,7 @@ bb0(%0 : $C):
 
 
 // CHECK-LABEL: sil @theClosure
-sil @theClosure : $@convention(thin) () -> (Int32, @error ErrorProtocol) {
+sil @theClosure : $@convention(thin) () -> (Int32, @error Error) {
 bb0:
   %0 = integer_literal $Builtin.Int32, 0
   %1 = struct $Int32 (%0 : $Builtin.Int32)
@@ -894,20 +927,65 @@ bb0:
 }
 
 // CHECK-LABEL: sil [transparent] [reabstraction_thunk] @reabstractionThunk
-sil [transparent] [reabstraction_thunk] @reabstractionThunk : $@convention(thin) (@owned @callee_owned () -> (Int32, @error ErrorProtocol)) -> (@out Int32, @error ErrorProtocol) {
-bb0(%0 : $*Int32, %1 : $@callee_owned () -> (Int32, @error ErrorProtocol)):
-  try_apply %1() : $@callee_owned () -> (Int32, @error ErrorProtocol), normal bb1, error bb2
+sil [transparent] [reabstraction_thunk] @reabstractionThunk : $@convention(thin) (@owned @callee_owned () -> (Int32, @error Error)) -> (@out Int32, @error Error) {
+bb0(%0 : $*Int32, %1 : $@callee_owned () -> (Int32, @error Error)):
+  try_apply %1() : $@callee_owned () -> (Int32, @error Error), normal bb1, error bb2
 
 bb1(%3 : $Int32):
   store %3 to %0 : $*Int32
   %5 = tuple ()
   return %5 : $()
 
-bb2(%7 : $ErrorProtocol):
-  %8 = builtin "willThrow"(%7 : $ErrorProtocol) : $()
-  throw %7 : $ErrorProtocol
+bb2(%7 : $Error):
+  %8 = builtin "willThrow"(%7 : $Error) : $()
+  throw %7 : $Error
 }
 
 sil_vtable C {
-  #C.callThrowing!1: callThrowing
+  #C.callThrowing: @callThrowing
+}
+
+// Test that the inliner doesn't crash if a dynamic-self callee is called from a
+// non-dynamic-self caller. Currently we just prevent inlining in this case.
+// We could handle this at some time, but we must not crash.
+
+class X { }
+protocol PX : X { }
+
+sil @no_self_metadata : $@convention(method) <Self where Self : PX> (@thick Self.Type) -> () {
+bb0(%1 : $@thick Self.Type):
+  %4 = upcast %1 : $@thick Self.Type to $@thick X.Type
+  %5 = function_ref @has_self_metadata : $@convention(method) (@thick X.Type) -> @owned X
+  %6 = apply %5(%4) : $@convention(method) (@thick X.Type) -> @owned X
+  strong_release %6 : $X
+  %8 = tuple ()
+  return %8 : $()
+}
+
+sil [always_inline] @has_self_metadata : $@convention(method) (@thick X.Type) -> @owned X {
+bb0(%1 : $@thick X.Type):
+  %3 = unchecked_trivial_bit_cast %1 : $@thick X.Type to $@thick @dynamic_self X.Type
+  %27 = upcast %3 : $@thick @dynamic_self X.Type to $@thick X.Type
+  %30 = alloc_ref_dynamic %27 : $@thick X.Type, $X
+  return %30 : $X
+}
+
+sil @hop_to_executor : $@convention(thin) @async (@guaranteed Builtin.Executor) -> () {
+entry(%executor: $Builtin.Executor):
+  hop_to_executor %executor : $Builtin.Executor
+  %r = tuple ()
+  return %r : $()
+}
+
+// CHECK-LABEL: sil @test_inline_nonasync
+// CHECK-NOT: hop_to_executor
+// CHECK-NOT: apply
+// CHECK: } // end sil function 'test_inline_nonasync'
+
+sil @test_inline_nonasync : $@convention(thin) (@guaranteed Builtin.Executor) -> () {
+entry(%executor: $Builtin.Executor):
+  %f = function_ref @hop_to_executor : $@convention(thin) @async (@guaranteed Builtin.Executor) -> ()
+  %c = apply [noasync] %f(%executor) : $@convention(thin) @async (@guaranteed Builtin.Executor) -> ()
+  %r = tuple ()
+  return %r : $()
 }

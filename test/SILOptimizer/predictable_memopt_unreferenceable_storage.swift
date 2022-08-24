@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -emit-sil %s | FileCheck %s
+// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -emit-sil %s | %FileCheck %s
 
 import ctypes
 struct S {
@@ -14,7 +14,7 @@ struct T {
         self.s = s
     }
 }
-// CHECK-LABEL: sil hidden @_TFV42predictable_memopt_unreferenceable_storage1TCfT1vVSC19StructWithBitfields1sVS_1S_S0_
+// CHECK-LABEL: sil hidden @$s42predictable_memopt_unreferenceable_storage1TV1v1sACSo19StructWithBitfieldsV_AA1SVtcfC
 // CHECK:       bb0(%0 : $StructWithBitfields, %1 : $S, %2 : $@thin T.Type):
 // CHECK:         [[RESULT:%.*]] = struct $T (%0 : $StructWithBitfields, %1 : $S)
 // CHECK:         return [[RESULT]]

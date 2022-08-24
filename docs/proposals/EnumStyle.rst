@@ -40,7 +40,7 @@ amounts of language sugar it's given, vends initializers corresponding to
     init(success: Wrapped) {
       self = .Success(success)
     }
-    init(error: ErrorProtocol) {
+    init(error: Error) {
       self = .Error(error)
     }
 
@@ -50,7 +50,7 @@ amounts of language sugar it's given, vends initializers corresponding to
       case .Error: return nil
       }
     }
-    var error: ErrorProtocol? {
+    var error: Error? {
       switch self {
       case .Success: return nil
       case .Error(let error): return error
@@ -59,7 +59,7 @@ amounts of language sugar it's given, vends initializers corresponding to
   }
 
 This pattern of boilerplate also occurs in third-party frameworks that make
-heavy use of enums. Some examples from Github:
+heavy use of enums. Some examples from GitHub:
 
 - https://github.com/antitypical/Manifold/blob/ae94eb96085c2c8195d457e06df485b1cca455cb/Manifold/Name.swift
 - https://github.com/antitypical/TesseractCore/blob/73099ae5fa772b90cefa49395f237290d8363f76/TesseractCore/Symbol.swift
@@ -76,7 +76,7 @@ I'd like to start discussion by proposing the following:
 
     enum Result<Wrapped> {
       case init(success: Wrapped)
-      case init(error: ErrorProtocol)
+      case init(error: Error)
     }
 
   Constructing a value of the case can then be done with the usual initializer
@@ -147,7 +147,7 @@ other kinds of initializer::
 
   enum Result<Wrapped> {
     case init(success: Wrapped)
-    case init(error: ErrorProtocol)
+    case init(error: Error)
   }
 
   enum List<Element> {

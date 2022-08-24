@@ -1,9 +1,9 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 struct SomeRange { }
 
 // Function declarations.
-func paramName(func: Int, in: SomeRange) { }
+func paramName(_ func: Int, in: SomeRange) { }
 func firstArgumentLabelWithParamName(in range: SomeRange) { }
 func firstArgumentLabelWithParamName2(range in: SomeRange) { }
 
@@ -31,10 +31,10 @@ struct SomeType {
 class SomeClass { }
 
 // Function types.
-typealias functionType = (in: SomeRange) -> Bool
+typealias functionType = (_ in: SomeRange) -> Bool
 
 // Calls
-func testCalls(range: SomeRange) {
+func testCalls(_ range: SomeRange) {
   paramName(0, in: range)
   firstArgumentLabelWithParamName(in: range)
   firstArgumentLabelWithParamName2(range: range)
@@ -49,3 +49,9 @@ func testCalls(range: SomeRange) {
   // Fix-Its
   paramName(0, `in`: range) // expected-warning{{keyword 'in' does not need to be escaped in argument list}}{{16-17=}}{{19-20=}}
 }
+
+// rdar://problem/31077797
+func foo(`_`: Int) {}
+foo(`_`: 3)
+let f = foo(`_`:)
+f(3)

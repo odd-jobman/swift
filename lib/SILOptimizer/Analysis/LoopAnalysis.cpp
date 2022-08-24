@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,11 +18,12 @@
 
 using namespace swift;
 
-SILLoopInfo *SILLoopAnalysis::newFunctionAnalysis(SILFunction *F) {
+std::unique_ptr<SILLoopInfo>
+SILLoopAnalysis::newFunctionAnalysis(SILFunction *F) {
   assert(DA != nullptr && "Expect a valid dominance analysis");
   DominanceInfo *DT = DA->get(F);
   assert(DT != nullptr && "Expect a valid dominance information");
-  return new SILLoopInfo(F, DT);
+  return std::make_unique<SILLoopInfo>(F, DT);
 }
 
 void SILLoopAnalysis::initialize(SILPassManager *PM) {

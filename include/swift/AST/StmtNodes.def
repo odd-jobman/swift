@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -40,8 +40,13 @@
 #define STMT_RANGE(Id, First, Last)
 #endif
 
+#ifndef LAST_STMT
+#define LAST_STMT(Id)
+#endif
+
 STMT(Brace, Stmt)
 STMT(Return, Stmt)
+STMT(Yield, Stmt)
 STMT(Defer, Stmt)
 ABSTRACT_STMT(Labeled, Stmt)
   ABSTRACT_STMT(LabeledConditional, LabeledStmt)
@@ -52,20 +57,20 @@ ABSTRACT_STMT(Labeled, Stmt)
   LABELED_STMT(Do, LabeledStmt)
   LABELED_STMT(DoCatch, LabeledStmt)
   LABELED_STMT(RepeatWhile, LabeledStmt)
-  LABELED_STMT(For, LabeledStmt)
   LABELED_STMT(ForEach, LabeledStmt)
   LABELED_STMT(Switch, LabeledStmt)
   STMT_RANGE(Labeled, If, Switch)
 STMT(Case, Stmt)
-STMT(Catch, Stmt)
 STMT(Break, Stmt)
 STMT(Continue, Stmt)
 STMT(Fallthrough, Stmt)
-STMT(IfConfig, Stmt)
 STMT(Fail, Stmt)
 STMT(Throw, Stmt)
+STMT(PoundAssert, Stmt)
+LAST_STMT(PoundAssert)
 
 #undef STMT_RANGE
 #undef LABELED_STMT
 #undef ABSTRACT_STMT
 #undef STMT
+#undef LAST_STMT

@@ -1,21 +1,20 @@
-// RUN: %target-swift-frontend -sdk %S/Inputs -I %S/Inputs -enable-source-import %s -emit-silgen > %t.out
-// RUN: FileCheck -check-prefix=CHECK -check-prefix=CHECK-%target-ptrsize %s < %t.out
-// RUN: FileCheck -check-prefix=NEGATIVE %s < %t.out
+// RUN: %target-swift-emit-silgen -sdk %S/Inputs -I %S/Inputs -enable-source-import %s > %t.out
+// RUN: %FileCheck -check-prefix=CHECK -check-prefix=CHECK-%target-ptrsize %s < %t.out
+// RUN: %FileCheck -check-prefix=NEGATIVE %s < %t.out
 
 // REQUIRES: objc_interop
 
 import gizmo
 
 
-// CHECK-DAG: sil shared @_TFOSC16NSRuncingOptionsC
-// CHECK-DAG: sil shared @_TFOSC16NSRuncingOptionsg8rawValueSi
-// CHECK-DAG: sil shared @_TFOSC16NSRuncingOptionsg9hashValueSi
+// CHECK-DAG: sil shared [serialized] [ossa] @$sSo16NSRuncingOptionsV{{[_0-9a-zA-Z]*}}fC
+// CHECK-DAG: sil shared [serialized] [ossa] @$sSo16NSRuncingOptionsV8rawValueSivg
 
 // Non-payload enum ctors don't need to be instantiated at all.
-// NEGATIVE-NOT: sil shared [transparent] @_TFOSC16NSRuncingOptions5MinceFMS_S_
-// NEGATIVE-NOT: sil shared [transparent] @_TFOSC16NSRuncingOptions12QuinceSlicedFMS_S_
-// NEGATIVE-NOT: sil shared [transparent] @_TFOSC16NSRuncingOptions15QuinceJuliennedFMS_S_
-// NEGATIVE-NOT: sil shared [transparent] @_TFOSC16NSRuncingOptions11QuinceDicedFMS_S_
+// NEGATIVE-NOT: sil shared [transparent] [ossa] @$sSo16NSRuncingOptionsV5MinceAbBmF
+// NEGATIVE-NOT: sil shared [transparent] [ossa] @$sSo16NSRuncingOptionsV12QuinceSlicedAbBmF
+// NEGATIVE-NOT: sil shared [transparent] [ossa] @$sSo16NSRuncingOptionsV15QuinceJuliennedAbBmF
+// NEGATIVE-NOT: sil shared [transparent] [ossa] @$sSo16NSRuncingOptionsV11QuinceDicedAbBmF
 
 var runcing: NSRuncingOptions = .mince
 
@@ -23,9 +22,9 @@ var raw = runcing.rawValue
 var eq = runcing == .quinceSliced
 var hash = runcing.hashValue
 
-func testEm<E: Equatable>(x: E, _ y: E) {}
-func hashEm<H: Hashable>(x: H) {}
-func rawEm<R: RawRepresentable>(x: R) {}
+func testEm<E: Equatable>(_ x: E, _ y: E) {}
+func hashEm<H: Hashable>(_ x: H) {}
+func rawEm<R: RawRepresentable>(_ x: R) {}
 
 testEm(NSRuncingOptions.mince, .quinceSliced)
 hashEm(NSRuncingOptions.mince)
@@ -36,16 +35,16 @@ protocol Bub {}
 
 extension NSRuncingOptions: Bub {}
 
-// CHECK-32-DAG: integer_literal $Builtin.Int2048, -2147483648
-// CHECK-64-DAG: integer_literal $Builtin.Int2048, 2147483648
+// CHECK-32-DAG: integer_literal $Builtin.IntLiteral, -2147483648
+// CHECK-64-DAG: integer_literal $Builtin.IntLiteral, 2147483648
 _ = NSFungingMask.toTheMax
 
-// CHECK-DAG: sil_witness_table shared NSRuncingOptions: RawRepresentable module gizmo
-// CHECK-DAG: sil_witness_table shared NSRuncingOptions: Equatable module gizmo
-// CHECK-DAG: sil_witness_table shared NSRuncingOptions: Hashable module gizmo
-// CHECK-DAG: sil_witness_table shared NSFungingMask: RawRepresentable module gizmo
+// CHECK-DAG: sil_witness_table shared [serialized] NSRuncingOptions: RawRepresentable module gizmo
+// CHECK-DAG: sil_witness_table shared [serialized] NSRuncingOptions: Equatable module gizmo
+// CHECK-DAG: sil_witness_table shared [serialized] NSRuncingOptions: Hashable module gizmo
+// CHECK-DAG: sil_witness_table shared [serialized] NSFungingMask: RawRepresentable module gizmo
 
-// CHECK-DAG: sil shared [transparent] [thunk] @_TTWOSC16NSRuncingOptionss16RawRepresentable5gizmoFS0_C
+// CHECK-DAG: sil shared [transparent] [serialized] [thunk] [ossa] @$sSo16NSRuncingOptionsVSYSCSY8rawValuexSg03RawD0Qz_tcfCTW
 
 // Extension conformances get linkage according to the protocol's accessibility, as normal.
 // CHECK-DAG: sil_witness_table hidden NSRuncingOptions: Bub module objc_enum

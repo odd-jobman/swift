@@ -1,6 +1,4 @@
-#!/usr/bin/env python
-from __future__ import print_function
-
+#!/usr/bin/env python3
 import re
 import subprocess
 import sys
@@ -53,6 +51,7 @@ usage: nshtml2rst < NSString.html > NSString.rst
                  rst, flags=re.MULTILINE)
 
     sys.stdout.write(rst)
+
 
 if __name__ == '__main__':
     run()

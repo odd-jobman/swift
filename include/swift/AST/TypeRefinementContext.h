@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -21,6 +21,7 @@
 #include "swift/AST/Identifier.h"
 #include "swift/AST/Availability.h"
 #include "swift/AST/Stmt.h" // for PoundAvailableInfo
+#include "swift/Basic/Debug.h"
 #include "swift/Basic/LLVM.h"
 #include "swift/Basic/SourceLoc.h"
 #include "swift/Basic/STLExtras.h"
@@ -45,7 +46,7 @@ namespace swift {
 /// These refinement contexts form a lexical tree parallel to the AST but much
 /// more sparse: we only introduce refinement contexts when there is something
 /// to refine.
-class TypeRefinementContext {
+class TypeRefinementContext : public ASTAllocated<TypeRefinementContext> {
 
 public:
   /// Describes the reason a type refinement context was introduced.
@@ -53,9 +54,19 @@ public:
     /// The root refinement context.
     Root,
 
-    /// The context was introduced by a declaration (e.g., the body of a
-    /// function declaration or the contents of a class declaration).
+    /// The context was introduced by a declaration with an explicit
+    /// availability attribute. The context contains both the signature and the
+    /// body of the declaration.
     Decl,
+
+    /// The context was introduced implicitly by a declaration. The context may
+    /// cover the entire declaration or it may cover a subset of it. For
+    /// example, a public, non-inlinable function declaration in an API module
+    /// will have at least two associated contexts: one for the entire
+    /// declaration at the declared availability of the API and a nested
+    /// implicit context for the body of the function, which will always run at
+    /// the deployment target of the library.
+    DeclImplicit,
 
     /// The context was introduced for the Then branch of an IfStmt.
     IfStmtThenBranch,
@@ -101,7 +112,10 @@ private:
 
   public:
     IntroNode(SourceFile *SF) : IntroReason(Reason::Root), SF(SF) {}
-    IntroNode(Decl *D) : IntroReason(Reason::Decl), D(D) {}
+    IntroNode(Decl *D, Reason introReason = Reason::Decl)
+        : IntroReason(introReason), D(D) {
+      (void)getAsDecl();    // check that assertion succeeds
+    }
     IntroNode(IfStmt *IS, bool IsThen) :
     IntroReason(IsThen ? Reason::IfStmtThenBranch : Reason::IfStmtElseBranch),
                 IS(IS) {}
@@ -121,7 +135,8 @@ private:
     }
 
     Decl *getAsDecl() const {
-      assert(IntroReason == Reason::Decl);
+      assert(IntroReason == Reason::Decl ||
+             IntroReason == Reason::DeclImplicit);
       return D;
     }
 
@@ -153,13 +168,21 @@ private:
 
   SourceRange SrcRange;
 
+  /// A canonical availability info for this context, computed top-down from the
+  /// root context.
   AvailabilityContext AvailabilityInfo;
+
+  /// If this context was annotated with an availability attribute, this property captures that.
+  /// It differs from the above `AvailabilityInfo` by being independent of the deployment target,
+  /// and is used for providing availability attribute redundancy warning diagnostics.
+  AvailabilityContext ExplicitAvailabilityInfo;
 
   std::vector<TypeRefinementContext *> Children;
 
   TypeRefinementContext(ASTContext &Ctx, IntroNode Node,
                         TypeRefinementContext *Parent, SourceRange SrcRange,
-                        const AvailabilityContext &Info);
+                        const AvailabilityContext &Info,
+                        const AvailabilityContext &ExplicitInfo);
 
 public:
   
@@ -171,8 +194,14 @@ public:
   static TypeRefinementContext *createForDecl(ASTContext &Ctx, Decl *D,
                                               TypeRefinementContext *Parent,
                                               const AvailabilityContext &Info,
+                                              const AvailabilityContext &ExplicitInfo,
                                               SourceRange SrcRange);
-  
+
+  /// Create a refinement context for the given declaration.
+  static TypeRefinementContext *
+  createForDeclImplicit(ASTContext &Ctx, Decl *D, TypeRefinementContext *Parent,
+                        const AvailabilityContext &Info, SourceRange SrcRange);
+
   /// Create a refinement context for the Then branch of the given IfStmt.
   static TypeRefinementContext *
   createForIfStmtThen(ASTContext &Ctx, IfStmt *S, TypeRefinementContext *Parent,
@@ -225,7 +254,16 @@ public:
   /// or an invalid location if the context reflects the minimum deployment
   // target.
   SourceLoc getIntroductionLoc() const;
-  
+
+  /// Returns the source range covering a _single_ decl-attribute or statement
+  /// condition that introduced the refinement context for a given platform
+  /// version; if zero or multiple such responsible attributes or statements
+  /// exist, returns an invalid SourceRange.
+  SourceRange
+  getAvailabilityConditionVersionSourceRange(
+      PlatformKind Platform,
+      const llvm::VersionTuple &Version) const;
+
   /// Returns the source range on which this context refines types.
   SourceRange getSourceRange() const { return SrcRange; }
 
@@ -233,6 +271,12 @@ public:
   /// running code contained in this context.
   const AvailabilityContext &getAvailabilityInfo() const {
     return AvailabilityInfo;
+  }
+
+  /// Returns the information on what availability was specified by the programmer
+  /// on this context (if any).
+  const AvailabilityContext &getExplicitAvailabilityInfo() const {
+    return ExplicitAvailabilityInfo;
   }
 
   /// Adds a child refinement context.
@@ -246,18 +290,11 @@ public:
   TypeRefinementContext *findMostRefinedSubContext(SourceLoc Loc,
                                                    SourceManager &SM);
 
-  LLVM_ATTRIBUTE_DEPRECATED(
-      void dump(SourceManager &SrcMgr) const LLVM_ATTRIBUTE_USED,
-      "only for use within the debugger");
+  SWIFT_DEBUG_DUMPER(dump(SourceManager &SrcMgr));
   void dump(raw_ostream &OS, SourceManager &SrcMgr) const;
   void print(raw_ostream &OS, SourceManager &SrcMgr, unsigned Indent = 0) const;
   
   static StringRef getReasonName(Reason R);
-  
-  // Only allow allocation of TypeRefinementContext using the allocator in
-  // ASTContext.
-  void *operator new(size_t Bytes, ASTContext &C,
-                     unsigned Alignment = alignof(TypeRefinementContext));
 };
 
 } // end namespace swift

@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2021 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,16 +15,22 @@ import TestsUtils
 // A micro-benchmark for recursive divide and conquer problems.
 // The program performs integration via Gaussian Quadrature
 
+public let benchmarks =
+  BenchmarkInfo(
+    name: "Integrate",
+    runFunction: run_Integrate,
+    tags: [.validation, .algorithm])
+
 class Integrate {
-  static let epsilon = 1.0e-9;
+  static let epsilon = 1.0e-9
 
-  let fun:(Double)->Double;
+  let fun: (Double) -> Double
 
-  init (f:(Double)->Double) {
-    fun = f;
+  init (f: @escaping (Double) -> Double) {
+    fun = f
   }
     
-  private func recEval(l:Double, fl:Double, r:Double, fr:Double, a:Double)->Double {
+  private func recEval(_ l: Double, fl: Double, r: Double, fr: Double, a: Double) -> Double {
     let h = (r - l) / 2
     let hh = h / 2
     let c = l + h
@@ -43,26 +49,25 @@ class Integrate {
   }
 
   @inline(never)
-  func computeArea(left:Double, right:Double)->Double {
+  func computeArea(_ left: Double, right: Double) -> Double {
     return recEval(left, fl:fun(left), r:right, fr:fun(right), a:0)
   }
 }
 
 @inline(never)
-public func run_Integrate(N: Int) {
-  let obj = Integrate(f: { x in (x*x + 1.0) * x});
+public func run_Integrate(_ n: Int) {
+  let obj = Integrate(f: { x in (x*x + 1.0) * x})
   let left = 0.0
   let right = 10.0
   let ref_result = 2550.0
   let bound = 0.0001
   var result = 0.0
-  for _ in 1...N {
+  for _ in 1...n {
     result = obj.computeArea(left, right:right)
     if abs(result - ref_result) > bound {
       break
     }
   }
 
-  CheckResults(abs(result - ref_result) < bound,
-               "Incorrect results in Integrate: abs(\(result) - \(ref_result)) > \(bound)")
+  check(abs(result - ref_result) < bound)
 }

@@ -1,13 +1,16 @@
-// RUN: %target-jit-run -I %S -enable-source-import %s | FileCheck %s
+// RUN: %empty-directory(%t)
+// RUN: %target-build-swift -Xfrontend -disable-implicit-concurrency-module-import -emit-library -o %t/%target-library-name(complex) -emit-module %S/complex.swift -module-link-name complex
+// RUN: %target-jit-run %s -I %t -L %t | %FileCheck %s
+
+// RUN: grep -v import %s > %t/main.swift
+// RUN: %target-jit-run %t/main.swift %S/complex.swift | %FileCheck %s
+
 // REQUIRES: executable_test
 // REQUIRES: swift_interpreter
 
-// FIXME: iOS: -enable-source-import plus %target-build-swift equals link errors
-// FIXME: This test uses IRGen with -enable-source-import; it may fail with -g.
-
 import complex
 
-func printDensity(d: Int) {
+func printDensity(_ d: Int) {
   if (d > 40) {
      print(" ", terminator: "")
   } else if d > 6 {
@@ -21,7 +24,7 @@ func printDensity(d: Int) {
   }
 }
 
-func getMandelbrotIterations(c: Complex, _ maxIterations: Int) -> Int {
+func getMandelbrotIterations(_ c: Complex, _ maxIterations: Int) -> Int {
   var n = 0
   var z = Complex() 
   while (n < maxIterations && z.magnitude() < 4.0) {
@@ -31,16 +34,16 @@ func getMandelbrotIterations(c: Complex, _ maxIterations: Int) -> Int {
   return n
 }
 
-func mandelbrot(xMin: Double, _ xMax: Double,
+func mandelbrot(_ xMin: Double, _ xMax: Double,
                 _ yMin: Double, _ yMax: Double,
-                _ rows: Int, _ cols: Int)  {
+                _ rows: Int, _ cols: Int) {
   // Set the spacing for the points in the Mandelbrot set.
   var dX = (xMax - xMin) / Double(rows)
   var dY = (yMax - yMin) / Double(cols)
   // Iterate over the points an determine if they are in the
   // Mandelbrot set.
-  for var row = xMin; row < xMax ; row += dX {
-    for var col = yMin; col < yMax; col += dY {
+  for row in stride(from: xMin, to: xMax, by: dX) {
+    for col in stride(from: yMin, to: yMax, by: dY) {
       var c = Complex(real: col, imag: row)
       printDensity(getMandelbrotIterations(c, 200))
     }

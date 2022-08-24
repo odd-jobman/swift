@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -17,7 +17,10 @@
 #ifndef SWIFT_AST_IDENTIFIER_H
 #define SWIFT_AST_IDENTIFIER_H
 
+#include "swift/Basic/EditorPlaceholder.h"
+#include "swift/Basic/Debug.h"
 #include "swift/Basic/LLVM.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/Support/TrailingObjects.h"
@@ -51,22 +54,47 @@ enum class DeclRefKind {
 /// ASTContext.  It just wraps a nul-terminated "const char*".
 class Identifier {
   friend class ASTContext;
+  friend class DeclBaseName;
+
   const char *Pointer;
   
+public:
+  enum : size_t {
+    NumLowBitsAvailable = 3,
+    RequiredAlignment = 1 << NumLowBitsAvailable,
+    SpareBitMask = ((intptr_t)1 << NumLowBitsAvailable) - 1
+  };
+
+private:
   /// Constructor, only accessible by ASTContext, which handles the uniquing.
-  explicit Identifier(const char *Ptr) : Pointer(Ptr) {}
+  explicit Identifier(const char *Ptr) : Pointer(Ptr) {
+    assert(((uintptr_t)Ptr & SpareBitMask) == 0
+           && "Identifier pointer does not use any spare bits");
+  }
+
+  /// A type with the alignment expected of a valid \c Identifier::Pointer .
+  struct alignas(uint64_t) Aligner {};
+
+  static_assert(alignof(Aligner) >= RequiredAlignment,
+                "Identifier table will provide enough spare bits");
+
 public:
   explicit Identifier() : Pointer(nullptr) {}
   
   const char *get() const { return Pointer; }
   
   StringRef str() const { return Pointer; }
-  
+
+  explicit operator std::string() const { return std::string(Pointer); }
+
   unsigned getLength() const {
+    assert(Pointer != nullptr && "Tried getting length of empty identifier");
     return ::strlen(Pointer);
   }
   
-  bool empty() const { return Pointer == 0; }
+  bool empty() const { return Pointer == nullptr; }
+
+  bool is(StringRef string) const { return str().equals(string); }
   
   /// isOperator - Return true if this identifier is an operator, false if it is
   /// a normal identifier.
@@ -82,7 +110,22 @@ public:
     // Handle the high unicode case out of line.
     return isOperatorSlow();
   }
-  
+
+  bool isArithmeticOperator() const {
+    return is("+") || is("-") || is("*") || is("/") || is("%");
+  }
+
+  // Returns whether this is a standard comparison operator,
+  // such as '==', '>=' or '!=='.
+  bool isStandardComparisonOperator() const {
+    return is("==") || is("!=") || is("===") || is("!==") || is("<") ||
+           is(">") || is("<=") || is(">=");
+  }
+
+  bool isNilCoalescingOperator() const {
+    return is("??");
+  }
+
   /// isOperatorStartCodePoint - Return true if the specified code point is a
   /// valid start of an operator.
   static bool isOperatorStartCodePoint(uint32_t C) {
@@ -120,14 +163,20 @@ public:
   }
 
   static bool isEditorPlaceholder(StringRef name) {
-    return name.startswith("<#");
+    return swift::isEditorPlaceholder(name);
   }
 
   bool isEditorPlaceholder() const {
     return !empty() && isEditorPlaceholder(str());
   }
+
+  bool hasDollarPrefix() const {
+    return str().startswith("$") && !(getLength() == 1);
+  }
   
-  void *getAsOpaquePointer() const { return (void *)Pointer; }
+  const void *getAsOpaquePointer() const {
+      return static_cast<const void *>(Pointer);
+  }
   
   static Identifier getFromOpaquePointer(void *P) {
     return Identifier((const char*)P);
@@ -139,18 +188,25 @@ public:
   /// Null identifiers come after all other identifiers.
   int compare(Identifier other) const;
 
+  friend llvm::hash_code hash_value(Identifier ident) {
+    return llvm::hash_value(ident.getAsOpaquePointer());
+  }
+
   bool operator==(Identifier RHS) const { return Pointer == RHS.Pointer; }
-  bool operator!=(Identifier RHS) const { return Pointer != RHS.Pointer; }
+  bool operator!=(Identifier RHS) const { return !(*this==RHS); }
 
   bool operator<(Identifier RHS) const { return Pointer < RHS.Pointer; }
   
   static Identifier getEmptyKey() {
-    return Identifier((const char*)
-                      llvm::DenseMapInfo<const void*>::getEmptyKey());
+    uintptr_t Val = static_cast<uintptr_t>(-1);
+    Val <<= NumLowBitsAvailable;
+    return Identifier((const char*)Val);
   }
+
   static Identifier getTombstoneKey() {
-    return Identifier((const char*)
-                      llvm::DenseMapInfo<const void*>::getTombstoneKey());
+    uintptr_t Val = static_cast<uintptr_t>(-2);
+    Val <<= NumLowBitsAvailable;
+    return Identifier((const char*)Val);
   }
 
 private:
@@ -158,6 +214,7 @@ private:
 };
   
 class DeclName;
+class DeclNameRef;
 class ObjCSelector;
 
 } // end namespace swift
@@ -165,6 +222,7 @@ class ObjCSelector;
 namespace llvm {
   raw_ostream &operator<<(raw_ostream &OS, swift::Identifier I);
   raw_ostream &operator<<(raw_ostream &OS, swift::DeclName I);
+  raw_ostream &operator<<(raw_ostream &OS, swift::DeclNameRef I);
   raw_ostream &operator<<(raw_ostream &OS, swift::ObjCSelector S);
 
   // Identifiers hash just like pointers.
@@ -184,41 +242,197 @@ namespace llvm {
   };
   
   // An Identifier is "pointer like".
-  template<typename T> class PointerLikeTypeTraits;
+  template<typename T> struct PointerLikeTypeTraits;
   template<>
-  class PointerLikeTypeTraits<swift::Identifier> {
+  struct PointerLikeTypeTraits<swift::Identifier> {
   public:
     static inline void *getAsVoidPointer(swift::Identifier I) {
-      return (void*)I.get();
+      return const_cast<void *>(I.getAsOpaquePointer());
     }
     static inline swift::Identifier getFromVoidPointer(void *P) {
       return swift::Identifier::getFromOpaquePointer(P);
     }
-    enum { NumLowBitsAvailable = 2 };
+    enum { NumLowBitsAvailable = swift::Identifier::NumLowBitsAvailable };
   };
   
 } // end namespace llvm
 
 namespace swift {
+
+/// Wrapper that may either be an Identifier or a special name
+/// (e.g. for subscripts)
+class DeclBaseName {
+public:
+  enum class Kind: uint8_t {
+    Normal,
+    Subscript,
+    Constructor,
+    Destructor
+  };
   
+private:
+  /// In a special DeclName representing a subscript, this opaque pointer
+  /// is used as the data of the base name identifier.
+  /// This is an implementation detail that should never leak outside of
+  /// DeclName.
+  static const Identifier::Aligner SubscriptIdentifierData;
+  /// As above, for special constructor DeclNames.
+  static const Identifier::Aligner ConstructorIdentifierData;
+  /// As above, for special destructor DeclNames.
+  static const Identifier::Aligner DestructorIdentifierData;
+
+  Identifier Ident;
+
+public:
+  DeclBaseName() : DeclBaseName(Identifier()) {}
+
+  DeclBaseName(Identifier I) : Ident(I) {}
+
+  static DeclBaseName createSubscript() {
+    return DeclBaseName(Identifier((const char *)&SubscriptIdentifierData));
+  }
+
+  static DeclBaseName createConstructor() {
+    return DeclBaseName(Identifier((const char *)&ConstructorIdentifierData));
+  }
+
+  static DeclBaseName createDestructor() {
+    return DeclBaseName(Identifier((const char *)&DestructorIdentifierData));
+  }
+
+  Kind getKind() const {
+    if (Ident.get() == (const char *)&SubscriptIdentifierData) {
+      return Kind::Subscript;
+    } else if (Ident.get() == (const char *)&ConstructorIdentifierData) {
+      return Kind::Constructor;
+    } else if (Ident.get() == (const char *)&DestructorIdentifierData) {
+        return Kind::Destructor;
+    } else {
+      return Kind::Normal;
+    }
+  }
+
+  bool isSpecial() const { return getKind() != Kind::Normal; }
+
+  bool isSubscript() const { return getKind() == Kind::Subscript; }
+
+  /// Return the identifier backing the name. Assumes that the name is not
+  /// special.
+  Identifier getIdentifier() const {
+    assert(!isSpecial() && "Cannot retrieve identifier from special names");
+    return Ident;
+  }
+
+  bool empty() const { return !isSpecial() && getIdentifier().empty(); }
+
+  bool isOperator() const {
+    return !isSpecial() && getIdentifier().isOperator();
+  }
+
+  bool isEditorPlaceholder() const {
+    return !isSpecial() && getIdentifier().isEditorPlaceholder();
+  }
+
+  bool hasDollarPrefix() const {
+    return getIdentifier().hasDollarPrefix();
+  }
+
+  /// A representation of the name to be displayed to users. May be ambiguous
+  /// between identifiers and special names.
+  StringRef userFacingName() const {
+    if (empty())
+      return "_";
+
+    switch (getKind()) {
+    case Kind::Normal:
+      return getIdentifier().str();
+    case Kind::Subscript:
+      return "subscript";
+    case Kind::Constructor:
+      return "init";
+    case Kind::Destructor:
+      return "deinit";
+    }
+    llvm_unreachable("unhandled kind");
+  }
+
+  int compare(DeclBaseName other) const {
+    return userFacingName().compare(other.userFacingName());
+  }
+
+  bool operator==(StringRef Str) const {
+    return !isSpecial() && getIdentifier().is(Str);
+  }
+  bool operator!=(StringRef Str) const { return !(*this == Str); }
+
+  bool operator==(DeclBaseName RHS) const { return Ident == RHS.Ident; }
+  bool operator!=(DeclBaseName RHS) const { return !(*this == RHS); }
+
+  bool operator<(DeclBaseName RHS) const {
+    return Ident.get() < RHS.Ident.get();
+  }
+
+  const void *getAsOpaquePointer() const { return Ident.get(); }
+
+  static DeclBaseName getFromOpaquePointer(void *P) {
+    return Identifier::getFromOpaquePointer(P);
+  }
+};
+
+} // end namespace swift
+
+namespace llvm {
+
+raw_ostream &operator<<(raw_ostream &OS, swift::DeclBaseName D);
+
+// DeclBaseNames hash just like pointers.
+template<> struct DenseMapInfo<swift::DeclBaseName> {
+  static swift::DeclBaseName getEmptyKey() {
+    return swift::Identifier::getEmptyKey();
+  }
+  static swift::DeclBaseName getTombstoneKey() {
+    return swift::Identifier::getTombstoneKey();
+  }
+  static unsigned getHashValue(swift::DeclBaseName Val) {
+    return DenseMapInfo<const void *>::getHashValue(Val.getAsOpaquePointer());
+  }
+  static bool isEqual(swift::DeclBaseName LHS, swift::DeclBaseName RHS) {
+    return LHS == RHS;
+  }
+};
+
+// A DeclBaseName is "pointer like".
+template <typename T> struct PointerLikeTypeTraits;
+template <> struct PointerLikeTypeTraits<swift::DeclBaseName> {
+public:
+  static inline void *getAsVoidPointer(swift::DeclBaseName D) {
+    return const_cast<void *>(D.getAsOpaquePointer());
+  }
+  static inline swift::DeclBaseName getFromVoidPointer(void *P) {
+    return swift::DeclBaseName::getFromOpaquePointer(P);
+  }
+  enum { NumLowBitsAvailable = PointerLikeTypeTraits<swift::Identifier>::NumLowBitsAvailable };
+};
+
+} // end namespace llvm
+
+namespace swift {
+
 /// A declaration name, which may comprise one or more identifier pieces.
 class DeclName {
   friend class ASTContext;
 
-  /// Represents a compound
+  /// Represents a compound declaration name.
   struct alignas(Identifier) CompoundDeclName final : llvm::FoldingSetNode,
       private llvm::TrailingObjects<CompoundDeclName, Identifier> {
     friend TrailingObjects;
     friend class DeclName;
 
-    Identifier BaseName;
+    DeclBaseName BaseName;
     size_t NumArgs;
-    
-    explicit CompoundDeclName(Identifier BaseName, size_t NumArgs)
-      : BaseName(BaseName), NumArgs(NumArgs)
-    {
-      assert(NumArgs > 0 && "Should use IdentifierAndCompound");
-    }
+
+    explicit CompoundDeclName(DeclBaseName BaseName, size_t NumArgs)
+        : BaseName(BaseName), NumArgs(NumArgs) { }
     
     ArrayRef<Identifier> getArgumentNames() const {
       return {getTrailingObjects<Identifier>(), NumArgs};
@@ -226,101 +440,111 @@ class DeclName {
     MutableArrayRef<Identifier> getArgumentNames() {
       return {getTrailingObjects<Identifier>(), NumArgs};
     }
-      
+
     /// Uniquing for the ASTContext.
-    static void Profile(llvm::FoldingSetNodeID &id,
-                        Identifier baseName,
+    static void Profile(llvm::FoldingSetNodeID &id, DeclBaseName baseName,
                         ArrayRef<Identifier> argumentNames);
-    
+
     void Profile(llvm::FoldingSetNodeID &id) {
       Profile(id, BaseName, getArgumentNames());
     }
   };
 
-  // A single stored identifier, along with a bit stating whether it is the
-  // base name for a zero-argument compound name.
-  typedef llvm::PointerIntPair<Identifier, 1, bool> IdentifierAndCompound;
+  /// Either a single identifier piece stored inline, or a reference to a
+  /// compound declaration name.
+  llvm::PointerUnion<DeclBaseName, CompoundDeclName *> BaseNameOrCompound;
 
-  // Either a single identifier piece stored inline (with a bit to say whether
-  // it is simple or compound), or a reference to a compound declaration name.
-  llvm::PointerUnion<IdentifierAndCompound, CompoundDeclName*> SimpleOrCompound;
-  
-  DeclName(void *Opaque)
-    : SimpleOrCompound(decltype(SimpleOrCompound)::getFromOpaqueValue(Opaque))
+  explicit DeclName(void *Opaque)
+    : BaseNameOrCompound(decltype(BaseNameOrCompound)::getFromOpaqueValue(Opaque))
   {}
 
-  void initialize(ASTContext &C, Identifier baseName,
+  void initialize(ASTContext &C, DeclBaseName baseName,
                   ArrayRef<Identifier> argumentNames);
-  
+
 public:
   /// Build a null name.
-  DeclName() : SimpleOrCompound(IdentifierAndCompound()) {}
-  
+  DeclName() : BaseNameOrCompound(DeclBaseName()) {}
+
   /// Build a simple value name with one component.
+  /*implicit*/ DeclName(DeclBaseName simpleName)
+      : BaseNameOrCompound(simpleName) {}
+
   /*implicit*/ DeclName(Identifier simpleName)
-    : SimpleOrCompound(IdentifierAndCompound(simpleName, false)) {}
-  
+      : DeclName(DeclBaseName(simpleName)) {}
+
   /// Build a compound value name given a base name and a set of argument names.
-  DeclName(ASTContext &C, Identifier baseName,
+  DeclName(ASTContext &C, DeclBaseName baseName,
            ArrayRef<Identifier> argumentNames) {
     initialize(C, baseName, argumentNames);
   }
 
   /// Build a compound value name given a base name and a set of argument names
   /// extracted from a parameter list.
-  DeclName(ASTContext &C, Identifier baseName, ParameterList *paramList);
-  
+  DeclName(ASTContext &C, DeclBaseName baseName, ParameterList *paramList);
+
   /// Retrieve the 'base' name, i.e., the name that follows the introducer,
   /// such as the 'foo' in 'func foo(x:Int, y:Int)' or the 'bar' in
   /// 'var bar: Int'.
-  Identifier getBaseName() const {
-    if (auto compound = SimpleOrCompound.dyn_cast<CompoundDeclName*>())
+  DeclBaseName getBaseName() const {
+    if (auto compound = BaseNameOrCompound.dyn_cast<CompoundDeclName*>())
       return compound->BaseName;
-    
-    return SimpleOrCompound.get<IdentifierAndCompound>().getPointer();
+
+    return BaseNameOrCompound.get<DeclBaseName>();
+  }
+
+  /// Assert that the base name is not special and return its identifier.
+  Identifier getBaseIdentifier() const {
+    auto baseName = getBaseName();
+    assert(!baseName.isSpecial() &&
+           "Can't retrieve the identifier of a special base name");
+    return baseName.getIdentifier();
   }
 
   /// Retrieve the names of the arguments, if there are any.
   ArrayRef<Identifier> getArgumentNames() const {
-    if (auto compound = SimpleOrCompound.dyn_cast<CompoundDeclName*>())
+    if (auto compound = BaseNameOrCompound.dyn_cast<CompoundDeclName*>())
       return compound->getArgumentNames();
 
     return { };
   }
 
+  bool isSpecial() const { return getBaseName().isSpecial(); }
+
   explicit operator bool() const {
-    if (SimpleOrCompound.dyn_cast<CompoundDeclName*>())
+    if (BaseNameOrCompound.dyn_cast<CompoundDeclName*>())
       return true;
-    return !SimpleOrCompound.get<IdentifierAndCompound>().getPointer().empty();
+    return !BaseNameOrCompound.get<DeclBaseName>().empty();
   }
   
   /// True if this is a simple one-component name.
   bool isSimpleName() const {
-    if (SimpleOrCompound.dyn_cast<CompoundDeclName*>())
-      return false;
-
-    return !SimpleOrCompound.get<IdentifierAndCompound>().getInt();
+    return BaseNameOrCompound.is<DeclBaseName>();
   }
 
   /// True if this is a compound name.
   bool isCompoundName() const {
-    if (SimpleOrCompound.dyn_cast<CompoundDeclName*>())
-      return true;
-
-    return SimpleOrCompound.get<IdentifierAndCompound>().getInt();
+    return !isSimpleName();
   }
   
   /// True if this name is a simple one-component name identical to the
   /// given identifier.
-  bool isSimpleName(Identifier name) const {
+  bool isSimpleName(DeclBaseName name) const {
     return isSimpleName() && getBaseName() == name;
   }
   
   /// True if this name is a simple one-component name equal to the
   /// given string.
   bool isSimpleName(StringRef name) const {
-    return isSimpleName() && getBaseName().str().equals(name);
+    return isSimpleName() && getBaseName() == name;
   }
+
+  /// True if this name is a compound name equal to the given base name and
+  /// argument names.
+  bool isCompoundName(DeclBaseName base, ArrayRef<StringRef> args) const;
+
+  /// True if this name is a compound name equal to the given normal
+  /// base name and argument names.
+  bool isCompoundName(StringRef base, ArrayRef<StringRef> args) const;
   
   /// True if this name is an operator.
   bool isOperator() const {
@@ -334,7 +558,7 @@ public:
   /// matches a simple name lookup or when the full compound name matches.
   bool matchesRef(DeclName refName) const {
     // Identical names always match.
-    if (SimpleOrCompound == refName.SimpleOrCompound)
+    if (BaseNameOrCompound == refName.BaseNameOrCompound)
       return true;
     // If the reference is a simple name, try simple name matching.
     if (refName.isSimpleName())
@@ -342,7 +566,7 @@ public:
     // The names don't match.
     return false;
   }
-  
+
   /// Add a DeclName to a lookup table so that it can be found by its simple
   /// name or its compound name.
   template<typename LookupTable, typename Element>
@@ -364,7 +588,12 @@ public:
   }
 
   friend bool operator!=(DeclName lhs, DeclName rhs) {
-    return lhs.getOpaqueValue() != rhs.getOpaqueValue();
+    return !(lhs == rhs);
+  }
+
+  friend llvm::hash_code hash_value(DeclName name) {
+    using llvm::hash_value;
+    return hash_value(name.getOpaqueValue());
   }
 
   friend bool operator<(DeclName lhs, DeclName rhs) {
@@ -372,19 +601,25 @@ public:
   }
 
   friend bool operator<=(DeclName lhs, DeclName rhs) {
-    return lhs.compare(lhs) <= 0;
+    return lhs.compare(rhs) <= 0;
   }
 
   friend bool operator>(DeclName lhs, DeclName rhs) {
-    return lhs.compare(lhs) > 0;
+    return lhs.compare(rhs) > 0;
   }
 
   friend bool operator>=(DeclName lhs, DeclName rhs) {
-    return lhs.compare(lhs) >= 0;
+    return lhs.compare(rhs) >= 0;
   }
 
-  void *getOpaqueValue() const { return SimpleOrCompound.getOpaqueValue(); }
+  void *getOpaqueValue() const { return BaseNameOrCompound.getOpaqueValue(); }
   static DeclName getFromOpaqueValue(void *p) { return DeclName(p); }
+
+  /// Get a string representation of the name,
+  ///
+  /// \param scratch Scratch space to use.
+  StringRef getString(llvm::SmallVectorImpl<char> &scratch,
+                      bool skipEmptyArgumentNames = false) const;
 
   /// Print the representation of this declaration name to the given
   /// stream.
@@ -402,8 +637,178 @@ public:
   llvm::raw_ostream &printPretty(llvm::raw_ostream &os) const;
 
   /// Dump this name to standard error.
-  LLVM_ATTRIBUTE_DEPRECATED(void dump() const,
-                            "only for use within the debugger");
+  SWIFT_DEBUG_DUMP;
+};
+
+void simple_display(llvm::raw_ostream &out, DeclName name);
+
+/// An in-source reference to another declaration, including qualification
+/// information.
+class DeclNameRef {
+  DeclName FullName;
+
+public:
+  static DeclNameRef createSubscript();
+  static DeclNameRef createConstructor();
+
+  DeclNameRef() : FullName() { }
+
+  void *getOpaqueValue() const { return FullName.getOpaqueValue(); }
+  static DeclNameRef getFromOpaqueValue(void *p);
+
+  explicit DeclNameRef(DeclName FullName)
+    : FullName(FullName) { }
+
+  explicit DeclNameRef(DeclBaseName BaseName)
+    : FullName(BaseName) { }
+
+  explicit DeclNameRef(Identifier BaseName)
+    : FullName(BaseName) { }
+
+  /// The name of the declaration being referenced.
+  DeclName getFullName() const {
+    return FullName;
+  }
+
+  DeclName &getFullName() {
+    return FullName;
+  }
+
+  /// The base name of the declaration being referenced.
+  DeclBaseName getBaseName() const {
+    return FullName.getBaseName();
+  }
+
+  Identifier getBaseIdentifier() const {
+    return FullName.getBaseIdentifier();
+  }
+
+  ArrayRef<Identifier> getArgumentNames() const {
+    return FullName.getArgumentNames();
+  }
+
+  bool isSimpleName() const {
+    return FullName.isSimpleName();
+  }
+
+  bool isSimpleName(DeclBaseName name) const {
+    return FullName.isSimpleName(name);
+  }
+
+  bool isSimpleName(StringRef name) const {
+    return FullName.isSimpleName(name);
+  }
+
+  bool isSpecial() const {
+    return FullName.isSpecial();
+  }
+
+  bool isOperator() const {
+    return FullName.isOperator();
+  }
+
+  bool isCompoundName() const {
+    return FullName.isCompoundName();
+  }
+
+  explicit operator bool() const {
+    return (bool)FullName;
+  }
+
+  /// Compare two declaration names, producing -1 if \c *this comes before
+  /// \c other,  1 if \c *this comes after \c other, and 0 if they are equal.
+  ///
+  /// Null declaration names come after all other declaration names.
+  int compare(DeclNameRef other) const {
+    return getFullName().compare(other.getFullName());
+  }
+
+  friend bool operator==(DeclNameRef lhs, DeclNameRef rhs) {
+    return lhs.getOpaqueValue() == rhs.getOpaqueValue();
+  }
+
+  friend bool operator!=(DeclNameRef lhs, DeclNameRef rhs) {
+    return !(lhs == rhs);
+  }
+
+  friend llvm::hash_code hash_value(DeclNameRef name) {
+    using llvm::hash_value;
+    return hash_value(name.getFullName().getOpaqueValue());
+  }
+
+  friend bool operator<(DeclNameRef lhs, DeclNameRef rhs) {
+    return lhs.compare(rhs) < 0;
+  }
+
+  friend bool operator<=(DeclNameRef lhs, DeclNameRef rhs) {
+    return lhs.compare(rhs) <= 0;
+  }
+
+  friend bool operator>(DeclNameRef lhs, DeclNameRef rhs) {
+    return lhs.compare(rhs) > 0;
+  }
+
+  friend bool operator>=(DeclNameRef lhs, DeclNameRef rhs) {
+    return lhs.compare(rhs) >= 0;
+  }
+
+  DeclNameRef withoutArgumentLabels() const;
+  DeclNameRef withArgumentLabels(ASTContext &C,
+                                 ArrayRef<Identifier> argumentNames) const;
+
+  /// Get a string representation of the name,
+  ///
+  /// \param scratch Scratch space to use.
+  StringRef getString(llvm::SmallVectorImpl<char> &scratch,
+                      bool skipEmptyArgumentNames = false) const;
+
+  /// Print the representation of this declaration name to the given
+  /// stream.
+  ///
+  /// \param skipEmptyArgumentNames When true, don't print the argument labels
+  /// if they are all empty.
+  llvm::raw_ostream &print(llvm::raw_ostream &os,
+                           bool skipEmptyArgumentNames = false) const;
+
+  /// Print a "pretty" representation of this declaration name to the given
+  /// stream.
+  ///
+  /// This is the name used for diagnostics; it is not necessarily the
+  /// fully-specified name that would be written in the source.
+  llvm::raw_ostream &printPretty(llvm::raw_ostream &os) const;
+
+  /// Dump this name to standard error.
+  SWIFT_DEBUG_DUMP;
+};
+
+inline DeclNameRef DeclNameRef::getFromOpaqueValue(void *p) {
+  return DeclNameRef(DeclName::getFromOpaqueValue(p));
+}
+
+inline DeclNameRef DeclNameRef::withoutArgumentLabels() const {
+  return DeclNameRef(getBaseName());
+}
+
+inline DeclNameRef DeclNameRef::withArgumentLabels(
+    ASTContext &C, ArrayRef<Identifier> argumentNames) const {
+  return DeclNameRef(DeclName(C, getBaseName(), argumentNames));
+}
+
+
+inline DeclNameRef DeclNameRef::createSubscript() {
+  return DeclNameRef(DeclBaseName::createSubscript());
+}
+
+inline DeclNameRef DeclNameRef::createConstructor() {
+  return DeclNameRef(DeclBaseName::createConstructor());
+}
+
+void simple_display(llvm::raw_ostream &out, DeclNameRef name);
+
+enum class ObjCSelectorFamily : unsigned {
+  None,
+#define OBJC_SELECTOR_FAMILY(LABEL, PREFIX) LABEL,
+#include "swift/AST/ObjCSelectorFamily.def"
 };
 
 /// Represents an Objective-C selector.
@@ -423,6 +828,19 @@ public:
   /// Form a selector with the given number of arguments and the given selector
   /// pieces.
   ObjCSelector(ASTContext &ctx, unsigned numArgs, ArrayRef<Identifier> pieces);
+
+  /// Construct an invalid ObjCSelector.
+  ObjCSelector() : Storage() {}
+
+  /// Split \p string into selector pieces on colons to create an ObjCSelector.
+  ///
+  /// This should not be used to parse selectors written directly in Swift
+  /// source code (e.g. the argument of an @objc attribute). Use the
+  /// parser for that.
+  static llvm::Optional<ObjCSelector> parse(ASTContext &ctx, StringRef string);
+
+  /// Convert to true if the decl name is valid.
+  explicit operator bool() const { return (bool)Storage; }
 
   /// Determine the number of arguments in the selector.
   ///
@@ -453,10 +871,18 @@ public:
     return Storage.getArgumentNames();
   }
 
+  /// Asserts that this is a nullary selector and returns the single identifier.
+  Identifier getSimpleName() const {
+    assert(Storage.isSimpleName() && "not a nullary selector");
+    return Storage.getBaseIdentifier();
+  }
+
   /// Get a string representation of the selector.
   ///
   /// \param scratch Scratch space to use.
   StringRef getString(llvm::SmallVectorImpl<char> &scratch) const;
+
+  ObjCSelectorFamily getSelectorFamily() const;
 
   void *getOpaqueValue() const { return Storage.getOpaqueValue(); }
   static ObjCSelector getFromOpaqueValue(void *p) {
@@ -464,8 +890,7 @@ public:
   }
 
   /// Dump this selector to standard error.
-  LLVM_ATTRIBUTE_DEPRECATED(void dump() const,
-                            "only for use within the debugger");
+  SWIFT_DEBUG_DUMP;
 
   /// Compare two Objective-C selectors, producing -1 if \c *this comes before
   /// \c other,  1 if \c *this comes after \c other, and 0 if they are equal.
@@ -478,7 +903,7 @@ public:
   }
 
   friend bool operator!=(ObjCSelector lhs, ObjCSelector rhs) {
-    return lhs.getOpaqueValue() != rhs.getOpaqueValue();
+    return !(lhs == rhs);
   }
 
   friend bool operator<(ObjCSelector lhs, ObjCSelector rhs) {
@@ -486,21 +911,35 @@ public:
   }
 
   friend bool operator<=(ObjCSelector lhs, ObjCSelector rhs) {
-    return lhs.compare(lhs) <= 0;
+    return lhs.compare(rhs) <= 0;
   }
 
   friend bool operator>(ObjCSelector lhs, ObjCSelector rhs) {
-    return lhs.compare(lhs) > 0;
+    return lhs.compare(rhs) > 0;
   }
 
   friend bool operator>=(ObjCSelector lhs, ObjCSelector rhs) {
-    return lhs.compare(lhs) >= 0;
+    return lhs.compare(rhs) >= 0;
   }
 };
 
 } // end namespace swift
 
 namespace llvm {
+  // A DeclName is "pointer like".
+  template<typename T> struct PointerLikeTypeTraits;
+  template<>
+  struct PointerLikeTypeTraits<swift::DeclName> {
+  public:
+    static inline void *getAsVoidPointer(swift::DeclName name) {
+      return name.getOpaqueValue();
+    }
+    static inline swift::DeclName getFromVoidPointer(void *ptr) {
+      return swift::DeclName::getFromOpaqueValue(ptr);
+    }
+    enum { NumLowBitsAvailable = PointerLikeTypeTraits<swift::DeclBaseName>::NumLowBitsAvailable - 1 };
+  };
+
   // DeclNames hash just like pointers.
   template<> struct DenseMapInfo<swift::DeclName> {
     static swift::DeclName getEmptyKey() {
@@ -515,7 +954,52 @@ namespace llvm {
     static bool isEqual(swift::DeclName LHS, swift::DeclName RHS) {
       return LHS.getOpaqueValue() == RHS.getOpaqueValue();
     }
-  };  
+  };
+
+  // A DeclNameRef is "pointer like" just like DeclNames.
+  template<typename T> struct PointerLikeTypeTraits;
+  template<>
+  struct PointerLikeTypeTraits<swift::DeclNameRef> {
+  public:
+    static inline void *getAsVoidPointer(swift::DeclNameRef name) {
+      return name.getOpaqueValue();
+    }
+    static inline swift::DeclNameRef getFromVoidPointer(void *ptr) {
+      return swift::DeclNameRef::getFromOpaqueValue(ptr);
+    }
+    enum { NumLowBitsAvailable = PointerLikeTypeTraits<swift::DeclName>::NumLowBitsAvailable };
+  };
+
+  // DeclNameRefs hash just like DeclNames.
+  template<> struct DenseMapInfo<swift::DeclNameRef> {
+    static swift::DeclNameRef getEmptyKey() {
+      return swift::DeclNameRef(DenseMapInfo<swift::DeclName>::getEmptyKey());
+    }
+    static swift::DeclNameRef getTombstoneKey() {
+      return swift::DeclNameRef(DenseMapInfo<swift::DeclName>::getTombstoneKey());
+    }
+    static unsigned getHashValue(swift::DeclNameRef Val) {
+      return DenseMapInfo<swift::DeclName>::getHashValue(Val.getFullName());
+    }
+    static bool isEqual(swift::DeclNameRef LHS, swift::DeclNameRef RHS) {
+      return DenseMapInfo<swift::DeclName>::isEqual(LHS.getFullName(),
+                                                    RHS.getFullName());
+    }
+  };
+
+  // An ObjCSelector is "pointer like".
+  template<typename T> struct PointerLikeTypeTraits;
+  template<>
+  struct PointerLikeTypeTraits<swift::ObjCSelector> {
+  public:
+    static inline void *getAsVoidPointer(swift::ObjCSelector name) {
+      return name.getOpaqueValue();
+    }
+    static inline swift::ObjCSelector getFromVoidPointer(void *ptr) {
+      return swift::ObjCSelector::getFromOpaqueValue(ptr);
+    }
+    enum { NumLowBitsAvailable = 0 };
+  };
 
   // ObjCSelectors hash just like pointers.
   template<> struct DenseMapInfo<swift::ObjCSelector> {

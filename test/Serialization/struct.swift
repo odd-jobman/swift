@@ -1,7 +1,6 @@
-// RUN: rm -rf %t
-// RUN: mkdir %t
+// RUN: %empty-directory(%t)
 // RUN: %target-swift-frontend -emit-module -o %t %S/Inputs/def_struct.swift
-// RUN: llvm-bcanalyzer %t/def_struct.swiftmodule | FileCheck %s
+// RUN: llvm-bcanalyzer %t/def_struct.swiftmodule | %FileCheck %s
 // RUN: %target-swift-frontend -emit-silgen -I %t %s -o /dev/null
 
 // CHECK-NOT: UnknownCode
@@ -42,8 +41,8 @@ var p = Pair(a: 1, b: 2.5)
 p.first = 2
 p.second = 5.0
 
-var gc = GenericCtor<Int>()
-gc.doSomething()
+var gc = GenericCtor<Int>(42)
+gc.doSomething(42)
 
 var wrappedTypeVar : ComputableWrapper<AnotherIntWrapper>.ComputableType
 wrappedTypeVar = intWrapper2
@@ -64,7 +63,7 @@ var condition = UnComputable.canCompute()
 var revP = p.swap()
 
 
-func testMasterConformanceMap(x: Int32) -> Bool {
+func testMasterConformanceMap(_ x: Int32) -> Bool {
   return x != -1
 }
 
@@ -82,7 +81,7 @@ struct TestLetProperties {
     _ = b.pattyCount
   }
 
-  func flip(b: Burger) {
+  func flip(_ b: Burger) {
     _ = b.pattyCount
   }
 }

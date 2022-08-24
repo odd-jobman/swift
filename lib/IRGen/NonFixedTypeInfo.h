@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -23,6 +23,7 @@
 #ifndef SWIFT_IRGEN_NONFIXEDTYPEINFO_H
 #define SWIFT_IRGEN_NONFIXEDTYPEINFO_H
 
+#include "Address.h"
 #include "GenOpaque.h"
 #include "IndirectTypeInfo.h"
 
@@ -35,14 +36,15 @@ namespace irgen {
 template <class Impl>
 class WitnessSizedTypeInfo : public IndirectTypeInfo<Impl, TypeInfo> {
 private:
-  typedef IndirectTypeInfo<Impl, TypeInfo> super;
+  using super = IndirectTypeInfo<Impl, TypeInfo>;
 
 protected:
   const Impl &asImpl() const { return static_cast<const Impl &>(*this); }
 
   WitnessSizedTypeInfo(llvm::Type *type, Alignment align, IsPOD_t pod,
-                       IsBitwiseTakable_t bt)
-    : super(type, align, pod, bt, IsNotFixedSize, TypeInfo::STIK_None) {}
+                       IsBitwiseTakable_t bt, IsABIAccessible_t abi)
+    : super(type, align, pod, bt, IsNotFixedSize, abi,
+            SpecialTypeInfoKind::None) {}
 
 private:
   /// Bit-cast the given pointer to the right type and assume it as an
@@ -57,47 +59,29 @@ public:
   // This is useful for metaprogramming.
   static bool isFixed() { return false; }
 
-  ContainedAddress allocateStack(IRGenFunction &IGF,
-                                 SILType T,
-                                 const llvm::Twine &name) const override {
-    // Make a fixed-size buffer.
-    Address buffer = IGF.createFixedSizeBufferAlloca(name);
-    IGF.Builder.CreateLifetimeStart(buffer, getFixedBufferSize(IGF.IGM));
-
-    // Allocate an object of the appropriate type within it.
-    llvm::Value *address = emitAllocateBufferCall(IGF, T, buffer);
-    return { buffer, getAsBitCastAddress(IGF, address) };
+  StackAddress allocateStack(IRGenFunction &IGF, SILType T,
+                             const llvm::Twine &name) const override {
+    // Allocate memory on the stack.
+    auto alloca = IGF.emitDynamicAlloca(T, name);
+    IGF.Builder.CreateLifetimeStart(alloca.getAddressPointer());
+    return alloca.withAddress(
+             getAsBitCastAddress(IGF, alloca.getAddressPointer()));
   }
 
-  void deallocateStack(IRGenFunction &IGF, Address buffer,
+  void deallocateStack(IRGenFunction &IGF, StackAddress stackAddress,
                        SILType T) const override {
-    emitDeallocateBufferCall(IGF, T, buffer);
-    IGF.Builder.CreateLifetimeEnd(buffer, getFixedBufferSize(IGF.IGM));
+    IGF.Builder.CreateLifetimeEnd(stackAddress.getAddress().getAddress());
+    IGF.emitDeallocateDynamicAlloca(stackAddress);
   }
 
-  void destroyStack(IRGenFunction &IGF, Address buffer,
-                    SILType T) const override {
-    emitDestroyBufferCall(IGF, T, buffer);
-    IGF.Builder.CreateLifetimeEnd(buffer, getFixedBufferSize(IGF.IGM));
+  void destroyStack(IRGenFunction &IGF, StackAddress stackAddress, SILType T,
+                    bool isOutlined) const override {
+    emitDestroyCall(IGF, T, stackAddress.getAddress());
+    deallocateStack(IGF, stackAddress, T);
   }
 
   llvm::Value *getValueWitnessTable(IRGenFunction &IGF, SILType T) const {
-    return IGF.emitValueWitnessTableRefForLayout(T);
-  }
-
-  std::pair<llvm::Value*,llvm::Value*>
-  getSizeAndAlignmentMask(IRGenFunction &IGF, SILType T) const override {
-    auto size = emitLoadOfSize(IGF, T);
-    auto align = emitLoadOfAlignmentMask(IGF, T);
-    return { size, align };
-  }
-
-  std::tuple<llvm::Value*,llvm::Value*,llvm::Value*>
-  getSizeAndAlignmentMaskAndStride(IRGenFunction &IGF, SILType T) const override {
-    auto size = emitLoadOfSize(IGF, T);
-    auto align = emitLoadOfAlignmentMask(IGF, T);
-    auto stride = emitLoadOfStride(IGF, T);
-    return std::make_tuple(size, align, stride);
+    return IGF.emitValueWitnessTableRef(T);
   }
 
   llvm::Value *getSize(IRGenFunction &IGF, SILType T) const override {
@@ -116,22 +100,16 @@ public:
     return emitLoadOfIsPOD(IGF, T);
   }
 
+  llvm::Value *getIsBitwiseTakable(IRGenFunction &IGF, SILType T) const override {
+    return emitLoadOfIsBitwiseTakable(IGF, T);
+  }
+
   llvm::Value *isDynamicallyPackedInline(IRGenFunction &IGF,
                                          SILType T) const override {
     return emitLoadOfIsInline(IGF, T);
   }
 
-  /// FIXME: Dynamic extra inhabitant lookup.
-  bool mayHaveExtraInhabitants(IRGenModule &) const override { return false; }
-  llvm::Value *getExtraInhabitantIndex(IRGenFunction &IGF,
-                                       Address src, SILType T) const override {
-    llvm_unreachable("dynamic extra inhabitants not supported");
-  }
-  void storeExtraInhabitant(IRGenFunction &IGF,
-                            llvm::Value *index,
-                            Address dest, SILType T) const override {
-    llvm_unreachable("dynamic extra inhabitants not supported");
-  }
+  bool mayHaveExtraInhabitants(IRGenModule &) const override { return true; }
 
   llvm::Constant *getStaticSize(IRGenModule &IGM) const override {
     return nullptr;
@@ -143,7 +121,6 @@ public:
     return nullptr;
   }
 };
-
 }
 }
 

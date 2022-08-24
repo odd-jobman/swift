@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -24,6 +24,7 @@
 #include "swift/SIL/SILAllocated.h"
 #include "swift/SIL/SILDeclRef.h"
 #include "swift/SIL/SILFunction.h"
+#include "swift/SIL/SILWitnessTable.h"
 #include "llvm/ADT/ilist_node.h"
 #include "llvm/ADT/ilist.h"
 #include <string>
@@ -41,34 +42,9 @@ class SILDefaultWitnessTable : public llvm::ilist_node<SILDefaultWitnessTable>,
                                public SILAllocated<SILDefaultWitnessTable>
 {
 public:
-  /// A default witness table entry describing the default witness for a method.
-  class Entry {
-    /// The method required.
-    SILDeclRef Requirement;
-    /// The witness for the method.
-    /// This can be null in case no default implementation is available.
-    SILFunction *Witness;
- 
-  public:
-    Entry()
-      : Requirement(), Witness(nullptr) {}
-    
-    Entry(SILDeclRef Requirement, SILFunction *Witness)
-      : Requirement(Requirement), Witness(Witness) {}
-
-    bool isValid() const {
-      return !Requirement.isNull();
-    }
-
-    const SILDeclRef &getRequirement() const {
-      assert(isValid());
-      return Requirement;
-    }
-    SILFunction *getWitness() const {
-      assert(Witness != nullptr);
-      return Witness;
-    }
-  };
+  /// A default witness table entry describing the default witness for a
+  /// requirement.
+  using Entry = SILWitnessTable::Entry;
  
 private:
   /// The module which contains the SILDefaultWitnessTable.
@@ -113,7 +89,11 @@ public:
                                         const ProtocolDecl *Protocol,
                                         ArrayRef<Entry> entries);
 
-  Identifier getIdentifier() const;
+  /// Get a name that uniquely identifies this default witness table.
+  ///
+  /// Note that this is /not/ valid as a symbol name; it is only guaranteed to
+  /// be unique among default witness tables, not all symbols.
+  std::string getUniqueName() const;
 
   /// Get the linkage of the default witness table.
   SILLinkage getLinkage() const { return Linkage; }
@@ -131,32 +111,24 @@ public:
   /// Return the AST ProtocolDecl this default witness table is associated with.
   const ProtocolDecl *getProtocol() const { return Protocol; }
 
-  /// Return the minimum witness table size, in words.
-  ///
-  /// This will not change if requirements with default implementations are
-  /// added at the end of the protocol.
-  unsigned getMinimumWitnessTableSize() const;
+  /// Clears methods in witness entries.
+  /// \p predicate Returns true if the passed entry should be set to null.
+  template <typename Predicate> void clearMethods_if(Predicate predicate) {
+    for (Entry &entry : Entries) {
+      if (!entry.isValid())
+        continue;
+      if (entry.getKind() != SILWitnessTable::Method)
+        continue;
 
-  /// Return the default witness table size, in words.
-  ///
-  /// This is the number of resilient default entries that were known when the
-  /// protocol definition was compiled; at runtime, it may be smaller or larger,
-  /// so this should only be used when emitting metadata for the protocol
-  /// definition itself.
-  unsigned getDefaultWitnessTableSize() const {
-    return Entries.size() - getMinimumWitnessTableSize();
+      auto *MW = entry.getMethodWitness().Witness;
+      if (MW && predicate(MW)) {
+        entry.removeWitnessMethod();
+      }
+    }
   }
 
   /// Return all of the default witness table entries.
   ArrayRef<Entry> getEntries() const { return Entries; }
-
-  /// Return all of the resilient default implementations.
-  ///
-  /// This is the array of witnesses actually emitted as part of the protocol's
-  /// metadata; see the comment in getMinimumWitnessTableSize().
-  ArrayRef<Entry> getResilientDefaultEntries() {
-    return Entries.slice(getMinimumWitnessTableSize());
-  }
 
   /// Verify that the default witness table is well-formed.
   void verify(const SILModule &M) const;
@@ -178,21 +150,10 @@ namespace llvm {
   
 template <>
 struct ilist_traits<::swift::SILDefaultWitnessTable> :
-public ilist_default_traits<::swift::SILDefaultWitnessTable> {
-  typedef ::swift::SILDefaultWitnessTable SILDefaultWitnessTable;
-
-private:
-  mutable ilist_half_node<SILDefaultWitnessTable> Sentinel;
+public ilist_node_traits<::swift::SILDefaultWitnessTable> {
+  using SILDefaultWitnessTable = ::swift::SILDefaultWitnessTable;
 
 public:
-  SILDefaultWitnessTable *createSentinel() const {
-    return static_cast<SILDefaultWitnessTable*>(&Sentinel);
-  }
-  void destroySentinel(SILDefaultWitnessTable *) const {}
-
-  SILDefaultWitnessTable *provideInitialHead() const { return createSentinel(); }
-  SILDefaultWitnessTable *ensureHead(SILDefaultWitnessTable*) const { return createSentinel(); }
-  static void noteHead(SILDefaultWitnessTable*, SILDefaultWitnessTable*) {}
   static void deleteNode(SILDefaultWitnessTable *WT) { WT->~SILDefaultWitnessTable(); }
   
 private:

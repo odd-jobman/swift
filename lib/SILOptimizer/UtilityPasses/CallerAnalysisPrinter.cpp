@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -14,11 +14,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "swift/SILOptimizer/Analysis/CallerAnalysis.h"
-#include "swift/Basic/DemangleWrappers.h"
 #include "swift/SIL/SILFunction.h"
 #include "swift/SIL/SILModule.h"
+#include "swift/SILOptimizer/Analysis/CallerAnalysis.h"
 #include "swift/SILOptimizer/PassManager/Transforms.h"
+#include "llvm/Support/YAMLTraits.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace swift;
@@ -27,17 +27,15 @@ using namespace swift;
 
 namespace {
 
+/// A pass that dumps the caller analysis state in yaml form. Intended to allow
+/// for visualizing of the caller analysis via external data visualization and
+/// analysis programs.
 class CallerAnalysisPrinterPass : public SILModuleTransform {
   /// The entry point to the transformation.
   void run() override {
     auto *CA = getAnalysis<CallerAnalysis>();
-    for (auto &F : *getModule()) {
-      const char *hasCaller = CA->hasCaller(&F) ? "true" : "false";
-      llvm::outs() << "Function " << F.getName() << " has caller: " << hasCaller << "\n";
-    }
+    CA->print(llvm::outs());
   }
-
-  StringRef getName() override { return "Caller Analysis Printer"; }
 };
 
 } // end anonymous namespace

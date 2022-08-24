@@ -11,6 +11,17 @@ public protocol P3 {
   associatedtype Second
 }
 
+public protocol P4 {
+  associatedtype Result
+  func getResult() -> Result
+}
+
 public protocol ClassBoundP: class {
   associatedtype Inner
+}
+
+fileprivate protocol FileprivateProtocol {}
+
+public struct HasFileprivateProtocol {
+  fileprivate let x: FileprivateProtocol
 }

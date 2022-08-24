@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -65,11 +65,30 @@ public:
     IsNotReplaced = false, IsReplaced = true
   };
 
+  struct Info {
+    unsigned TheKind : 8;
+    unsigned ErrorIsOwned : 1;
+    unsigned ErrorParameterIsReplaced : 1;
+    unsigned ErrorParameterIndex : 22;
+
+    Info(Kind kind, unsigned parameterIndex, IsOwned_t isOwned,
+         IsReplaced_t isReplaced)
+        : TheKind(unsigned(kind)), ErrorIsOwned(bool(isOwned)),
+          ErrorParameterIsReplaced(bool(isReplaced)),
+          ErrorParameterIndex(parameterIndex) {
+      assert(parameterIndex == ErrorParameterIndex &&
+             "parameter index overflowed");
+    }
+
+    Info() = default;
+
+    Kind getKind() const {
+      return static_cast<Kind>(TheKind);
+    }
+  };
+
 private:  
-  unsigned TheKind : 8;
-  unsigned ErrorIsOwned : 1;
-  unsigned ErrorParameterIsReplaced : 1;
-  unsigned ErrorParameterIndex : 22;
+  Info info;
 
   /// The error parameter type.  This is currently assumed to be an
   /// indirect out-parameter.
@@ -79,14 +98,11 @@ private:
   /// NonZeroResult.
   CanType ResultType;
 
-  ForeignErrorConvention(Kind kind, unsigned parameterIndex,
-                         IsOwned_t isOwned, IsReplaced_t isReplaced,
-                         Type parameterType, Type resultType = Type())
-    : TheKind(unsigned(kind)), ErrorIsOwned(bool(isOwned)),
-      ErrorParameterIsReplaced(bool(isReplaced)),
-      ErrorParameterIndex(parameterIndex), ErrorParameterType(parameterType),
-      ResultType(resultType) {
-  }
+  ForeignErrorConvention(Kind kind, unsigned parameterIndex, IsOwned_t isOwned,
+                         IsReplaced_t isReplaced, CanType parameterType,
+                         CanType resultType = CanType())
+      : info(kind, parameterIndex, isOwned, isReplaced),
+        ErrorParameterType(parameterType), ResultType(resultType) {}
 
 public:
   static ForeignErrorConvention getZeroResult(unsigned parameterIndex,
@@ -131,7 +147,7 @@ public:
 
   /// Returns the error convention in use.
   Kind getKind() const {
-    return Kind(TheKind);
+    return Kind(info.TheKind);
   }
 
   /// Returns true if this convention strips a layer of optionality
@@ -142,19 +158,19 @@ public:
 
   /// Returns the index of the error parameter.
   unsigned getErrorParameterIndex() const {
-    return ErrorParameterIndex;
+    return info.ErrorParameterIndex;
   }
 
   /// Has the error parameter been replaced with void?
   IsReplaced_t isErrorParameterReplacedWithVoid() const {
-    return IsReplaced_t(ErrorParameterIsReplaced);
+    return IsReplaced_t(info.ErrorParameterIsReplaced);
   }
 
   /// Returns whether the error result is owned.  It's assumed that the
   /// error parameter should be ignored if no error is present (unless
   /// it needs to be checked explicitly to determine that).
   IsOwned_t isErrorOwned() const {
-    return IsOwned_t(ErrorIsOwned);
+    return IsOwned_t(info.ErrorIsOwned);
   }
 
   /// Returns the type of the error parameter.  Assumed to be an
@@ -166,9 +182,33 @@ public:
   /// Returns the physical result type of the function, for functions
   /// that completely erase this information.
   CanType getResultType() const {
-    assert(getKind() == ZeroResult ||
-           getKind() == NonZeroResult);
+    assert(resultTypeErasedToVoid(getKind()));
     return ResultType;
+  }
+
+  /// Whether this kind of error import erases the result type to 'Void'.
+  static bool resultTypeErasedToVoid(Kind kind) {
+    switch (kind) {
+    case ZeroResult:
+    case NonZeroResult:
+      return true;
+
+    case ZeroPreservedResult:
+    case NilResult:
+    case NonNilError:
+      return false;
+    }
+    llvm_unreachable("unhandled foreign error kind!");
+  }
+
+  bool operator==(ForeignErrorConvention other) const {
+    return info.TheKind == other.info.TheKind
+      && info.ErrorIsOwned == other.info.ErrorIsOwned
+      && info.ErrorParameterIsReplaced == other.info.ErrorParameterIsReplaced
+      && info.ErrorParameterIndex == other.info.ErrorParameterIndex;
+  }
+  bool operator!=(ForeignErrorConvention other) const {
+    return !(*this == other);
   }
 };
 

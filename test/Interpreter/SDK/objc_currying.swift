@@ -1,10 +1,10 @@
-// RUN: %target-run-simple-swift | FileCheck %s
+// RUN: %target-run-simple-swift | %FileCheck %s
 // REQUIRES: executable_test
 
 // REQUIRES: objc_interop
 import Foundation
 
-func foo(f: (String) -> String) {
+func foo(_ f: (String) -> String) {
   print(f(", "))
   print(f(" • "))
 }

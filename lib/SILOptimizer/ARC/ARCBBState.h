@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,7 +17,7 @@
 
 namespace swift {
 
-/// \brief Per-BasicBlock state.
+/// Per-BasicBlock state.
 class ARCSequenceDataflowEvaluator::ARCBBState {
 public:
   using TopDownMapTy = SmallBlotMapVector<SILValue, TopDownRefCountState, 4>;
@@ -103,11 +103,11 @@ public:
 
   /// Blot \p Ptr.
   void clearBottomUpRefCountState(SILValue Ptr) {
-    PtrToBottomUpState.blot(Ptr);
+    PtrToBottomUpState.erase(Ptr);
   }
 
   /// Blot \p Ptr.
-  void clearTopDownRefCountState(SILValue Ptr) { PtrToTopDownState.blot(Ptr); }
+  void clearTopDownRefCountState(SILValue Ptr) { PtrToTopDownState.erase(Ptr); }
 
   void clearTopDownState() { PtrToTopDownState.clear(); }
   void clearBottomUpState() { PtrToBottomUpState.clear(); }
@@ -137,6 +137,9 @@ public:
   /// BB. Used to create an initial state before we merge in other
   /// predecessors. This is currently a stub.
   void initPredTopDown(ARCBBState &PredBB);
+
+  void dumpBottomUpState();
+  void dumpTopDownState();
 };
 
 class ARCSequenceDataflowEvaluator::ARCBBStateInfoHandle {

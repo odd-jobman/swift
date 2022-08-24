@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,7 +17,6 @@
 #include "swift/SIL/SILArgument.h"
 #include "swift/SIL/SILValue.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Debug.h"
 
@@ -34,20 +33,34 @@ public:
       ProtocolImplementations;
 
   ClassHierarchyAnalysis(SILModule *Mod)
-      : SILAnalysis(AnalysisKind::ClassHierarchy), M(Mod) {
-      init(); 
-    }
+      : SILAnalysis(SILAnalysisKind::ClassHierarchy), M(Mod) {
+    init();
+  }
 
   ~ClassHierarchyAnalysis();
 
   static bool classof(const SILAnalysis *S) {
-    return S->getKind() == AnalysisKind::ClassHierarchy;
+    return S->getKind() == SILAnalysisKind::ClassHierarchy;
   }
 
-  virtual void invalidate(SILAnalysis::InvalidationKind K) {
-    // Nothing can invalidate the ClassHierarchyAnalysis!
+  /// Invalidate all information in this analysis.
+  virtual void invalidate() override {
+    // Nothing can invalidate, because types are static and cannot be changed
+    // during the SIL pass pipeline.
   }
 
+  /// Invalidate all of the information for a specific function.
+  virtual void invalidate(SILFunction *F, InvalidationKind K) override { }
+
+  /// Notify the analysis about a newly created function.
+  virtual void notifyAddedOrModifiedFunction(SILFunction *F) override {}
+
+  /// Notify the analysis about a function which will be deleted from the
+  /// module.
+  virtual void notifyWillDeleteFunction(SILFunction *F) override {}
+
+  /// Notify the analysis about changed witness or vtables.
+  virtual void invalidateFunctionTables() override { }
 
   /// Returns a list of the known direct subclasses of a class \p C in
   /// the current module.
@@ -66,10 +79,6 @@ public:
     return IndirectSubclassesCache[C];
   }
 
-  const NominalTypeList &getProtocolImplementations(ProtocolDecl *P) {
-    return ProtocolImplementationsCache[P];
-  }
-
   /// Returns true if the class is inherited by another class in this module.
   bool hasKnownDirectSubclasses(ClassDecl *C) {
     return DirectSubclassesCache.count(C);
@@ -79,16 +88,7 @@ public:
   /// in this module.
   bool hasKnownIndirectSubclasses(ClassDecl *C) {
     return IndirectSubclassesCache.count(C) &&
-           IndirectSubclassesCache[C].size() > 0;
-  }
-
-  /// Returns true if the protocol is implemented by any class in this module.
-  bool hasKnownImplementations(ProtocolDecl *C) {
-    return ProtocolImplementationsCache.count(C);
-  }
-
-  virtual void invalidate(SILFunction *F, SILAnalysis::InvalidationKind K) {
-    invalidate(K);
+           !IndirectSubclassesCache[C].empty();
   }
 
 private:
@@ -104,9 +104,6 @@ private:
 
   /// A cache that maps a class to all of its known indirect subclasses.
   llvm::DenseMap<ClassDecl*, ClassList> IndirectSubclassesCache;
-
-  /// A cache that maps a protocol to all of its known implementations.
-  ProtocolImplementations ProtocolImplementationsCache;
 };
 
 }

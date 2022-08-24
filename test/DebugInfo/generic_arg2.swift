@@ -1,16 +1,14 @@
-// RUN: %target-swift-frontend %s -emit-ir -g -o - | FileCheck %s
+// RUN: %target-swift-frontend %s -emit-ir -g -o - | %FileCheck %s
 
-// CHECK: define hidden void @_TFC12generic_arg25Class3foo{{.*}}, %swift.type* %U
-// CHECK: [[Y:%.*]] = getelementptr inbounds %C12generic_arg25Class, %C12generic_arg25Class* %2, i32 0, i32 0, i32 0
-// store %swift.opaque* %[[Y]], %swift.opaque** %[[Y_SHADOW:.*]], align
-// CHECK: call void @llvm.dbg.declare(metadata %swift.opaque** %y.addr, metadata ![[U:.*]], metadata !{{[0-9]+}})
+// CHECK: define hidden swiftcc void @"$s12generic_arg25ClassC3foo{{.*}}, %swift.type* %U
+// CHECK: call void @llvm.dbg.declare(metadata %swift.opaque** %y.debug, metadata ![[U:.*]], metadata !DIExpression(DW_OP_deref))
 // Make sure there is no conflicting dbg.value for this variable.x
 // CHECK-NOT: dbg.value{{.*}}metadata ![[U]]
 class Class <T> {
 // CHECK: ![[U]] = !DILocalVariable(name: "y", arg: 2{{.*}} line: [[@LINE+1]],
-  func foo<U>(x: T, y: U) {}
+  func foo<U>(_ x: T, y: U) {}
 
-  func bar(x: String, y: Int64) {}
+  func bar(_ x: String, y: Int64) {}
 
   init() {}
 }

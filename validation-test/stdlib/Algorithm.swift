@@ -6,12 +6,6 @@ import StdlibUnittest
 import StdlibCollectionUnittest
 import SwiftPrivate
 
-// Also import modules which are used by StdlibUnittest internally. This
-// workaround is needed to link all required libraries in case we compile
-// StdlibUnittest with -sil-serialize-all.
-#if _runtime(_ObjC)
-import ObjectiveC
-#endif
 
 var Algorithm = TestSuite("Algorithm")
 
@@ -32,7 +26,7 @@ Algorithm.test("min,max") {
   let a3 = MinimalComparableValue(0, identity: 3)
   let b1 = MinimalComparableValue(1, identity: 4)
   let b2 = MinimalComparableValue(1, identity: 5)
-  let b3 = MinimalComparableValue(1, identity: 6)
+  _ = MinimalComparableValue(1, identity: 6)
   let c1 = MinimalComparableValue(2, identity: 7)
   let c2 = MinimalComparableValue(2, identity: 8)
   let c3 = MinimalComparableValue(2, identity: 9)
@@ -80,23 +74,22 @@ Algorithm.test("min,max") {
   expectEqual(c1.identity, max(a1, b1, c2, c1).identity)
 }
 
-Algorithm.test("sorted/strings")
-  .xfail(.nativeRuntime("String comparison: ICU vs. Foundation " +
-    "https://bugs.swift.org/browse/SR-530"))
-  .code {
+Algorithm.test("sorted/strings") {
   expectEqual(
-    [ "Banana", "apple", "cherry" ],
-    [ "apple", "Banana", "cherry" ].sorted())
+    ["Banana", "apple", "cherry"],
+    ["apple", "Banana", "cherry"].sorted())
 
   let s = ["apple", "Banana", "cherry"].sorted() {
-    $0.characters.count > $1.characters.count
+    $0.count > $1.count
   }
-  expectEqual([ "Banana", "cherry", "apple" ], s)
+  expectEqual(["Banana", "cherry", "apple"], s)
 }
 
 // A wrapper around Array<T> that disables any type-specific algorithm
 // optimizations and forces bounds checking on.
-struct A<T> : MutableCollection {
+struct A<T> : MutableCollection, RandomAccessCollection {
+  typealias Indices = CountableRange<Int>
+
   init(_ a: Array<T>) {
     impl = a
   }
@@ -126,13 +119,13 @@ struct A<T> : MutableCollection {
 
   subscript(r: Range<Int>) -> Array<T>.SubSequence {
     get {
-      expectTrue(r.startIndex >= 0 && r.startIndex <= impl.count)
-      expectTrue(r.endIndex >= 0 && r.endIndex <= impl.count)
+      expectTrue(r.lowerBound >= 0 && r.lowerBound <= impl.count)
+      expectTrue(r.upperBound >= 0 && r.upperBound <= impl.count)
       return impl[r]
     }
     set (x) {
-      expectTrue(r.startIndex >= 0 && r.startIndex <= impl.count)
-      expectTrue(r.endIndex >= 0 && r.endIndex <= impl.count)
+      expectTrue(r.lowerBound >= 0 && r.lowerBound <= impl.count)
+      expectTrue(r.upperBound >= 0 && r.upperBound <= impl.count)
       impl[r] = x
     }
   }
@@ -141,19 +134,22 @@ struct A<T> : MutableCollection {
 }
 
 func randomArray() -> A<Int> {
-  let count = Int(rand32(exclusiveUpperBound: 50))
-  return A(randArray(count))
+  let count = Int.random(in: 0 ..< 50)
+  let array = (0 ..< count).map { _ in Int.random(in: .min ... .max) }
+  return A(array)
 }
 
 Algorithm.test("invalidOrderings") {
   withInvalidOrderings {
-    var a = randomArray()
-    _blackHole(a.sorted(isOrderedBefore: $0))
+    let a = randomArray()
+    _blackHole(a.sorted(by: $0))
   }
   withInvalidOrderings {
     var a: A<Int>
     a = randomArray()
-    a.partition(isOrderedBefore: $0)
+    let lt = $0
+    let first = a.first
+    _ = a.partition(by: { !lt($0, first!) })
   }
   /*
   // FIXME: Disabled due to <rdar://problem/17734737> Unimplemented:
@@ -167,10 +163,10 @@ Algorithm.test("invalidOrderings") {
 }
 
 // The routine is based on http://www.cs.dartmouth.edu/~doug/mdmspe.pdf
-func makeQSortKiller(len: Int) -> [Int] {
+func makeQSortKiller(_ len: Int) -> [Int] {
   var candidate: Int = 0
-  var keys = [Int:Int]()
-  func Compare(x: Int, y : Int) -> Bool {
+  var keys = [Int: Int]()
+  func Compare(_ x: Int, y : Int) -> Bool {
     if keys[x] == nil && keys[y] == nil {
       if (x == candidate) {
         keys[x] = keys.count
@@ -192,7 +188,7 @@ func makeQSortKiller(len: Int) -> [Int] {
   var ary = [Int](repeating: 0, count: len)
   var ret = [Int](repeating: 0, count: len)
   for i in 0..<len { ary[i] = i }
-  ary = ary.sorted(isOrderedBefore: Compare)
+  ary = ary.sorted(by: Compare)
   for i in 0..<len {
     ret[ary[i]] = i
   }
@@ -223,7 +219,7 @@ Algorithm.test("sorted/complexity") {
 }
 
 Algorithm.test("sorted/return type") {
-  let x: Array = ([5, 4, 3, 2, 1] as ArraySlice).sorted()
+  let _: Array = ([5, 4, 3, 2, 1] as ArraySlice).sorted()
 }
 
 runAllTests()

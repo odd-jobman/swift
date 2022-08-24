@@ -2,18 +2,23 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2021 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 // This test checks performance and correctness of Swift sortInPlace on an
 // array of letters.
-import Foundation
 import TestsUtils
+
+public let benchmarks =
+  BenchmarkInfo(
+    name: "SortLettersInPlace",
+    runFunction: run_SortLettersInPlace,
+    tags: [.validation, .api, .algorithm, .String])
 
 class Letter {
   let value: String
@@ -23,8 +28,8 @@ class Letter {
 }
 
 @inline(never)
-public func run_SortLettersInPlace(N: Int) {
-  for _ in 1...100*N {
+public func run_SortLettersInPlace(_ n: Int) {
+  for _ in 1...100*n {
     var letters = [
         Letter("k"), Letter("a"), Letter("x"), Letter("i"), Letter("f"), Letter("l"),
         Letter("o"), Letter("w"), Letter("h"), Letter("p"), Letter("b"), Letter("u"),
@@ -39,8 +44,6 @@ public func run_SortLettersInPlace(N: Int) {
     }
 
     // Check whether letters are sorted.
-    CheckResults(letters[0].value <= letters[letters.count/2].value,
-                 "Incorrect results in SortLetterInPlace.")
+    check(letters[0].value <= letters[letters.count/2].value)
   }
 }
-

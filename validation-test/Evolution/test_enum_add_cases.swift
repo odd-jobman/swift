@@ -4,14 +4,6 @@
 import StdlibUnittest
 import enum_add_cases
 
-// Also import modules which are used by StdlibUnittest internally. This
-// workaround is needed to link all required libraries in case we compile
-// StdlibUnittest with -sil-serialize-all.
-import SwiftPrivate
-import SwiftPrivatePthreadExtras
-#if _runtime(_ObjC)
-import ObjectiveC
-#endif
 
 var EnumAddCasesTest = TestSuite("EnumAddCases")
 
@@ -19,7 +11,7 @@ func myAddNoPayloadToSingletonCases() -> [AddNoPayloadToSingleton] {
   return [.Noses]
 }
 
-func evaluateAddNoPayloadToSingletonCases(e: [AddNoPayloadToSingleton]) -> [Int] {
+func evaluateAddNoPayloadToSingletonCases(_ e: [AddNoPayloadToSingleton]) -> [Int] {
   return e.map {
     switch $0 {
     case .Noses:
@@ -42,13 +34,36 @@ EnumAddCasesTest.test("AddNoPayloadToSingleton") {
   }
 }
 
+func evaluateAddNoPayloadToSingletonCasesUC(_ e: [AddNoPayloadToSingleton]) -> [Int] {
+  return e.map {
+    switch $0 {
+    case .Noses:
+      return 0
+    @unknown case _:
+      return -1
+    }
+  }
+}
+
+EnumAddCasesTest.test("AddNoPayloadToSingleton/UnknownCase") {
+  expectEqual([0],
+      evaluateAddNoPayloadToSingletonCasesUC(myAddNoPayloadToSingletonCases()))
+  if getVersion() == 0 {
+    expectEqual([0],
+        evaluateAddNoPayloadToSingletonCasesUC(addNoPayloadToSingletonCases()))
+  } else {
+    expectEqual([0, -1, -1],
+        evaluateAddNoPayloadToSingletonCasesUC(addNoPayloadToSingletonCases()))
+  }
+}
+
 ///////////////////////////////////////////////////////////////////////
 
 func myAddPayloadToSingletonCases() -> [AddPayloadToSingleton] {
   return [.Cats]
 }
 
-func evaluateAddPayloadToSingletonCases(e: [AddPayloadToSingleton]) -> [Int] {
+func evaluateAddPayloadToSingletonCases(_ e: [AddPayloadToSingleton]) -> [Int] {
   return e.map {
     switch $0 {
     case .Cats:
@@ -77,14 +92,43 @@ EnumAddCasesTest.test("AddPayloadToSingleton") {
   expectEqual(starfishCount, 0)
 }
 
+func evaluateAddPayloadToSingletonCasesUC(_ e: [AddPayloadToSingleton]) -> [Int] {
+  return e.map {
+    switch $0 {
+    case .Cats:
+      return 0
+    @unknown case _:
+      return -1
+    }
+  }
+}
+
+EnumAddCasesTest.test("AddPayloadToSingleton/UnknownCase") {
+  do {
+    let s = Starfish()
+
+    expectEqual([0],
+        evaluateAddPayloadToSingletonCasesUC(myAddPayloadToSingletonCases()))
+    if getVersion() == 0 {
+      expectEqual([0],
+          evaluateAddPayloadToSingletonCasesUC(addPayloadToSingletonCases(s)))
+    } else {
+      expectEqual([0, -1],
+          evaluateAddPayloadToSingletonCasesUC(addPayloadToSingletonCases(s)))
+    }
+  }
+
+  expectEqual(starfishCount, 0)
+}
+
 ///////////////////////////////////////////////////////////////////////
 
-func myAddNoPayloadToSinglePayloadCases(s: Starfish)
+func myAddNoPayloadToSinglePayloadCases(_ s: Starfish)
     -> [AddNoPayloadToSinglePayload] {
   return [.Cats(s), .Noses]
 }
 
-func evaluateAddNoPayloadToSinglePayloadCases(s: Starfish,
+func evaluateAddNoPayloadToSinglePayloadCases(_ s: Starfish,
                                             _ e: [AddNoPayloadToSinglePayload])
     -> [Int] {
   return e.map {
@@ -116,14 +160,46 @@ EnumAddCasesTest.test("AddNoPayloadToSinglePayload") {
   expectEqual(starfishCount, 0)
 }
 
+func evaluateAddNoPayloadToSinglePayloadCasesUC(_ s: Starfish,
+                                                _ e: [AddNoPayloadToSinglePayload])
+    -> [Int] {
+  return e.map {
+    switch $0 {
+    case .Cats(let ss):
+      expectTrue(s === ss)
+      return 0
+    case .Noses:
+      return 1
+    default:
+      return -1
+    }
+  }
+}
+
+EnumAddCasesTest.test("AddNoPayloadToSinglePayload/UnknownCase") {
+  do {
+    let s = Starfish()
+    expectEqual([0, 1],
+        evaluateAddNoPayloadToSinglePayloadCasesUC(s, myAddNoPayloadToSinglePayloadCases(s)))
+    if getVersion() == 0 {
+      expectEqual([0, 1],
+          evaluateAddNoPayloadToSinglePayloadCasesUC(s, addNoPayloadToSinglePayloadCases(s)))
+    } else {
+      expectEqual([0, 1, -1],
+          evaluateAddNoPayloadToSinglePayloadCasesUC(s, addNoPayloadToSinglePayloadCases(s)))
+    }
+  }
+  expectEqual(starfishCount, 0)
+}
+
 ///////////////////////////////////////////////////////////////////////
 
-func myAddPayloadToSinglePayloadCases(s: Starfish)
+func myAddPayloadToSinglePayloadCases(_ s: Starfish)
     -> [AddPayloadToSinglePayload] {
   return [.Cats, .Paws(s)]
 }
 
-func evaluateAddPayloadToSinglePayloadCases(s: Starfish,
+func evaluateAddPayloadToSinglePayloadCases(_ s: Starfish,
                                             _ e: [AddPayloadToSinglePayload])
     -> [Int] {
   return e.map {
@@ -155,14 +231,46 @@ EnumAddCasesTest.test("AddPayloadToSinglePayload") {
   expectEqual(starfishCount, 0)
 }
 
+func evaluateAddPayloadToSinglePayloadCasesUC(_ s: Starfish,
+                                              _ e: [AddPayloadToSinglePayload])
+    -> [Int] {
+  return e.map {
+    switch $0 {
+    case .Cats:
+      return 0
+    case .Paws(let ss):
+      expectTrue(s === ss)
+      return 1
+    @unknown case _:
+      return -1
+    }
+  }
+}
+
+EnumAddCasesTest.test("AddPayloadToSinglePayload/UnknownCase") {
+  do {
+    let s = Starfish()
+    expectEqual([0, 1],
+        evaluateAddPayloadToSinglePayloadCasesUC(s, myAddPayloadToSinglePayloadCases(s)))
+    if getVersion() == 0 {
+      expectEqual([0, 1],
+          evaluateAddPayloadToSinglePayloadCasesUC(s, addPayloadToSinglePayloadCases(s)))
+    } else {
+      expectEqual([0, 1, -1],
+          evaluateAddPayloadToSinglePayloadCasesUC(s, addPayloadToSinglePayloadCases(s)))
+    }
+  }
+  expectEqual(starfishCount, 0)
+}
+
 ///////////////////////////////////////////////////////////////////////
 
-func myAddNoPayloadToMultiPayloadCases(s: Starfish)
+func myAddNoPayloadToMultiPayloadCases(_ s: Starfish)
     -> [AddNoPayloadToMultiPayload] {
   return [.Cats(s), .Puppies(s)]
 }
 
-func evaluateAddNoPayloadToMultiPayloadCases(s: Starfish,
+func evaluateAddNoPayloadToMultiPayloadCases(_ s: Starfish,
                                             _ e: [AddNoPayloadToMultiPayload])
     -> [Int] {
   return e.map {
@@ -195,14 +303,47 @@ EnumAddCasesTest.test("AddNoPayloadToMultiPayload") {
   expectEqual(starfishCount, 0)
 }
 
+func evaluateAddNoPayloadToMultiPayloadCasesUC(_ s: Starfish,
+                                               _ e: [AddNoPayloadToMultiPayload])
+    -> [Int] {
+  return e.map {
+    switch $0 {
+    case .Cats(let ss):
+      expectTrue(s === ss)
+      return 0
+    case .Puppies(let ss):
+      expectTrue(s === ss)
+      return 1
+    @unknown case _:
+      return -1
+    }
+  }
+}
+
+EnumAddCasesTest.test("AddNoPayloadToMultiPayload/UnknownCase") {
+  do {
+    let s = Starfish()
+    expectEqual([0, 1],
+        evaluateAddNoPayloadToMultiPayloadCasesUC(s, myAddNoPayloadToMultiPayloadCases(s)))
+    if getVersion() == 0 {
+      expectEqual([0, 1],
+          evaluateAddNoPayloadToMultiPayloadCasesUC(s, addNoPayloadToMultiPayloadCases(s)))
+    } else {
+      expectEqual([0, 1, -1, -1],
+          evaluateAddNoPayloadToMultiPayloadCasesUC(s, addNoPayloadToMultiPayloadCases(s)))
+    }
+  }
+  expectEqual(starfishCount, 0)
+}
+
 ///////////////////////////////////////////////////////////////////////
 
-func myAddPayloadToMultiPayloadCases(s: Starfish)
+func myAddPayloadToMultiPayloadCases(_ s: Starfish)
     -> [AddPayloadToMultiPayload] {
   return [.Cats(s), .Ponies(s), .Pandas]
 }
 
-func evaluateAddPayloadToMultiPayloadCases(s: Starfish,
+func evaluateAddPayloadToMultiPayloadCases(_ s: Starfish,
                                             _ e: [AddPayloadToMultiPayload])
     -> [Int] {
   return e.map {
@@ -232,6 +373,41 @@ EnumAddCasesTest.test("AddPayloadToMultiPayload") {
     } else {
       expectEqual([0, 1, 2, -1],
           evaluateAddPayloadToMultiPayloadCases(s, addPayloadToMultiPayloadCases(s)))
+    }
+  }
+  expectEqual(starfishCount, 0)
+}
+
+func evaluateAddPayloadToMultiPayloadCasesUC(_ s: Starfish,
+                                             _ e: [AddPayloadToMultiPayload])
+    -> [Int] {
+  return e.map {
+    switch $0 {
+    case .Cats(let ss):
+      expectTrue(s === ss)
+      return 0
+    case .Ponies(let ss):
+      expectTrue(s === ss)
+      return 1
+    case .Pandas:
+      return 2
+    @unknown case _:
+      return -1
+    }
+  }
+}
+
+EnumAddCasesTest.test("AddPayloadToMultiPayload/UnknownCase") {
+  do {
+    let s = Starfish()
+    expectEqual([0, 1, 2],
+        evaluateAddPayloadToMultiPayloadCasesUC(s, myAddPayloadToMultiPayloadCases(s)))
+    if getVersion() == 0 {
+      expectEqual([0, 1, 2],
+          evaluateAddPayloadToMultiPayloadCasesUC(s, addPayloadToMultiPayloadCases(s)))
+    } else {
+      expectEqual([0, 1, 2, -1],
+          evaluateAddPayloadToMultiPayloadCasesUC(s, addPayloadToMultiPayloadCases(s)))
     }
   }
   expectEqual(starfishCount, 0)

@@ -1,4 +1,4 @@
-// RUN: %target-parse-verify-swift
+// RUN: %target-typecheck-verify-swift
 
 // An inout parameter can be captured.
 func foo(x: inout Int) {
@@ -13,4 +13,4 @@ struct C {
 }
 
 var c = C()
-let x = c.f // expected-error{{partial application of 'mutating' method is not allowed}}
+let x = c.f // expected-error{{cannot reference 'mutating' method as function value}}

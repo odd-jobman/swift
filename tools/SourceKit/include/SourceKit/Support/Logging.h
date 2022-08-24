@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -31,7 +31,7 @@ namespace SourceKit {
 
 typedef IntrusiveRefCntPtr<Logger> LogRef;
 
-/// \brief Collects logging output and writes it to stderr when it's destructed.
+/// Collects logging output and writes it to stderr when it's destructed.
 /// Common use case:
 /// \code
 ///   if (LogRef Log = Logger::make(__func__, Logger::Level::Warning)) {
@@ -40,16 +40,16 @@ typedef IntrusiveRefCntPtr<Logger> LogRef;
 /// \endcode
 class Logger : public llvm::RefCountedBase<Logger> {
 public:
-  enum class Level : unsigned char {
-    /// \brief No logging.
+  enum class Level : uint8_t {
+    /// No logging.
     None = 0,
-    /// \brief Warning level.
+    /// Warning level.
     Warning = 1,
-    /// \brief Information level for high priority messages.
+    /// Information level for high priority messages.
     InfoHighPrio = 2,
-    /// \brief Information level for medium priority messages.
+    /// Information level for medium priority messages.
     InfoMediumPrio = 3,
-    /// \brief Information level for low priority messages.
+    /// Information level for low priority messages.
     InfoLowPrio = 4
   };
 
@@ -67,7 +67,7 @@ public:
     return LoggingLevel >= LogLevel;
   }
   static void enableLogging(StringRef Name, Level LogLevel) {
-    LoggerName = Name;
+    LoggerName = Name.str();
     LoggingLevel = LogLevel;
   }
 
@@ -95,9 +95,9 @@ public:
   Logger &operator<<(const llvm::format_object_base &Fmt);
 };
 
-} // namespace SourceKit.
+} // namespace SourceKit
 
-/// \brief Macros to automate common uses of Logger. Like this:
+/// Macros to automate common uses of Logger. Like this:
 /// \code
 ///   LOG_FUNC_SECTION_WARN {
 ///     *Log << "blah";
@@ -105,13 +105,13 @@ public:
 /// \endcode
 #define LOG_SECTION(NAME, LEVEL) \
   if (LogRef Log = SourceKit::Logger::make(NAME, SourceKit::Logger::Level::LEVEL))
-#define LOG_FUNC_SECTION(LEVEL) LOG_SECTION(LLVM_FUNCTION_NAME, LEVEL)
+#define LOG_FUNC_SECTION(LEVEL) LOG_SECTION(__func__, LEVEL)
 #define LOG_FUNC_SECTION_WARN LOG_FUNC_SECTION(Warning)
 
 #define LOG(NAME, LEVEL, msg) LOG_SECTION(NAME, LEVEL) \
-  do { *Log << msg; } while(0)
+  do { *Log << msg; } while (0)
 #define LOG_FUNC(LEVEL, msg) LOG_FUNC_SECTION(LEVEL) \
-  do { *Log << msg; } while(0)
+  do { *Log << msg; } while (0)
 #define LOG_WARN(NAME, msg) LOG(NAME, Warning, msg)
 #define LOG_WARN_FUNC(msg) LOG_FUNC(Warning, msg)
 #define LOG_INFO_FUNC(PRIO, msg) LOG_FUNC(Info##PRIO##Prio, msg)

@@ -1,11 +1,11 @@
 // This source file is part of the Swift.org open source project
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 
-// RUN: not %target-swift-frontend %s -parse
+// RUN: not %target-swift-frontend %s -typecheck
 ] == 1)
 func a<A? {
 func a(object1, V, (T] {
@@ -92,7 +92,7 @@ return { _, g = Int
 }(c) -> : T>(f() -> (z: Boolean>(m(v: Int>()] = { c
 }
 typealias e : NSObject {
-let n1: 1], let g == Swift.join(h, Bool) -> (g.endIndex - range.startIndex))
+let n1: 1], let g == Swift.join(h, Bool) -> (g.endIndex - range.lowerBound))
 func f())
 class A? {
 }

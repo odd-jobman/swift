@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 //
@@ -19,16 +19,18 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "llvm-inlinetree"
-#include "swift/LLVMPasses/Passes.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/DebugInfoMetadata.h"
-#include "llvm/Pass.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/Format.h"
-#include "llvm/ADT/SmallSet.h"
-#include "swift/Basic/DemangleWrappers.h"
 #include "swift/Basic/Range.h"
+#include "swift/Demangling/Demangle.h"
+#include "swift/LLVMPasses/Passes.h"
+#include "llvm/ADT/SmallSet.h"
+#include "llvm/IR/DebugInfoMetadata.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/Pass.h"
+#include "llvm/Support/Allocator.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Format.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 using namespace swift;
@@ -65,8 +67,8 @@ namespace {
 class InlineTree {
   struct Node;
 
-  typedef DenseMap<StringRef, Node *> NodeMap;
-  typedef SmallVector<Node *, 8> NodeList;
+  using NodeMap = DenseMap<StringRef, Node *>;
+  using NodeList = SmallVector<Node *, 8>;
 
   /// Defines a unique inline location.
   /// Used to distinguish between different instances of an inlined function.
@@ -117,7 +119,7 @@ class InlineTree {
     bool isTopLevel = false;
 
     const NodeList &getChildren() {
-      if (SortedChildren.size() == 0 && UnsortedChildren.size() > 0)
+      if (SortedChildren.empty() && !UnsortedChildren.empty())
         sortNodes(UnsortedChildren, SortedChildren);
       return SortedChildren;
     }
@@ -207,13 +209,13 @@ void InlineTree::buildTree(Function *F) {
   Node *rootNode = getNode(F->getName(), Functions2Nodes);
   rootNode->isTopLevel = true;
 
-  DEBUG(dbgs() << "\nFunction " << F->getName() << '\n');
+  LLVM_DEBUG(dbgs() << "\nFunction " << F->getName() << '\n');
   for (BasicBlock &BB : *F) {
     for (Instruction &I : BB) {
 
-      DEBUG(dbgs() << I << '\n');
+      LLVM_DEBUG(dbgs() << I << '\n');
 
-      totalNumberOfInstructions++;
+      ++totalNumberOfInstructions;
       SmallVector<DILocation *, 8> InlineChain;
 
       // Scan the chain of inlined scopes.
@@ -224,28 +226,28 @@ void InlineTree::buildTree(Function *F) {
       }
       Node *Nd = nullptr;
       DILocation *PrevDL = nullptr;
-      for (DILocation *DL : reversed(InlineChain)) {
+      for (DILocation *DL : llvm::reverse(InlineChain)) {
         DILocalScope *Sc = DL->getScope();
         DISubprogram *SP = Sc->getSubprogram();
         assert(SP);
-        DEBUG(dbgs() << "    f=" << SP->getLinkageName());
+        LLVM_DEBUG(dbgs() << "    f=" << SP->getLinkageName());
         if (Nd) {
           Nd = getNode(SP->getLinkageName(), Nd->UnsortedChildren);
           Nd->UniqueLocations.insert(LocationKey(PrevDL));
-          DEBUG(dbgs() << ", loc="; PrevDL->print(dbgs()); dbgs() << '\n');
+          LLVM_DEBUG(dbgs() << ", loc="; PrevDL->print(dbgs()); dbgs() << '\n');
         } else {
           Nd = rootNode;
-          DEBUG(dbgs() << ", root\n");
+          LLVM_DEBUG(dbgs() << ", root\n");
         }
-        Nd->numTotalInsts++;
+        ++Nd->numTotalInsts;
         PrevDL = DL;
       }
 
       if (!Nd) {
         Nd = rootNode;
-        Nd->numTotalInsts++;
+        ++Nd->numTotalInsts;
       }
-      Nd->numSelfInsts++;
+      ++Nd->numSelfInsts;
     }
   }
 }
@@ -274,7 +276,7 @@ void InlineTree::printNode(Node *Nd, int indent, raw_ostream &os) {
 void InlineTree::build(Module *M) {
   // Build the trees for all top-level functions.
   for (Function &F : *M) {
-    if (F.size() == 0)
+    if (F.empty())
       continue;
     buildTree(&F);
   }
@@ -317,7 +319,7 @@ void InlineTree::print(raw_ostream &os) {
                               S.instanceOverhead;
         S.selfInstOverhead = Nd->numSelfInsts - Nd->numSelfInsts /
                              S.instanceOverhead;
-        S.instanceOverhead--;
+        --S.instanceOverhead;
       }
     } else {
       S.totalInstOverhead += Nd->numTotalInsts;
@@ -367,4 +369,13 @@ bool InlineTreePrinter::runOnModule(Module &M) {
   Tree.build(&M);
   Tree.print(outs());
   return false;
+}
+
+llvm::PreservedAnalyses
+swift::InlineTreePrinterPass::run(llvm::Module &M,
+                                  llvm::ModuleAnalysisManager &AM) {
+  InlineTree Tree;
+  Tree.build(&M);
+  Tree.print(outs());
+  return llvm::PreservedAnalyses::all();
 }

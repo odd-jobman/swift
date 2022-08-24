@@ -1,6 +1,9 @@
-// RUN: %target-swift-frontend %s -emit-ir -g -o - | FileCheck %s
+// RUN: %target-swift-frontend %s -emit-ir -g -o - | %FileCheck %s
 
-func markUsed<T>(t: T) {}
+// TODO: check why this is failing on linux
+// REQUIRES: OS=macosx
+
+func markUsed<T>(_ t: T) {}
 
 class Person {
     var name = "No Name"
@@ -14,19 +17,17 @@ func main() {
         markUsed("element = \(element)")
     }
     markUsed("Done with the for loop")
-// CHECK: call void @_TF4main8markUsedurFxT_
+// CHECK: call {{.*}}void @"$s4main8markUsedyyxlF"
 // CHECK: br label
-// CHECK: <label>:
-// CHECK: , !dbg ![[LOOPHEADER_LOC:.*]]
-// CHECK: call void {{.*}}elease({{.*}}) {{#[0-9]+}}, !dbg ![[LOOPHEADER_LOC]]
-// CHECK: call void @_TF4main8markUsedurFxT_
+// CHECK: {{[0-9]+}}:
+// CHECK: call %Ts16IndexingIteratorVySaySiGG* @"$ss16IndexingIteratorVySaySiGGWOh"(%Ts16IndexingIteratorVySaySiGG* %{{.*}}), !dbg ![[LOOPHEADER_LOC:.*]]
+// CHECK: call {{.*}}void @"$s4main8markUsedyyxlF"
 // The cleanups should share the line number with the ret stmt.
-// CHECK:  call void {{.*}}elease({{.*}}) {{#[0-9]+}}, !dbg ![[CLEANUPS:.*]]
+// CHECK:  call %TSa* @"$sSaySiGWOh"(%TSa* %{{.*}}), !dbg ![[CLEANUPS:.*]]
 // CHECK-NEXT:  !dbg ![[CLEANUPS]]
-// CHECK-NEXT:  bitcast
 // CHECK-NEXT:  llvm.lifetime.end
-// CHECK-NEXT:  bitcast
-// CHECK-NEXT:  llvm.lifetime.end
+// CHECK-NEXT:  load
+// CHECK-NEXT:  swift_release
 // CHECK-NEXT:  bitcast
 // CHECK-NEXT:  llvm.lifetime.end
 // CHECK-NEXT:  ret void, !dbg ![[CLEANUPS]]

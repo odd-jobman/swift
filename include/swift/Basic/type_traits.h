@@ -2,18 +2,19 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef SWIFT_BASIC_TYPE_TRAITS_H
-#define SWIFT_BASIC_TYPE_TRAITS_H
+#ifndef SWIFT_BASIC_TYPETRAITS_H
+#define SWIFT_BASIC_TYPETRAITS_H
 
 #include <type_traits>
+#include "swift/Basic/Compiler.h"
 
 #ifndef __has_feature
 #define SWIFT_DEFINED_HAS_FEATURE
@@ -29,10 +30,10 @@ namespace swift {
 /// is not intended to be specialized.
 template<typename T>
 struct IsTriviallyCopyable {
-#if _LIBCPP_VERSION
-  // libc++ implements it.
+#if defined(_LIBCPP_VERSION) || SWIFT_COMPILER_IS_MSVC
+  // libc++ and MSVC implement is_trivially_copyable.
   static const bool value = std::is_trivially_copyable<T>::value;
-#elif __has_feature(is_trivially_copyable)
+#elif __has_feature(is_trivially_copyable) || __GNUC__ >= 5
   static const bool value = __is_trivially_copyable(T);
 #else
 #  error "Not implemented"
@@ -41,10 +42,10 @@ struct IsTriviallyCopyable {
 
 template<typename T>
 struct IsTriviallyConstructible {
-#if _LIBCPP_VERSION
-  // libc++ implements it.
+#if defined(_LIBCPP_VERSION) || SWIFT_COMPILER_IS_MSVC
+  // libc++ and MSVC implement is_trivially_constructible.
   static const bool value = std::is_trivially_constructible<T>::value;
-#elif __has_feature(has_trivial_constructor)
+#elif __has_feature(has_trivial_constructor) || __GNUC__ >= 5
   static const bool value = __has_trivial_constructor(T);
 #else
 #  error "Not implemented"
@@ -53,21 +54,20 @@ struct IsTriviallyConstructible {
 
 template<typename T>
 struct IsTriviallyDestructible {
-#if _LIBCPP_VERSION
-  // libc++ implements it.
+#if defined(_LIBCPP_VERSION) || SWIFT_COMPILER_IS_MSVC
+  // libc++ and MSVC implement is_trivially_destructible.
   static const bool value = std::is_trivially_destructible<T>::value;
-#elif __has_feature(has_trivial_destructor)
+#elif __has_feature(has_trivial_destructor) || __GNUC__ >= 5
   static const bool value = __has_trivial_destructor(T);
 #else
 #  error "Not implemented"
 #endif
 };
 
-} // namespace swift
+} // end namespace swift
 
 #ifdef SWIFT_DEFINED_HAS_FEATURE
 #undef __has_feature
 #endif
 
-#endif // SWIFT_BASIC_TYPE_TRAITS_H
-
+#endif // SWIFT_BASIC_TYPETRAITS_H

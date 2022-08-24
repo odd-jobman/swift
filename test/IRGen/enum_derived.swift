@@ -1,13 +1,12 @@
-// RUN: rm -rf %t
-// RUN: mkdir %t
+// RUN: %empty-directory(%t)
 // RUN: %target-swift-frontend -emit-module -module-name def_enum -o %t %S/Inputs/def_enum.swift
-// RUN: %target-swift-frontend -I %t -O -primary-file %s -emit-ir | FileCheck -check-prefix=CHECK -check-prefix=CHECK-NORMAL %s
-// RUN: %target-swift-frontend -I %t -O -primary-file %s -enable-testing -emit-ir | FileCheck -check-prefix=CHECK -check-prefix=CHECK-TESTABLE %s
+// RUN: %target-swift-frontend -I %t -O -primary-file %s -emit-ir | %FileCheck -check-prefix=CHECK -check-prefix=CHECK-NORMAL %s
+// RUN: %target-swift-frontend -I %t -O -primary-file %s -enable-testing -emit-ir | %FileCheck -check-prefix=CHECK -check-prefix=CHECK-TESTABLE %s
 
 import def_enum
 
-// Check if the hashValue and == for an enum (without payload) are generated and
-// check if that functions are compiled in an optimal way.
+// Check if hashValue, hash(into:) and == for an enum (without payload) are
+// generated and check that functions are compiled in an optimal way.
 
 enum E {
   case E0
@@ -16,36 +15,42 @@ enum E {
   case E3
 }
 
-// Check if the hashValue getter can be compiled to a simple zext instruction.
-
-// CHECK-NORMAL-LABEL:define hidden i{{.*}} @_TFO12enum_derived1Eg9hashValueSi(i2)
-// CHECK-TESTABLE-LABEL:define{{( protected)?}} i{{.*}} @_TFO12enum_derived1Eg9hashValueSi(i2)
-// CHECK: %1 = zext i2 %0 to i{{.*}}
-// CHECK: ret i{{.*}} %1
-
 // Check if the == comparison can be compiled to a simple icmp instruction.
 
-// CHECK-NORMAL-LABEL:define hidden i1 @_TZF12enum_derivedoi2eeFTOS_1ES0__Sb(i2, i2)
-// CHECK-TESTABLE-LABEL:define{{( protected)?}} i1 @_TZF12enum_derivedoi2eeFTOS_1ES0__Sb(i2, i2)
-// CHECK: %2 = icmp eq i2 %0, %1
+// CHECK-NORMAL-LABEL:define hidden swiftcc i1 @"$s12enum_derived1EO02__b1_A7_equalsySbAC_ACtFZ"(i8 %0, i8 %1)
+// CHECK-TESTABLE-LABEL:define{{( dllexport)?}}{{( protected)?}} swiftcc i1 @"$s12enum_derived1EO02__b1_A7_equalsySbAC_ACtFZ"(i8 %0, i8 %1)
+// CHECK: %2 = icmp eq i8 %0, %1
 // CHECK: ret i1 %2
+
+// Check if the hash(into:) method can be compiled to a simple zext instruction
+// followed by a call to Hasher._combine(_:).
+
+// CHECK-NORMAL-LABEL:define hidden swiftcc void @"$s12enum_derived1EO4hash4intoys6HasherVz_tF"
+// CHECK-TESTABLE-LABEL:define{{( dllexport)?}}{{( protected)?}} swiftcc void @"$s12enum_derived1EO4hash4intoys6HasherVz_tF"
+// CHECK: [[V:%.*]] = zext i8 %1 to i{{.*}}
+// CHECK: tail call swiftcc void @"$ss6HasherV8_combineyySuF"(i{{.*}} [[V]], %Ts6HasherV*
+// CHECK: ret void
+
+// Check for the presence of the hashValue getter, calling Hasher.init() and
+// Hasher.finalize().
+
+// CHECK-NORMAL-LABEL:define hidden swiftcc i{{.*}} @"$s12enum_derived1EO9hashValueSivg"(i8 %0)
+// CHECK-TESTABLE-LABEL:define{{( dllexport)?}}{{( protected)?}} swiftcc i{{.*}} @"$s12enum_derived1EO9hashValueSivg"(i8 %0)
+// CHECK: call swiftcc void @"$ss6HasherV5_seedABSi_tcfC"(%Ts6HasherV* {{.*}})
+// CHECK: call swiftcc i{{[0-9]+}} @"$ss6HasherV9_finalizeSiyF"(%Ts6HasherV* {{.*}})
+// CHECK: ret i{{[0-9]+}} %{{[0-9]+}}
 
 // Derived conformances from extensions
 // The actual enums are in Inputs/def_enum.swift
 
-extension def_enum.TrafficLight : ErrorProtocol {}
+extension def_enum.TrafficLight : Error {}
 
-// CHECK-LABEL: define{{( protected)?}} i{{32|64}} @_TFE12enum_derivedO8def_enum12TrafficLightg5_codeSi(i2)
+extension def_enum.Term : Error {}
 
-
-extension def_enum.Term : ErrorProtocol {}
-
-// CHECK-NORMAL-LABEL: define hidden i64 @_TFO12enum_derived7Phantomg8rawValueVs5Int64(i1, %swift.type* nocapture readnone %T) #1
-// CHECK-TESTABLE-LABEL: define{{( protected)?}} i64 @_TFO12enum_derived7Phantomg8rawValueVs5Int64(i1, %swift.type* nocapture readnone %T) #1
+// CHECK-NORMAL-LABEL: define hidden {{.*}}i64 @"$s12enum_derived7PhantomO8rawValues5Int64Vvg"(i8 %0, %swift.type* nocapture readnone %T) local_unnamed_addr
+// CHECK-TESTABLE-LABEL: define{{( dllexport)?}}{{( protected)?}} {{.*}}i64 @"$s12enum_derived7PhantomO8rawValues5Int64Vvg"(i8 %0, %swift.type* nocapture readnone %T)
 
 enum Phantom<T> : Int64 {
   case Up
   case Down
 }
-
-extension Phantom : RawRepresentable {}

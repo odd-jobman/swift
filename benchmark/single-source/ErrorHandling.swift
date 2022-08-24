@@ -2,17 +2,24 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2021 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 import TestsUtils
 
-enum PizzaError : ErrorProtocol {
+public let benchmarks =
+  BenchmarkInfo(
+    name: "ErrorHandling",
+    runFunction: run_ErrorHandling,
+    tags: [.validation, .exceptions],
+    legacyFactor: 10)
+
+enum PizzaError : Error {
   case Pepperoni, Olives, Anchovy
 }
 
@@ -29,13 +36,12 @@ func doSomething() throws -> String {
 }
 
 @inline(never)
-public func run_ErrorHandling(N: Int) {
-  for _ in 1...5000*N {
+public func run_ErrorHandling(_ n: Int) {
+  for _ in 1...500*n {
     do {
-      try doSomething()
+      _ = try doSomething()
     } catch _ {
 
     }
   }
 }
-

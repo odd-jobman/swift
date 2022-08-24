@@ -3,31 +3,28 @@
 
 import StdlibUnittest
 
-// Also import modules which are used by StdlibUnittest internally. This
-// workaround is needed to link all required libraries in case we compile
-// StdlibUnittest with -sil-serialize-all.
-import SwiftPrivate
-#if _runtime(_ObjC)
-import ObjectiveC
-#endif
 
-#if os(OSX) || os(iOS) || os(tvOS) || os(watchOS)
-import Darwin
-#elseif os(Linux)
-import Glibc
+#if canImport(Darwin)
+  import Darwin
+#elseif canImport(Glibc)
+  import Glibc
+#elseif os(Windows)
+  import MSVCRT
+#else
+#error("Unsupported platform")
 #endif
 
 func simple_getline() -> [UInt8]? {
   var result = [UInt8]()
   while true {
     let c = getchar()
-    result.append(UInt8(c))
     if c == EOF {
       if result.count == 0 {
         return nil
       }
       return result
     }
+    result.append(UInt8(c))
     if c == CInt(UnicodeScalar("\n").value) {
       return result
     }
@@ -44,39 +41,39 @@ StdinTestSuite.test("Empty")
 StdinTestSuite.test("EmptyLine")
   .stdin("\n")
   .code {
-  expectOptionalEqual([ 0x0a ], simple_getline())
+  expectEqual([ 0x0a ], simple_getline())
 }
 
 StdinTestSuite.test("Whitespace")
   .stdin(" \n")
   .code {
-  expectOptionalEqual([ 0x20, 0x0a ], simple_getline())
+  expectEqual([ 0x20, 0x0a ], simple_getline())
 }
 
 StdinTestSuite.test("NonEmptyLine")
   .stdin("abc\n")
   .code {
-  expectOptionalEqual([ 0x61, 0x62, 0x63, 0x0a ], simple_getline())
+  expectEqual([ 0x61, 0x62, 0x63, 0x0a ], simple_getline())
 }
 
 StdinTestSuite.test("TwoLines")
   .stdin("abc\ndefghi\n")
   .code {
-  expectOptionalEqual([ 0x61, 0x62, 0x63, 0x0a ], simple_getline())
-  expectOptionalEqual(
+  expectEqual([ 0x61, 0x62, 0x63, 0x0a ], simple_getline())
+  expectEqual(
     [ 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x0a ], simple_getline())
 }
 
 StdinTestSuite.test("EOF/1")
   .stdin("abc\n", eof: true)
   .code {
-  expectOptionalEqual([ 0x61, 0x62, 0x63, 0x0a ], simple_getline())
+  expectEqual([ 0x61, 0x62, 0x63, 0x0a ], simple_getline())
 }
 
 StdinTestSuite.test("EOF/2")
   .stdin("abc\n", eof: true)
   .code {
-  expectOptionalEqual([ 0x61, 0x62, 0x63, 0x0a ], simple_getline())
+  expectEqual([ 0x61, 0x62, 0x63, 0x0a ], simple_getline())
 }
 
 runAllTests()

@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2020 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,35 +15,37 @@ import StdlibUnittest
 extension TestSuite {
   /// Adds a set of tests for `RangeReplaceableCollection` that is also a
   /// slice type.
-  public func addForwardRangeReplaceableSliceTests<
+  public func addRangeReplaceableSliceTests<
     C : RangeReplaceableCollection,
     CollectionWithEquatableElement : RangeReplaceableCollection
-    where
-    C.SubSequence == C,
-    CollectionWithEquatableElement.Iterator.Element : Equatable
   >(
-    testNamePrefix: String = "",
-    makeCollection: ([C.Iterator.Element]) -> C,
-    wrapValue: (OpaqueValue<Int>) -> C.Iterator.Element,
-    extractValue: (C.Iterator.Element) -> OpaqueValue<Int>,
+    _ testNamePrefix: String = "",
+    makeCollection: @escaping ([C.Element]) -> C,
+    wrapValue: @escaping (OpaqueValue<Int>) -> C.Element,
+    extractValue: @escaping (C.Element) -> OpaqueValue<Int>,
 
-    makeCollectionOfEquatable: ([CollectionWithEquatableElement.Iterator.Element]) -> CollectionWithEquatableElement,
-    wrapValueIntoEquatable: (MinimalEquatableValue) -> CollectionWithEquatableElement.Iterator.Element,
-    extractValueFromEquatable: ((CollectionWithEquatableElement.Iterator.Element) -> MinimalEquatableValue),
+    makeCollectionOfEquatable: @escaping ([CollectionWithEquatableElement.Element]) -> CollectionWithEquatableElement,
+    wrapValueIntoEquatable: @escaping (MinimalEquatableValue) -> CollectionWithEquatableElement.Element,
+    extractValueFromEquatable: @escaping ((CollectionWithEquatableElement.Element) -> MinimalEquatableValue),
 
-    checksAdded: Box<Set<String>> = Box([]),
     resiliencyChecks: CollectionMisuseResiliencyChecks = .all,
-    outOfBoundsIndexOffset: Int = 1
-  ) {
+    outOfBoundsIndexOffset: Int = 1,
+    collectionIsBidirectional: Bool = false
+  ) where
+    C.SubSequence == C,
+    CollectionWithEquatableElement.SubSequence == CollectionWithEquatableElement,
+    CollectionWithEquatableElement.Element : Equatable {
+
     var testNamePrefix = testNamePrefix
 
     // Don't run the same tests twice.
-    if checksAdded.value.contains(#function) {
+    if !checksAdded.insert(
+        "\(testNamePrefix).\(C.self).\(#function)"
+      ).inserted {
       return
     }
-    checksAdded.value.insert(#function)
 
-    addForwardRangeReplaceableCollectionTests(
+    addRangeReplaceableCollectionTests(
       testNamePrefix,
       makeCollection: makeCollection,
       wrapValue: wrapValue,
@@ -51,15 +53,16 @@ extension TestSuite {
       makeCollectionOfEquatable: makeCollectionOfEquatable,
       wrapValueIntoEquatable: wrapValueIntoEquatable,
       extractValueFromEquatable: extractValueFromEquatable,
-      checksAdded: checksAdded,
       resiliencyChecks: resiliencyChecks,
-      outOfBoundsIndexOffset: outOfBoundsIndexOffset)
+      outOfBoundsIndexOffset: outOfBoundsIndexOffset,
+      collectionIsBidirectional: collectionIsBidirectional
+    )
 
-    func makeWrappedCollection(elements: [OpaqueValue<Int>]) -> C {
+    func makeWrappedCollection(_ elements: [OpaqueValue<Int>]) -> C {
       return makeCollection(elements.map(wrapValue))
     }
 
-    testNamePrefix += String(C.Type)
+    testNamePrefix += String(describing: C.Type.self)
 
     //===------------------------------------------------------------------===//
     // removeFirst()
@@ -68,8 +71,9 @@ extension TestSuite {
     self.test("\(testNamePrefix).removeFirst()/semantics") {
       for test in removeFirstTests.filter({ $0.numberToRemove == 1 }) {
         var c = makeWrappedCollection(test.collection.map(OpaqueValue.init))
-        let survivingIndices =
-          Array(c.startIndex.successor()..<c.endIndex)
+        let survivingIndices = _allIndices(
+          into: c,
+          in: c.index(after: c.startIndex)..<c.endIndex)
         let removedElement = c.removeFirst()
         expectEqual(test.collection.first, extractValue(removedElement).value)
         expectEqualSequence(
@@ -100,11 +104,11 @@ extension TestSuite {
     self.test("\(testNamePrefix).removeFirst(n: Int)/semantics") {
       for test in removeFirstTests {
         var c = makeWrappedCollection(test.collection.map(OpaqueValue.init))
-        let survivingIndices =
-          Array(
-            c.startIndex.advanced(by: numericCast(test.numberToRemove)) ..<
+        let survivingIndices = _allIndices(
+          into: c,
+          in: c.index(c.startIndex, offsetBy: test.numberToRemove) ..<
             c.endIndex
-          )
+        )
         c.removeFirst(test.numberToRemove)
         expectEqualSequence(
           test.expectedCollection,
@@ -141,40 +145,38 @@ extension TestSuite {
 
     //===----------------------------------------------------------------------===//
 
-  } // addForwardRangeReplaceableSliceTests
+  } // addRangeReplaceableSliceTests
 
-  public func addBidirectionalRangeReplaceableSliceTests<
-    C : RangeReplaceableCollection,
-    CollectionWithEquatableElement : RangeReplaceableCollection
-    where
-    C.Index : BidirectionalIndex,
-    C.SubSequence == C,
-    CollectionWithEquatableElement.Index : BidirectionalIndex,
-    CollectionWithEquatableElement.SubSequence == CollectionWithEquatableElement,
-    CollectionWithEquatableElement.Iterator.Element : Equatable
+  public func addRangeReplaceableBidirectionalSliceTests<
+    C : BidirectionalCollection & RangeReplaceableCollection,
+    CollectionWithEquatableElement : BidirectionalCollection & RangeReplaceableCollection
   >(
-    testNamePrefix: String = "",
-    makeCollection: ([C.Iterator.Element]) -> C,
-    wrapValue: (OpaqueValue<Int>) -> C.Iterator.Element,
-    extractValue: (C.Iterator.Element) -> OpaqueValue<Int>,
+    _ testNamePrefix: String = "",
+    makeCollection: @escaping ([C.Element]) -> C,
+    wrapValue: @escaping (OpaqueValue<Int>) -> C.Element,
+    extractValue: @escaping (C.Element) -> OpaqueValue<Int>,
 
-    makeCollectionOfEquatable: ([CollectionWithEquatableElement.Iterator.Element]) -> CollectionWithEquatableElement,
-    wrapValueIntoEquatable: (MinimalEquatableValue) -> CollectionWithEquatableElement.Iterator.Element,
-    extractValueFromEquatable: ((CollectionWithEquatableElement.Iterator.Element) -> MinimalEquatableValue),
+    makeCollectionOfEquatable: @escaping ([CollectionWithEquatableElement.Element]) -> CollectionWithEquatableElement,
+    wrapValueIntoEquatable: @escaping (MinimalEquatableValue) -> CollectionWithEquatableElement.Element,
+    extractValueFromEquatable: @escaping ((CollectionWithEquatableElement.Element) -> MinimalEquatableValue),
 
-    checksAdded: Box<Set<String>> = Box([]),
     resiliencyChecks: CollectionMisuseResiliencyChecks = .all,
     outOfBoundsIndexOffset: Int = 1
-  ) {
+  ) where
+    C.SubSequence == C,
+    CollectionWithEquatableElement.SubSequence == CollectionWithEquatableElement,
+    CollectionWithEquatableElement.Element : Equatable {
+
     var testNamePrefix = testNamePrefix
 
     // Don't run the same tests twice.
-    if checksAdded.value.contains(#function) {
+    if !checksAdded.insert(
+        "\(testNamePrefix).\(C.self).\(#function)"
+      ).inserted {
       return
     }
-    checksAdded.value.insert(#function)
 
-    addForwardRangeReplaceableSliceTests(
+    addRangeReplaceableSliceTests(
       testNamePrefix,
       makeCollection: makeCollection,
       wrapValue: wrapValue,
@@ -182,11 +184,12 @@ extension TestSuite {
       makeCollectionOfEquatable: makeCollectionOfEquatable,
       wrapValueIntoEquatable: wrapValueIntoEquatable,
       extractValueFromEquatable: extractValueFromEquatable,
-      checksAdded: checksAdded,
       resiliencyChecks: resiliencyChecks,
-      outOfBoundsIndexOffset: outOfBoundsIndexOffset)
+      outOfBoundsIndexOffset: outOfBoundsIndexOffset,
+      collectionIsBidirectional: true
+    )
 
-    addBidirectionalRangeReplaceableCollectionTests(
+    addRangeReplaceableBidirectionalCollectionTests(
       testNamePrefix,
       makeCollection: makeCollection,
       wrapValue: wrapValue,
@@ -194,15 +197,14 @@ extension TestSuite {
       makeCollectionOfEquatable: makeCollectionOfEquatable,
       wrapValueIntoEquatable: wrapValueIntoEquatable,
       extractValueFromEquatable: extractValueFromEquatable,
-      checksAdded: checksAdded,
       resiliencyChecks: resiliencyChecks,
       outOfBoundsIndexOffset: outOfBoundsIndexOffset)
 
-    func makeWrappedCollection(elements: [OpaqueValue<Int>]) -> C {
+    func makeWrappedCollection(_ elements: [OpaqueValue<Int>]) -> C {
       return makeCollection(elements.map(wrapValue))
     }
 
-    testNamePrefix += String(C.Type)
+    testNamePrefix += String(describing: C.Type.self)
 
     //===------------------------------------------------------------------===//
     // removeLast()
@@ -211,8 +213,9 @@ extension TestSuite {
     self.test("\(testNamePrefix).removeLast()/semantics") {
       for test in removeLastTests.filter({ $0.numberToRemove == 1 }) {
         var c = makeWrappedCollection(test.collection)
-        let survivingIndices =
-          Array(c.startIndex..<c.endIndex.predecessor())
+        let survivingIndices = _allIndices(
+          into: c,
+          in: c.startIndex..<c.index(before: c.endIndex))
         let removedElement = c.removeLast()
         expectEqual(
           test.collection.last!.value,
@@ -238,18 +241,18 @@ extension TestSuite {
       _ = c.removeLast() // Should trap.
     }
 
-    //===----------------------------------------------------------------------===//
+    //===------------------------------------------------------------------===//
     // removeLast(n: Int)
-    //===----------------------------------------------------------------------===//
+    //===------------------------------------------------------------------===//
 
     self.test("\(testNamePrefix).removeLast(n: Int)/semantics") {
       for test in removeLastTests {
         var c = makeWrappedCollection(test.collection)
-        let survivingIndices =
-          Array(
-            c.startIndex ..<
-            c.endIndex.advanced(by: numericCast(-test.numberToRemove))
-          )
+        let survivingIndices = _allIndices(
+          into: c,
+          in: c.startIndex ..<
+            c.index(c.endIndex, offsetBy: -test.numberToRemove)
+        )
         c.removeLast(test.numberToRemove)
         expectEqualSequence(
           test.expectedCollection,
@@ -286,40 +289,38 @@ extension TestSuite {
 
     //===----------------------------------------------------------------------===//
 
-  } // addBidirectionalRangeReplaceableSliceTests
+  } // addRangeReplaceableBidirectionalSliceTests
 
-  public func addRandomAccessRangeReplaceableSliceTests<
-    C : RangeReplaceableCollection,
-    CollectionWithEquatableElement : RangeReplaceableCollection
-    where
-    C.Index : RandomAccessIndex,
-    C.SubSequence == C,
-    CollectionWithEquatableElement.Index : RandomAccessIndex,
-    CollectionWithEquatableElement.SubSequence == CollectionWithEquatableElement,
-    CollectionWithEquatableElement.Iterator.Element : Equatable
+  public func addRangeReplaceableRandomAccessSliceTests<
+    C : RandomAccessCollection & RangeReplaceableCollection,
+    CollectionWithEquatableElement : RandomAccessCollection & RangeReplaceableCollection
   >(
-    testNamePrefix: String = "",
-    makeCollection: ([C.Iterator.Element]) -> C,
-    wrapValue: (OpaqueValue<Int>) -> C.Iterator.Element,
-    extractValue: (C.Iterator.Element) -> OpaqueValue<Int>,
+    _ testNamePrefix: String = "",
+    makeCollection: @escaping ([C.Element]) -> C,
+    wrapValue: @escaping (OpaqueValue<Int>) -> C.Element,
+    extractValue: @escaping (C.Element) -> OpaqueValue<Int>,
 
-    makeCollectionOfEquatable: ([CollectionWithEquatableElement.Iterator.Element]) -> CollectionWithEquatableElement,
-    wrapValueIntoEquatable: (MinimalEquatableValue) -> CollectionWithEquatableElement.Iterator.Element,
-    extractValueFromEquatable: ((CollectionWithEquatableElement.Iterator.Element) -> MinimalEquatableValue),
+    makeCollectionOfEquatable: @escaping ([CollectionWithEquatableElement.Element]) -> CollectionWithEquatableElement,
+    wrapValueIntoEquatable: @escaping (MinimalEquatableValue) -> CollectionWithEquatableElement.Element,
+    extractValueFromEquatable: @escaping ((CollectionWithEquatableElement.Element) -> MinimalEquatableValue),
 
-    checksAdded: Box<Set<String>> = Box([]),
     resiliencyChecks: CollectionMisuseResiliencyChecks = .all,
     outOfBoundsIndexOffset: Int = 1
-  ) {
+  ) where
+    C.SubSequence == C,
+    CollectionWithEquatableElement.SubSequence == CollectionWithEquatableElement,
+    CollectionWithEquatableElement.Element : Equatable {
+
     var testNamePrefix = testNamePrefix
 
     // Don't run the same tests twice.
-    if checksAdded.value.contains(#function) {
+    if !checksAdded.insert(
+        "\(testNamePrefix).\(C.self).\(#function)"
+      ).inserted {
       return
     }
-    checksAdded.value.insert(#function)
 
-    addBidirectionalRangeReplaceableSliceTests(
+    addRangeReplaceableBidirectionalSliceTests(
       testNamePrefix,
       makeCollection: makeCollection,
       wrapValue: wrapValue,
@@ -327,11 +328,10 @@ extension TestSuite {
       makeCollectionOfEquatable: makeCollectionOfEquatable,
       wrapValueIntoEquatable: wrapValueIntoEquatable,
       extractValueFromEquatable: extractValueFromEquatable,
-      checksAdded: checksAdded,
       resiliencyChecks: resiliencyChecks,
       outOfBoundsIndexOffset: outOfBoundsIndexOffset)
 
-    addRandomAccessRangeReplaceableCollectionTests(
+    addRangeReplaceableRandomAccessCollectionTests(
       testNamePrefix,
       makeCollection: makeCollection,
       wrapValue: wrapValue,
@@ -339,12 +339,11 @@ extension TestSuite {
       makeCollectionOfEquatable: makeCollectionOfEquatable,
       wrapValueIntoEquatable: wrapValueIntoEquatable,
       extractValueFromEquatable: extractValueFromEquatable,
-      checksAdded: checksAdded,
       resiliencyChecks: resiliencyChecks,
       outOfBoundsIndexOffset: outOfBoundsIndexOffset)
 
-    testNamePrefix += String(C.Type)
+    testNamePrefix += String(describing: C.Type.self)
 
     // No tests yet.
-  } // addRandomAccessRangeReplaceableCollectionTests
+  } // addRangeReplaceableRandomAccessSliceTests
 }

@@ -1,8 +1,10 @@
-// RUN: rm -rf %t && mkdir -p %t
+// RUN: %empty-directory(%t)
 // RUN: %target-build-swift -O  %s -o %t/a.out
-// RUN: %target-run %t/a.out | FileCheck %s -check-prefix=CHECK-OUTPUT
-// RUN: %target-build-swift -O -wmo %s -o %t/a.out
-// RUN: %target-run %t/a.out | FileCheck %s -check-prefix=CHECK-OUTPUT
+// RUN: %target-codesign %t/a.out
+// RUN: %target-run %t/a.out | %FileCheck %s -check-prefix=CHECK-OUTPUT
+// RUN: %target-build-swift -O -wmo %s -o %t/a.out2
+// RUN: %target-codesign %t/a.out2
+// RUN: %target-run %t/a.out2 | %FileCheck %s -check-prefix=CHECK-OUTPUT
 // REQUIRES: executable_test
 
 // Check that in optimized builds the compiler generates correct code for
@@ -36,7 +38,7 @@ public class Foo1 {
   }
 }
 
-public func testClassLet(f: Foo1) -> Int32 {
+public func testClassLet(_ f: Foo1) -> Int32 {
   return f.Prop1 + f.Prop2 + f.Prop3 + f.Prop4
 }
 
@@ -56,7 +58,7 @@ struct Boo3 {
   //public 
   let Prop0: Int32
   let Prop1: Int32
-  private let Prop2: Int32
+  fileprivate let Prop2: Int32
   internal let Prop3: Int32
 
   @inline(__always)

@@ -1,7 +1,5 @@
 :orphan:
 
-.. @raise litre.TestsAreMissing
-
 General Type State Notes
 ========================
 
@@ -91,7 +89,7 @@ It defines typestates with syntax that looks like it is defining types::
 
   state OpenFile case of File = {
     val filePtr;
-    method read() { ... } 
+    method read() { ... }
     method close() { this <- ClosedFile; }
   }
 
@@ -127,14 +125,14 @@ dimensions without having to manually manage a matrix of states.  This seems
 particularly useful in cases where you have inheritance.  A base class may
 define its own set of states.  A derived class will have those states, plus
 additional dimensions if they wanted.  For example, an NSView could be visible
-or not, while a NSButton derived class could be Normal or Pressed Down, etc.
+or not, while an NSButton derived class could be Normal or Pressed Down, etc.
 
 Generics: "mechanisms like type parameterization need to be duplicated for
 typestate, so that we can talk not only about a list of files, but also about a
 list of *open* files".
 
 
-You should be allowed to declare typestate transitions on "self" any any by-ref
+You should be allowed to declare typestate transitions on "self" any by-ref
 arguments/ret values on functions.  In Plaid syntax::
 
   public void open() [ClosedFile>>OpenFile]

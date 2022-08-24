@@ -1,39 +1,39 @@
-// RUN: %target-swift-frontend -emit-silgen %s | FileCheck %s
+// RUN: %target-swift-emit-silgen %s | %FileCheck %s
 
-// CHECK-LABEL: sil hidden [thunk] @pear : $@convention(c)
-// CHECK:         function_ref @_TF5cdecl5apple
-// CHECK-LABEL: sil hidden @_TF5cdecl5apple
+// CHECK-LABEL: sil hidden [thunk] [ossa] @pear : $@convention(c)
+// CHECK:         function_ref @$s5cdecl5apple{{[_0-9a-zA-Z]*}}F
+// CHECK-LABEL: sil hidden [ossa] @$s5cdecl5apple{{[_0-9a-zA-Z]*}}F
 @_cdecl("pear")
-func apple(f: @convention(c) Int -> Int) {
+func apple(_ f: @convention(c) (Int) -> Int) {
 }
 
-// CHECK-LABEL: sil hidden @_TF5cdecl16forceCEntryPoint
+// CHECK-LABEL: sil hidden [ossa] @$s5cdecl16forceCEntryPoint{{[_0-9a-zA-Z]*}}F
 // CHECK:         function_ref @grapefruit
 func forceCEntryPoint() {
   apple(orange)
 }
 
-// CHECK-LABEL: sil hidden [thunk] @grapefruit : $@convention(c)
-// CHECK:         function_ref @_TF5cdecl6orange
-// CHECK-LABEL: sil hidden @_TF5cdecl6orange
+// CHECK-LABEL: sil hidden [thunk] [ossa] @grapefruit : $@convention(c)
+// CHECK:         function_ref @$s5cdecl6orange{{[_0-9a-zA-Z]*}}F
+// CHECK-LABEL: sil hidden [ossa] @$s5cdecl6orange{{[_0-9a-zA-Z]*}}F
 @_cdecl("grapefruit")
-func orange(x: Int) -> Int {
+func orange(_ x: Int) -> Int {
   return x
 }
 
-// CHECK-LABEL: sil [thunk] @cauliflower : $@convention(c)
-// CHECK:         function_ref @_TF5cdecl8broccoli
-// CHECK-LABEL: sil @_TF5cdecl8broccoli
+// CHECK-LABEL: sil [serialized] [thunk] [ossa] @cauliflower : $@convention(c)
+// CHECK:         function_ref @$s5cdecl8broccoli{{[_0-9a-zA-Z]*}}F
+// CHECK-LABEL: sil [ossa] @$s5cdecl8broccoli{{[_0-9a-zA-Z]*}}F
 @_cdecl("cauliflower")
-public func broccoli(x: Int) -> Int {
+public func broccoli(_ x: Int) -> Int {
   return x
 }
 
-// CHECK-LABEL: sil private [thunk] @collard_greens : $@convention(c)
-// CHECK:         function_ref @_TF5cdeclP[[PRIVATE:.*]]4kale
-// CHECK:       sil private @_TF5cdeclP[[PRIVATE:.*]]4kale
+// CHECK-LABEL: sil private [thunk] [ossa] @collard_greens : $@convention(c)
+// CHECK:         function_ref @$s5cdecl4kale[[PRIVATE:.*]]
+// CHECK:       sil private [ossa] @$s5cdecl4kale[[PRIVATE:.*]]
 @_cdecl("collard_greens")
-private func kale(x: Int) -> Int {
+private func kale(_ x: Int) -> Int {
   return x
 }
 

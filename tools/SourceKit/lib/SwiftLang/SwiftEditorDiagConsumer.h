@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,7 +14,7 @@
 #define LLVM_SOURCEKIT_LIB_SWIFTLANG_SWIFTEDITORDIAGCONSUMER_H
 
 #include "SourceKit/Core/LangSupport.h"
-#include "swift/Basic/DiagnosticConsumer.h"
+#include "swift/AST/DiagnosticConsumer.h"
 #include "llvm/ADT/DenseMap.h"
 
 namespace SourceKit {
@@ -24,6 +24,7 @@ class EditorDiagConsumer : public swift::DiagnosticConsumer {
   /// Maps from a BufferID to the diagnostics that were emitted inside that
   /// buffer.
   llvm::DenseMap<unsigned, DiagnosticsTy> BufferDiagnostics;
+  DiagnosticsTy InvalidLocDiagnostics;
 
   SmallVector<unsigned, 8> InputBufIDs;
   int LastDiagBufferID = -1;
@@ -40,7 +41,6 @@ class EditorDiagConsumer : public swift::DiagnosticConsumer {
     return BufferDiagnostics[LastDiagBufferID][LastDiagIndex];
   }
 
-  bool HadInvalidLocError = false;
   bool HadAnyError = false;
 
 public:
@@ -62,15 +62,14 @@ public:
     return Diags;
   }
 
-  bool hadErrorWithInvalidLoc() const { return HadInvalidLocError; }
+  void getAllDiagnostics(SmallVectorImpl<DiagnosticEntryInfo> &Result);
 
   bool hadAnyError() const { return HadAnyError; }
 
-  void handleDiagnostic(swift::SourceManager &SM, swift::SourceLoc Loc,
-                        swift::DiagnosticKind Kind, StringRef Text,
+  void handleDiagnostic(swift::SourceManager &SM,
                         const swift::DiagnosticInfo &Info) override;
 };
 
-} // namespace SourceKit.
+} // namespace SourceKit
 
 #endif

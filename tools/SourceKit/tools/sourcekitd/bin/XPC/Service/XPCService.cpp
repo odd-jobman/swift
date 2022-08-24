@@ -2,17 +2,16 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 #include "sourcekitd/Internal-XPC.h"
 #include "sourcekitd/Logging.h"
-#include "sourcekitd/XpcTracing.h"
 
 #include "SourceKit/Core/LLVM.h"
 #include "SourceKit/Support/Concurrency.h"
@@ -33,7 +32,7 @@ using namespace sourcekitd;
 
 static xpc_connection_t MainConnection = nullptr;
 
-void sourcekitd::postNotification(sourcekitd_response_t Notification) {
+static void postNotification(sourcekitd_response_t Notification) {
   xpc_connection_t peer = MainConnection;
   if (!peer)
     goto done;
@@ -58,7 +57,7 @@ done:
 }
 
 namespace {
-/// \brief Associates sourcekitd_uid_t to a UIdent.
+/// Associates sourcekitd_uid_t to a UIdent.
 class SKUIDToUIDMap {
   typedef llvm::DenseMap<void *, UIdent> MapTy;
   MapTy Map;
@@ -72,7 +71,7 @@ public:
 
 static SKUIDToUIDMap UIDMap;
 
-sourcekitd_uid_t sourcekitd::SKDUIDFromUIdent(UIdent UID) {
+static sourcekitd_uid_t xpcSKDUIDFromUIdent(UIdent UID) {
   if (void *Tag = UID.getTag())
     return reinterpret_cast<sourcekitd_uid_t>(Tag);
 
@@ -109,7 +108,7 @@ sourcekitd_uid_t sourcekitd::SKDUIDFromUIdent(UIdent UID) {
   return skduid;
 }
 
-UIdent sourcekitd::UIdentFromSKDUID(sourcekitd_uid_t SKDUID) {
+static UIdent xpcUIdentFromSKDUID(sourcekitd_uid_t SKDUID) {
   // This should be used only for debugging/logging purposes.
 
   UIdent UID = UIDMap.get(SKDUID);
@@ -188,28 +187,52 @@ public:
 };
 }
 
-std::string sourcekitd::getRuntimeLibPath() {
-  std::string MainExePath = llvm::sys::fs::getMainExecutable("sourcekit",
-             reinterpret_cast<void *>(&anchorForGetMainExecutableInXPCService));
+static void getToolchainPrefixPath(llvm::SmallVectorImpl<char> &Path) {
+  std::string executablePath = llvm::sys::fs::getMainExecutable(
+      "sourcekit",
+      reinterpret_cast<void *>(&anchorForGetMainExecutableInXPCService));
+  Path.append(executablePath.begin(), executablePath.end());
 #ifdef SOURCEKIT_UNVERSIONED_FRAMEWORK_BUNDLE
-  // MainExePath points to "lib/sourcekitd.framework/XPCServices/
+  // Path points to e.g. "usr/lib/sourcekitd.framework/XPCServices/
   //                       SourceKitService.xpc/SourceKitService"
-  const unsigned MainExeLibNestingLevel = 4;
+  const unsigned MainExeLibNestingLevel = 5;
 #else
-  // MainExePath points to "lib/sourcekitd.framework/Versions/Current/XPCServices/
+  // Path points to e.g.
+  // "usr/lib/sourcekitd.framework/Versions/Current/XPCServices/
   //                       SourceKitService.xpc/Contents/MacOS/SourceKitService"
-  const unsigned MainExeLibNestingLevel = 8;
+  const unsigned MainExeLibNestingLevel = 9;
 #endif
 
-  // Get it to lib.
-  StringRef Path = MainExePath;
+  // Get it to usr.
   for (unsigned i = 0; i < MainExeLibNestingLevel; ++i)
-    Path = llvm::sys::path::parent_path(Path);
-  return Path;
+    llvm::sys::path::remove_filename(Path);
 }
 
+static std::string getRuntimeLibPath() {
+  llvm::SmallString<128> path;
+  getToolchainPrefixPath(path);
+  llvm::sys::path::append(path, "lib");
+  return path.str().str();
+}
+
+static std::string getSwiftExecutablePath() {
+  llvm::SmallString<128> path;
+  getToolchainPrefixPath(path);
+  llvm::sys::path::append(path, "bin", "swift-frontend");
+  return path.str().str();
+}
+
+static std::string getDiagnosticDocumentationPath() {
+  llvm::SmallString<128> path;
+  getToolchainPrefixPath(path);
+  llvm::sys::path::append(path, "share", "doc", "swift", "diagnostics");
+  return path.str().str();
+}
+
+static dispatch_queue_t msgHandlingQueue;
+
 static void sourcekitdServer_peer_event_handler(xpc_connection_t peer,
-                                            xpc_object_t event) {
+                                                xpc_object_t event) {
   xpc_type_t type = xpc_get_type(event);
   if (type == XPC_TYPE_ERROR) {
     if (event == XPC_ERROR_CONNECTION_INVALID) {
@@ -231,30 +254,42 @@ static void sourcekitdServer_peer_event_handler(xpc_connection_t peer,
     assert(type == XPC_TYPE_DICTIONARY);
     // Handle the message
     xpc_retain(event);
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0),
-    ^{
-      xpc_object_t contents = xpc_dictionary_get_value(event, "msg");
+    dispatch_async(msgHandlingQueue, ^{
+      if (xpc_object_t contents =
+              xpc_dictionary_get_value(event, xpc::KeyMsg)) {
+        SourceKitCancellationToken cancelToken =
+            reinterpret_cast<SourceKitCancellationToken>(
+                xpc_dictionary_get_uint64(event, xpc::KeyCancelToken));
+        auto Responder = std::make_shared<XPCResponder>(event, peer);
+        xpc_release(event);
 
-      if (!contents) {
+        assert(xpc_get_type(contents) == XPC_TYPE_ARRAY);
+        sourcekitd_object_t req = xpc_array_get_value(contents, 0);
+        sourcekitd::handleRequest(req, /*CancellationToken=*/cancelToken,
+                                  [Responder](sourcekitd_response_t response) {
+                                    Responder->sendReply(response);
+                                  });
+      } else if (xpc_object_t contents =
+                     xpc_dictionary_get_value(event, "ping")) {
         // Ping back.
-        contents = xpc_dictionary_get_value(event, "ping");
-        assert(contents && "unexpected message");
         xpc_object_t reply = xpc_dictionary_create_reply(event);
+        xpc_release(event);
         assert(reply);
         xpc_connection_send_message(peer, reply);
         xpc_release(reply);
-        return;
+      } else if (SourceKitCancellationToken cancelToken =
+                     reinterpret_cast<SourceKitCancellationToken>(
+                         xpc_dictionary_get_uint64(event,
+                                                   xpc::KeyCancelRequest))) {
+        sourcekitd::cancelRequest(/*CancellationToken=*/cancelToken);
+      } else if (SourceKitCancellationToken cancelToken =
+                     reinterpret_cast<SourceKitCancellationToken>(
+                         xpc_dictionary_get_uint64(
+                             event, xpc::KeyDisposeRequestHandle))) {
+        sourcekitd::disposeCancellationToken(/*CancellationToken=*/cancelToken);
+      } else {
+        assert(false && "unexpected message");
       }
-
-      auto Responder = std::make_shared<XPCResponder>(event, peer);
-      xpc_release(event);
-
-      assert(xpc_get_type(contents) == XPC_TYPE_ARRAY);
-      sourcekitd_object_t req = xpc_array_get_value(contents, 0);
-      sourcekitd::handleRequest(req,
-        [Responder](sourcekitd_response_t response) {
-          Responder->sendReply(response);
-        });
     });
   }
 }
@@ -277,8 +312,6 @@ static void getInitializationInfo(xpc_connection_t peer) {
 
   assert(xpc_get_type(reply) == XPC_TYPE_DICTIONARY);
   uint64_t Delay = xpc_dictionary_get_uint64(reply, xpc::KeySemaEditorDelay);
-  uint64_t TracingEnabled = xpc_dictionary_get_uint64(reply,
-                                                      xpc::KeyTracingEnabled);
   xpc_release(reply);
 
   if (Delay != 0) {
@@ -288,10 +321,6 @@ static void getInitializationInfo(xpc_connection_t peer) {
       OS << Delay;
     }
     setenv("SOURCEKIT_DELAY_SEMA_EDITOR", Buf.c_str(), /*overwrite=*/1);
-  }
-
-  if (TracingEnabled) {
-    SourceKit::trace::enable();
   }
 }
 
@@ -305,6 +334,10 @@ static void sourcekitdServer_event_handler(xpc_connection_t peer) {
     sourcekitdServer_peer_event_handler(peer, event);
   });
 
+  // Update the main connection
+  xpc_retain(peer);
+  if (MainConnection)
+    xpc_release(MainConnection);
   MainConnection = peer;
 
   // This will tell the connection to begin listening for events. If you
@@ -312,24 +345,33 @@ static void sourcekitdServer_event_handler(xpc_connection_t peer) {
   // you can defer this call until after that initialization is done.
   xpc_connection_resume(peer);
 
-  dispatch_async(dispatch_get_main_queue(), ^{
+  dispatch_barrier_async(msgHandlingQueue, ^{
     getInitializationInfo(MainConnection);
   });
 }
 
-static void fatal_error_handler(void *user_data, const std::string& reason,
+static void fatal_error_handler(void *user_data, const char *reason,
                                 bool gen_crash_diag) {
   // Write the result out to stderr avoiding errs() because raw_ostreams can
   // call report_fatal_error.
-  fprintf(stderr, "SOURCEKITD SERVER FATAL ERROR: %s\n", reason.c_str());
-  ::abort();
+  fprintf(stderr, "SOURCEKITD SERVER FATAL ERROR: %s\n", reason);
+  if (gen_crash_diag)
+    ::abort();
 }
 
 int main(int argc, const char *argv[]) {
   llvm::install_fatal_error_handler(fatal_error_handler, 0);
   sourcekitd::enableLogging("sourcekit-serv");
-  sourcekitd::initialize();
-  sourcekitd::trace::initialize();
+  sourcekitd_set_uid_handlers(
+      ^sourcekitd_uid_t(const char *uidStr) {
+        return xpcSKDUIDFromUIdent(UIdent(uidStr));
+      },
+      ^const char *(sourcekitd_uid_t uid) {
+        return xpcUIdentFromSKDUID(uid).c_str();
+      });
+  sourcekitd::initializeService(getSwiftExecutablePath(), getRuntimeLibPath(),
+                                getDiagnosticDocumentationPath(),
+                                postNotification);
 
   // Increase the file descriptor limit.
   // FIXME: Portability ?
@@ -347,6 +389,10 @@ int main(int argc, const char *argv[]) {
   } else {
     LOG_WARN_FUNC("getrlimit failed: " << llvm::sys::StrError());
   }
+
+  auto attr = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_CONCURRENT,
+                                                      QOS_CLASS_DEFAULT, 0);
+  msgHandlingQueue = dispatch_queue_create("request-handling", attr);
 
   xpc_main(sourcekitdServer_event_handler);
   return 0;
@@ -368,42 +414,3 @@ void SKUIDToUIDMap::set(sourcekitd_uid_t SKDUID, UIdent UID) {
     this->Map[SKDUID] = UID;
   });
 }
-
-void sourcekitd::trace::sendTraceMessage(trace::sourcekitd_trace_message_t Msg) {
-  if (!SourceKit::trace::enabled()) {
-    xpc_release(Msg);
-    return;
-  }
-
-  xpc_connection_t Peer = MainConnection;
-  if (!Peer) {
-    SourceKit::trace::disable();
-    xpc_release(Msg);
-    return;
-  }
-
-  xpc_object_t Contents = xpc_array_create(nullptr, 0);
-  xpc_array_set_uint64(Contents, XPC_ARRAY_APPEND,
-                       static_cast<uint64_t>(xpc::Message::TraceMessage));
-  xpc_array_set_uint64(Contents, XPC_ARRAY_APPEND,
-                       trace::getTracingSession());
-  xpc_array_set_value(Contents, XPC_ARRAY_APPEND, Msg);
-  xpc_release(Msg);
-
-  xpc_object_t Message = xpc_dictionary_create(nullptr, nullptr,  0);
-  xpc_dictionary_set_value(Message, xpc::KeyInternalMsg, Contents);
-  xpc_release(Contents);
-
-  xpc_object_t Reply =
-    xpc_connection_send_message_with_reply_sync(Peer, Message);
-  xpc_release(Message);
-
-  if (xpc_get_type(Reply) == XPC_TYPE_ERROR) {
-    SourceKit::trace::disable();
-    xpc_release(Reply);
-    return;
-  }
-
-  xpc_release(Reply);
-}
-

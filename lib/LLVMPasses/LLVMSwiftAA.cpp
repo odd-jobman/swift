@@ -2,11 +2,11 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,43 +17,32 @@
 #include "llvm/IR/Module.h"
 
 using namespace llvm;
-using swift::SwiftAAResult;
-using swift::SwiftAAWrapperPass;
+using namespace swift;
 
 //===----------------------------------------------------------------------===//
 //                           Alias Analysis Result
 //===----------------------------------------------------------------------===//
 
-llvm::ModRefInfo SwiftAAResult::getModRefInfo(llvm::ImmutableCallSite CS,
-                                              const llvm::MemoryLocation &Loc) {
-  // We know the mod-ref behavior of various runtime functions.
-  switch (classifyInstruction(*CS.getInstruction())) {
-  case RT_AllocObject:
-  case RT_NoMemoryAccessed:
-  case RT_Retain:
-  case RT_RetainUnowned:
-  case RT_CheckUnowned:
-  case RT_ObjCRetain:
-  case RT_BridgeRetain:
-  case RT_UnknownRetain:
-  case RT_RetainN:
-  case RT_UnknownRetainN:
-  case RT_BridgeRetainN:
-  case RT_FixLifetime:
-    // These entrypoints don't modify any compiler-visible state.
-    return MRI_NoModRef;
-  case RT_ReleaseN:
-  case RT_UnknownReleaseN:
-  case RT_BridgeReleaseN:
-  case RT_Release:
-  case RT_ObjCRelease:
-  case RT_BridgeRelease:
-  case RT_UnknownRelease:
-  case RT_Unknown:
-    break;
+static ModRefInfo getConservativeModRefForKind(const llvm::Instruction &I) {
+  switch (classifyInstruction(I)) {
+#define KIND(Name, MemBehavior) case RT_ ## Name: return ModRefInfo:: MemBehavior;
+#include "LLVMSwift.def"
   }
 
-  return AAResultBase::getModRefInfo(CS, Loc);
+  llvm_unreachable("Not a valid Instruction.");
+}
+
+ModRefInfo SwiftAAResult::getModRefInfo(const llvm::CallBase *Call,
+                                        const llvm::MemoryLocation &Loc,
+                                        llvm::AAQueryInfo &AAQI) {
+  // We know at compile time that certain entry points do not modify any
+  // compiler-visible state ever. Quickly check if we have one of those
+  // instructions and return if so.
+  if (ModRefInfo::NoModRef == getConservativeModRefForKind(*Call))
+    return ModRefInfo::NoModRef;
+
+  // Otherwise, delegate to the rest of the AA ModRefInfo machinery.
+  return AAResultBase::getModRefInfo(Call, Loc, AAQI);
 }
 
 //===----------------------------------------------------------------------===//
@@ -72,8 +61,7 @@ SwiftAAWrapperPass::SwiftAAWrapperPass() : ImmutablePass(ID) {
 }
 
 bool SwiftAAWrapperPass::doInitialization(Module &M) {
-  Result.reset(new SwiftAAResult(
-      getAnalysis<TargetLibraryInfoWrapperPass>().getTLI()));
+  Result.reset(new SwiftAAResult());
   return false;
 }
 
@@ -85,6 +73,13 @@ bool SwiftAAWrapperPass::doFinalization(Module &M) {
 void SwiftAAWrapperPass::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
   AU.addRequired<TargetLibraryInfoWrapperPass>();
+}
+
+AnalysisKey SwiftAA::Key;
+
+SwiftAAResult SwiftAA::run(llvm::Function &F,
+                           llvm::FunctionAnalysisManager &AM) {
+  return SwiftAAResult();
 }
 
 //===----------------------------------------------------------------------===//

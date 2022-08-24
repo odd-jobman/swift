@@ -2,22 +2,25 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef SWIFT_LIB_IDE_CODE_COMPLETION_RESULT_BUILDER_H
 #define SWIFT_LIB_IDE_CODE_COMPLETION_RESULT_BUILDER_H
 
-#include "swift/IDE/CodeCompletion.h"
+#include "swift/AST/Types.h"
 #include "swift/Basic/LLVM.h"
 #include "swift/Basic/StringExtras.h"
+#include "swift/IDE/CodeCompletionResult.h"
+#include "swift/IDE/CodeCompletionResultSink.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSwitch.h"
 
 namespace clang {
 class Module;
@@ -29,24 +32,40 @@ class ModuleDecl;
 
 namespace ide {
 
+class CodeCompletionStringPrinter;
+
 class CodeCompletionResultBuilder {
+  friend CodeCompletionStringPrinter;
+  
   CodeCompletionResultSink &Sink;
-  CodeCompletionResult::ResultKind Kind;
+  CodeCompletionResultKind Kind;
   SemanticContextKind SemanticContext;
+  CodeCompletionFlair Flair;
   unsigned NumBytesToErase = 0;
   const Decl *AssociatedDecl = nullptr;
+  bool IsAsync = false;
+  bool HasAsyncAlternative = false;
   Optional<CodeCompletionLiteralKind> LiteralKind;
   CodeCompletionKeywordKind KeywordKind = CodeCompletionKeywordKind::None;
   unsigned CurrentNestingLevel = 0;
   SmallVector<CodeCompletionString::Chunk, 4> Chunks;
   llvm::PointerUnion<const ModuleDecl *, const clang::Module *>
       CurrentModule;
-  ArrayRef<Type> ExpectedDeclTypes;
-  CodeCompletionResult::ExpectedTypeRelation ExpectedTypeRelation =
-      CodeCompletionResult::Unrelated;
   bool Cancelled = false;
-  ArrayRef<std::pair<StringRef, StringRef>> CommentWords;
-  bool IsNotRecommended = false;
+  ContextFreeNotRecommendedReason ContextFreeNotRecReason =
+      ContextFreeNotRecommendedReason::None;
+  ContextualNotRecommendedReason ContextualNotRecReason =
+      ContextualNotRecommendedReason::None;
+  StringRef BriefDocComment;
+
+  /// The result type that this completion item produces.
+  CodeCompletionResultType ResultType = CodeCompletionResultType::unknown();
+
+  /// The context in which this completion item is used. Used to compute the
+  /// type relation to \c ResultType.
+  const ExpectedTypeContext *TypeContext = nullptr;
+  const DeclContext *DC = nullptr;
+  bool CanCurrDeclContextHandleAsync = false;
 
   void addChunkWithText(CodeCompletionString::Chunk::ChunkKind Kind,
                         StringRef Text);
@@ -72,11 +91,9 @@ class CodeCompletionResultBuilder {
 
 public:
   CodeCompletionResultBuilder(CodeCompletionResultSink &Sink,
-                              CodeCompletionResult::ResultKind Kind,
-                              SemanticContextKind SemanticContext,
-                              ArrayRef<Type> ExpectedDeclTypes)
-      : Sink(Sink), Kind(Kind), SemanticContext(SemanticContext),
-        ExpectedDeclTypes(ExpectedDeclTypes) {}
+                              CodeCompletionResultKind Kind,
+                              SemanticContextKind SemanticContext)
+      : Sink(Sink), Kind(Kind), SemanticContext(SemanticContext) {}
 
   ~CodeCompletionResultBuilder() {
     finishResult();
@@ -86,39 +103,99 @@ public:
     Cancelled = true;
   }
 
+  /// Annotated results are requested by the client.
+  ///
+  /// This affects the structure of the CodeCompletionString.
+  bool shouldAnnotateResults() {
+    return Sink.annotateResult;
+  }
+
   void setNumBytesToErase(unsigned N) {
     NumBytesToErase = N;
   }
 
   void setAssociatedDecl(const Decl *D);
 
+  void setIsAsync(bool IsAsync) { this->IsAsync = IsAsync; }
+  void setHasAsyncAlternative(bool HasAsyncAlternative) {
+    this->HasAsyncAlternative = HasAsyncAlternative;
+  }
+
   void setLiteralKind(CodeCompletionLiteralKind kind) { LiteralKind = kind; }
   void setKeywordKind(CodeCompletionKeywordKind kind) { KeywordKind = kind; }
-  void setNotRecommended(bool NotRecommended = true) {
-    IsNotRecommended = NotRecommended;
+  void setContextFreeNotRecommended(ContextFreeNotRecommendedReason Reason) {
+    ContextFreeNotRecReason = Reason;
+  }
+  void setContextualNotRecommended(ContextualNotRecommendedReason Reason) {
+    ContextualNotRecReason = Reason;
   }
 
-  void
-  setExpectedTypeRelation(CodeCompletionResult::ExpectedTypeRelation relation) {
-    ExpectedTypeRelation = relation;
+  void addFlair(CodeCompletionFlair Options) {
+    Flair |= Options;
   }
 
-  void addAccessControlKeyword(Accessibility Access) {
+  /// Indicate that the code completion item does not produce something with a
+  /// sensible result type, like a keyword or a method override suggestion.
+  void setResultTypeNotApplicable() {
+    ResultType = CodeCompletionResultType::notApplicable();
+  }
+
+  /// Set the result type of this code completion item and the context that the
+  /// item may be used in.
+  /// This is not a single unique type because for code completion we consider
+  /// e.g. \c Int as producing both an \c Int metatype and an \c Int instance
+  /// type.
+  void setResultTypes(ArrayRef<Type> ResultTypes) {
+    this->ResultType = CodeCompletionResultType(ResultTypes);
+  }
+
+  /// Set context in which this code completion item occurs. Used to compute the
+  /// item's type relation.
+  void setTypeContext(const ExpectedTypeContext &TypeContext,
+                      const DeclContext *DC) {
+    this->TypeContext = &TypeContext;
+    this->DC = DC;
+  }
+
+  void setCanCurrDeclContextHandleAsync(bool CanCurrDeclContextHandleAsync) {
+    this->CanCurrDeclContextHandleAsync = CanCurrDeclContextHandleAsync;
+  }
+
+  void withNestedGroup(CodeCompletionString::Chunk::ChunkKind Kind,
+                  llvm::function_ref<void()> body);
+
+  void addAccessControlKeyword(AccessLevel Access) {
     switch (Access) {
-    case Accessibility::Private:
+    case AccessLevel::Private:
       addChunkWithTextNoCopy(
           CodeCompletionString::Chunk::ChunkKind::AccessControlKeyword,
           "private ");
       break;
-    case Accessibility::Internal:
+    case AccessLevel::FilePrivate:
+      addChunkWithTextNoCopy(
+          CodeCompletionString::Chunk::ChunkKind::AccessControlKeyword,
+          "fileprivate ");
+      break;
+    case AccessLevel::Internal:
       // 'internal' is the default, don't add it.
       break;
-    case Accessibility::Public:
+    case AccessLevel::Public:
       addChunkWithTextNoCopy(
           CodeCompletionString::Chunk::ChunkKind::AccessControlKeyword,
           "public ");
       break;
+    case AccessLevel::Open:
+      addChunkWithTextNoCopy(
+          CodeCompletionString::Chunk::ChunkKind::AccessControlKeyword,
+          "open ");
+      break;
     }
+  }
+
+  void addRequiredKeyword() {
+    addChunkWithTextNoCopy(
+        CodeCompletionString::Chunk::ChunkKind::AccessControlKeyword,
+        "required ");
   }
 
   void addOverrideKeyword() {
@@ -131,8 +208,21 @@ public:
                      Text);
   }
 
+  void addBaseName(StringRef Text) {
+    addChunkWithText(CodeCompletionString::Chunk::ChunkKind::BaseName, Text);
+  }
+
+  void addKeyword(StringRef Text) {
+    addChunkWithText(CodeCompletionString::Chunk::ChunkKind::Keyword, Text);
+  }
+
   void addTextChunk(StringRef Text) {
     addChunkWithText(CodeCompletionString::Chunk::ChunkKind::Text, Text);
+  }
+
+  void addAnnotatedTextChunk(StringRef Text) {
+    addTextChunk(Text);
+    getLastChunk().setIsAnnotation();
   }
 
   void addAnnotatedThrows() {
@@ -142,13 +232,19 @@ public:
 
   void addThrows() {
     addChunkWithTextNoCopy(
-       CodeCompletionString::Chunk::ChunkKind::ThrowsKeyword,
+       CodeCompletionString::Chunk::ChunkKind::EffectsSpecifierKeyword,
        " throws");
   }
 
-  void addDeclDocCommentWords(ArrayRef<std::pair<StringRef, StringRef>> Pairs) {
-    assert(Kind == CodeCompletionResult::ResultKind::Declaration);
-    CommentWords = Pairs;
+  void addAnnotatedAsync() {
+    addAsync();
+    getLastChunk().setIsAnnotation();
+  }
+
+  void addAsync() {
+    addChunkWithTextNoCopy(
+       CodeCompletionString::Chunk::ChunkKind::EffectsSpecifierKeyword,
+       " async");
   }
 
   void addAnnotatedRethrows() {
@@ -158,7 +254,7 @@ public:
 
   void addRethrows() {
     addChunkWithTextNoCopy(
-        CodeCompletionString::Chunk::ChunkKind::RethrowsKeyword,
+        CodeCompletionString::Chunk::ChunkKind::EffectsSpecifierKeyword,
         " rethrows");
   }
 
@@ -182,9 +278,19 @@ public:
         CodeCompletionString::Chunk::ChunkKind::RightParen, ")");
   }
 
+  void addAnnotatedLeftBracket() {
+    addLeftBracket();
+    getLastChunk().setIsAnnotation();
+  }
+
   void addLeftBracket() {
     addChunkWithTextNoCopy(
         CodeCompletionString::Chunk::ChunkKind::LeftBracket, "[");
+  }
+
+  void addAnnotatedRightBracket() {
+    addRightBracket();
+    getLastChunk().setIsAnnotation();
   }
 
   void addRightBracket() {
@@ -240,26 +346,32 @@ public:
                      DeclAttrParamKeyword, Name);
     if (NeedSpecify)
       addChunkWithText(CodeCompletionString::Chunk::ChunkKind::
-                       DeclAttrParamEqual, "=");
-    if(!Annotation.empty())
+                       DeclAttrParamColon, ": ");
+    if (!Annotation.empty())
       addTypeAnnotation(Annotation);
   }
 
   void addDeclAttrKeyword(StringRef Name, StringRef Annotation) {
     addChunkWithText(CodeCompletionString::Chunk::ChunkKind::
                      DeclAttrKeyword, Name);
-    if(!Annotation.empty())
+    if (!Annotation.empty())
       addTypeAnnotation(Annotation);
   }
 
-  StringRef escapeArgumentLabel(StringRef Word,
-                                bool escapeAllKeywords,
-                                llvm::SmallString<16> &EscapedKeyword) {
+  void addAttributeKeyword(StringRef Name, StringRef Annotation) {
+    addChunkWithText(CodeCompletionString::Chunk::ChunkKind::Attribute, Name);
+    if (!Annotation.empty())
+      addTypeAnnotation(Annotation);
+  }
+
+  StringRef escapeKeyword(StringRef Word, bool escapeAllKeywords,
+                          llvm::SmallString<16> &EscapedKeyword) {
+    EscapedKeyword.clear();
     bool shouldEscape = false;
     if (escapeAllKeywords) {
 #define KEYWORD(kw) .Case(#kw, true)
       shouldEscape = llvm::StringSwitch<bool>(Word)
-#include "swift/Parse/Tokens.def"
+#include "swift/Syntax/TokenKinds.def"
         .Default(false);
     } else {
       shouldEscape = !canBeArgumentLabel(Word);
@@ -276,121 +388,47 @@ public:
 
   void addCallParameterColon() {
     addChunkWithText(CodeCompletionString::Chunk::ChunkKind::
-                     CallParameterColon, ": ");
+                     CallArgumentColon, ": ");
   }
 
   void addSimpleNamedParameter(StringRef name) {
-    CurrentNestingLevel++;
-    addSimpleChunk(CodeCompletionString::Chunk::ChunkKind::CallParameterBegin);
-    // Use internal, since we don't want the name to be outside the placeholder.
-    addChunkWithText(
-        CodeCompletionString::Chunk::ChunkKind::CallParameterInternalName,
-        name);
-    CurrentNestingLevel--;
+    withNestedGroup(CodeCompletionString::Chunk::ChunkKind::CallArgumentBegin, [&] {
+      // Use internal, since we don't want the name to be outside the
+      // placeholder.
+      addChunkWithText(
+          CodeCompletionString::Chunk::ChunkKind::CallArgumentInternalName,
+          name);
+    });
   }
 
   void addSimpleTypedParameter(StringRef Annotation, bool IsVarArg = false) {
-    CurrentNestingLevel++;
-    addSimpleChunk(CodeCompletionString::Chunk::ChunkKind::CallParameterBegin);
-    addChunkWithText(CodeCompletionString::Chunk::ChunkKind::CallParameterType,
-                     Annotation);
-    if (IsVarArg)
-      addEllipsis();
-    CurrentNestingLevel--;
+    withNestedGroup(CodeCompletionString::Chunk::ChunkKind::CallArgumentBegin, [&] {
+      addChunkWithText(
+          CodeCompletionString::Chunk::ChunkKind::CallArgumentType,
+          Annotation);
+      if (IsVarArg)
+        addEllipsis();
+    });
   }
 
-  void addCallParameter(Identifier Name, Identifier LocalName, Type Ty,
-                        bool IsVarArg, bool Outermost) {
-    CurrentNestingLevel++;
+  void addCallArgument(Identifier Name, Identifier LocalName, Type Ty,
+                       Type ContextTy, bool IsVarArg, bool IsInOut, bool IsIUO,
+                       bool IsAutoClosure, bool UseUnderscoreLabel,
+                       bool IsLabeledTrailingClosure, bool HasDefault);
 
-    addSimpleChunk(CodeCompletionString::Chunk::ChunkKind::CallParameterBegin);
-
-    if (!Name.empty()) {
-      StringRef NameStr = Name.str();
-
-      // 'self' is a keyword, we cannot allow to insert it into the source
-      // buffer.
-      bool IsAnnotation = (NameStr == "self");
-
-      llvm::SmallString<16> EscapedKeyword;
-      addChunkWithText(
-          CodeCompletionString::Chunk::ChunkKind::CallParameterName,
-          // if the name is not annotation, we need to escape keyword
-          IsAnnotation ? NameStr
-                       : escapeArgumentLabel(NameStr, !Outermost,
-                                             EscapedKeyword));
-      if (IsAnnotation)
-        getLastChunk().setIsAnnotation();
-
-      addChunkWithTextNoCopy(
-          CodeCompletionString::Chunk::ChunkKind::CallParameterColon, ": ");
-      if (IsAnnotation)
-        getLastChunk().setIsAnnotation();
-    }
-
-    // 'inout' arguments are printed specially.
-    if (auto *IOT = Ty->getAs<InOutType>()) {
-      addChunkWithTextNoCopy(
-          CodeCompletionString::Chunk::ChunkKind::Ampersand, "&");
-      Ty = IOT->getObjectType();
-    }
-
-    if (Name.empty() && !LocalName.empty()) {
-      llvm::SmallString<16> EscapedKeyword;
-      // Use local (non-API) parameter name if we have nothing else.
-      addChunkWithText(
-          CodeCompletionString::Chunk::ChunkKind::CallParameterInternalName,
-            escapeArgumentLabel(LocalName.str(), !Outermost, EscapedKeyword));
-      addChunkWithTextNoCopy(
-          CodeCompletionString::Chunk::ChunkKind::CallParameterColon, ": ");
-    }
-
-    // If the parameter is of the type @autoclosure ()->output, then the
-    // code completion should show the parameter of the output type
-    // instead of the function type ()->output.
-    if (auto FuncType = Ty->getAs<AnyFunctionType>()) {
-      if (FuncType->isAutoClosure()) {
-        Ty = FuncType->getResult();
-      }
-    }
-
-    PrintOptions PO;
-    PO.SkipAttributes = true;
-    addChunkWithText(CodeCompletionString::Chunk::ChunkKind::CallParameterType,
-                     Ty->getString(PO));
-
-    // Look through optional types and type aliases to find out if we have
-    // function/closure parameter type that is not an autoclosure.
-    Ty = Ty->lookThroughAllAnyOptionalTypes();
-    if (auto AFT = Ty->getAs<AnyFunctionType>()) {
-      if (!AFT->isAutoClosure()) {
-        // If this is a closure type, add ChunkKind::CallParameterClosureType.
-        PrintOptions PO;
-        PO.PrintFunctionRepresentationAttrs = false;
-        PO.SkipAttributes = true;
-        addChunkWithText(
-            CodeCompletionString::Chunk::ChunkKind::CallParameterClosureType,
-            AFT->getString(PO));
-      }
-    }
-
-    if (IsVarArg)
-      addEllipsis();
-    CurrentNestingLevel--;
-  }
-
-  void addCallParameter(Identifier Name, Type Ty, bool IsVarArg,
-                        bool Outermost) {
-    addCallParameter(Name, Identifier(), Ty, IsVarArg, Outermost);
+  void addCallArgument(Identifier Name, Type Ty, Type ContextTy = Type()) {
+    addCallArgument(Name, Identifier(), Ty, ContextTy,
+                    /*IsVarArg=*/false, /*IsInOut=*/false, /*IsIUO=*/false,
+                    /*IsAutoClosure=*/false, /*UseUnderscoreLabel=*/false,
+                    /*IsLabeledTrailingClosure=*/false, /*HasDefault=*/false);
   }
 
   void addGenericParameter(StringRef Name) {
-    CurrentNestingLevel++;
-    addSimpleChunk(
-       CodeCompletionString::Chunk::ChunkKind::GenericParameterBegin);
-    addChunkWithText(
-      CodeCompletionString::Chunk::ChunkKind::GenericParameterName, Name);
-    CurrentNestingLevel--;
+    withNestedGroup(CodeCompletionString::Chunk::ChunkKind::GenericParameterBegin,
+               [&] {
+      addChunkWithText(
+        CodeCompletionString::Chunk::ChunkKind::GenericParameterName, Name);
+    });
   }
 
   void addDynamicLookupMethodCallTail() {
@@ -402,8 +440,7 @@ public:
 
   void addOptionalMethodCallTail() {
     addChunkWithTextNoCopy(
-        CodeCompletionString::Chunk::ChunkKind::OptionalMethodCallTail, "!");
-    getLastChunk().setIsAnnotation();
+        CodeCompletionString::Chunk::ChunkKind::OptionalMethodCallTail, "?");
   }
 
   void addTypeAnnotation(StringRef Type) {
@@ -412,9 +449,12 @@ public:
     getLastChunk().setIsAnnotation();
   }
 
-  void addBraceStmtWithCursor() {
-    addChunkWithTextNoCopy(
-        CodeCompletionString::Chunk::ChunkKind::BraceStmtWithCursor, " {}");
+  void addTypeAnnotation(Type T, PrintOptions PO, StringRef suffix = "");
+
+  void addBraceStmtWithCursor(StringRef Description = "") {
+    addChunkWithText(
+        CodeCompletionString::Chunk::ChunkKind::BraceStmtWithCursor,
+        Description);
   }
 
   void addWhitespace(StringRef space) {
@@ -426,10 +466,13 @@ public:
     addWhitespace(space);
     getLastChunk().setIsAnnotation();
   }
+
+  void setBriefDocComment(StringRef comment) {
+    BriefDocComment = comment;
+  }
 };
 
 } // namespace ide
 } // namespace swift
 
 #endif // SWIFT_LIB_IDE_CODE_COMPLETION_RESULT_BUILDER_H
-
